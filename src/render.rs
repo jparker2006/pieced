@@ -87,6 +87,11 @@ impl Default for CurrentFov {
     }
 }
 
+/// The main camera is placed at the player's eye in this set (PostUpdate, before
+/// transform propagation). Effects that offset the camera (shake) run after it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CameraFollowSet;
+
 pub struct RenderSetupPlugin;
 
 impl Plugin for RenderSetupPlugin {
@@ -94,10 +99,11 @@ impl Plugin for RenderSetupPlugin {
         app.init_resource::<CurrentFov>()
             .add_systems(Startup, setup_render_target)
             .add_systems(Update, (resize_world_target, update_fov))
-            .add_systems(
+            .configure_sets(
                 PostUpdate,
-                follow_player_eye.before(TransformSystems::Propagate),
+                CameraFollowSet.before(TransformSystems::Propagate),
             )
+            .add_systems(PostUpdate, follow_player_eye.in_set(CameraFollowSet))
             .add_systems(OnEnter(AppState::Playing), snap_camera);
     }
 }
