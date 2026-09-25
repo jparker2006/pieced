@@ -1,6 +1,6 @@
 # Milestone 1 "Sparring": gate report
 
-**Status: IN PROGRESS.** The build is complete: every slice is merged into `main`. The gates that need a quiet machine, or need Jake, have not run yet. A gate is PASS only when it has recorded evidence. PENDING means the gate hasn't been run yet. FAIL means a recorded run missed the gate.
+**Status: PAUSED by Jake on 2026-09-25 (02:50), before the design pass.** G2/G3/G5 screenshots/G8/G9 are unfinished; all timing runs are stopped while he uses the Mac. The build is complete: every slice is merged into `main`. The gates that need a quiet machine, or need Jake, have not run yet. A gate is PASS only when it has recorded evidence. PENDING means the gate hasn't been run yet. FAIL means a recorded run missed the gate.
 
 | Gate | Status | Evidence |
 |---|---|---|
