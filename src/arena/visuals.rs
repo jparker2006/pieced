@@ -427,11 +427,9 @@ fn spawn_target_figure(
     ));
 }
 
-/// Whether a character's figure should be hidden.
-// TODO(slice C): also hide while the dummy carries its "downed" marker, e.g.
-// `downed: bool` from `Has<Downed>` in `pose_target_figures`, once that lands.
-pub fn figure_hidden(health: Option<&Health>) -> bool {
-    health.is_some_and(Health::is_dead)
+/// Whether a character's figure should be hidden: dead, or downed awaiting respawn.
+pub fn figure_hidden(health: Option<&Health>, downed: bool) -> bool {
+    downed || health.is_some_and(Health::is_dead)
 }
 
 pub fn pose_target_figures(
@@ -445,6 +443,7 @@ pub fn pose_target_figures(
             Option<&LookAngles>,
             Option<&EyeHeight>,
             Option<&Health>,
+            Has<crate::combat::Downed>,
         ),
         (With<Character>, Without<TargetFigure>),
     >,
@@ -456,7 +455,7 @@ pub fn pose_target_figures(
         1.0
     };
     for (entity, figure, mut transform, mut visibility) in &mut figures {
-        let Ok((owner, previous, look, eye, health)) = owners.get(figure.owner) else {
+        let Ok((owner, previous, look, eye, health, downed)) = owners.get(figure.owner) else {
             commands.entity(entity).despawn();
             continue;
         };
@@ -466,7 +465,7 @@ pub fn pose_target_figures(
         transform.translation = feet;
         transform.rotation = Quat::from_rotation_y(yaw);
         transform.scale = Vec3::new(1.0, crouch, 1.0);
-        visibility.set_if_neq(if figure_hidden(health) {
+        visibility.set_if_neq(if figure_hidden(health, downed) {
             Visibility::Hidden
         } else {
             Visibility::Inherited
@@ -535,10 +534,11 @@ mod tests {
     #[test]
     fn figure_hides_when_owner_is_down() {
         let mut health = Health::default();
-        assert!(!figure_hidden(Some(&health)));
+        assert!(!figure_hidden(Some(&health), false));
+        assert!(figure_hidden(Some(&health), true));
         health.apply(1000.0);
-        assert!(figure_hidden(Some(&health)));
-        assert!(!figure_hidden(None));
+        assert!(figure_hidden(Some(&health), false));
+        assert!(!figure_hidden(None, false));
     }
 
     #[test]
