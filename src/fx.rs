@@ -118,7 +118,7 @@ impl Family {
             Family::Yellow => (palette::HEADSHOT, AlphaMode::Add, 0.95, true),
             Family::Shield => (shade(palette::SHIELD, 1.2), AlphaMode::Blend, 0.9, false),
             Family::ShieldShell => (palette::SHIELD, AlphaMode::Blend, 0.38, true),
-            Family::Dust => (shade(palette::SAND, 1.1), AlphaMode::Blend, 0.32, true),
+            Family::Dust => (shade(palette::SAND, 1.1), AlphaMode::Blend, 0.22, true),
             Family::Rim => (palette::TARGET, AlphaMode::Blend, 0.85, false),
         };
         FamilyLook {
@@ -813,7 +813,7 @@ impl Emitter<'_> {
             );
             self.particle(p, mesh, paint);
         }
-        for _ in 0..4 {
+        for _ in 0..3 {
             let local = match kind {
                 PieceKind::Wall => {
                     Vec3::new(self.rng.range(-1.4, 1.4), self.rng.range(-1.0, 1.0), 0.0)
@@ -822,8 +822,8 @@ impl Emitter<'_> {
             };
             let p = Particle {
                 pos: frame.transform_point(local),
-                vel: Vec3::Y * 0.5 + self.rng.dir() * 0.5,
-                size: Vec3::splat(0.3),
+                vel: Vec3::Y * 0.4 + self.rng.dir() * 0.4,
+                size: Vec3::splat(0.26),
                 birth_scale: 0.5,
                 grow: 2.4,
                 drag: 2.5,
@@ -839,7 +839,7 @@ impl Emitter<'_> {
     /// Coral chunks, a flash and an expanding ring, readable across the arena.
     fn elimination(&mut self, feet: Vec3, eye: Vec3) {
         let center = feet + Vec3::Y * 0.95;
-        self.pop(center, 0.42, 2.2, 0.18, Family::White);
+        self.pop(center, 0.36, 2.1, 0.16, Family::White);
         self.ring(center, eye - center, 0.5, 7.0, 0.42, Family::Rim);
         self.ring(feet + Vec3::Y * 0.06, Vec3::Y, 0.4, 8.0, 0.5, Family::Rim);
         for _ in 0..24 {
