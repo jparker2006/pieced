@@ -1,0 +1,35 @@
+{
+  "build": "release",
+  "commit": "b916e218aaea",
+  "frames": {
+    "frames": 250,
+    "max_ms": 368.97875000000005,
+    "mean_ms": 15.709016832000005,
+    "over_18_ms": 34,
+    "over_20_ms": 28,
+    "over_25_ms": 21,
+    "p50_ms": 9.190415999999999,
+    "p95_ms": 33.048583,
+    "p99_ms": 204.323416,
+    "pct_under_18_ms": 86.4
+  },
+  "graphics": "Battery preset, render scale 1.00, vsync true, cap 60",
+  "knobs": null,
+  "launch_to_controllable_ms": 684.036833,
+  "power_end": {
+    "battery": "-InternalBattery-0 (id=22478947)\t22%; discharging; 1:04 remaining present: true",
+    "low_power_mode": true,
+    "source": "Battery Power"
+  },
+  "power_start": {
+    "battery": "-InternalBattery-0 (id=22478947)\t22%; discharging; 1:04 remaining present: true",
+    "low_power_mode": true,
+    "source": "Battery Power"
+  },
+  "scenario": null,
+  "scenario_name": "smoke",
+  "screenshots": [
+    "smoke.png"
+  ],
+  "warmup_seconds": 0.0
+}

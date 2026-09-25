@@ -34,6 +34,9 @@ pub struct GraphicsTuning {
     pub preset: QualityPreset,
     /// 3D render resolution as a fraction of the window's logical size.
     pub render_scale: f32,
+    /// Upper bound on 3D render pixels, in megapixels (0 = no cap). Keeps "More
+    /// Space" display scaling (1710×1073 logical) from costing extra GPU time.
+    pub max_megapixels: f32,
     pub fullscreen: bool,
     /// true = vsync (Fifo); false = no vsync with `frame_cap`.
     pub vsync: bool,
@@ -46,6 +49,7 @@ impl Default for GraphicsTuning {
         Self {
             preset: QualityPreset::Battery,
             render_scale: 1.0,
+            max_megapixels: 1.4,
             fullscreen: true,
             vsync: true,
             frame_cap: 60,
@@ -237,11 +241,26 @@ fn limit_frame_rate(mut limiter: ResMut<FrameLimiter>) {
     }
 }
 
-pub fn target_size(window: &Window, scale: f32) -> UVec2 {
-    let scale = scale.clamp(0.25, 2.0);
+/// 3D render resolution: the window's logical size × `scale`, then shrunk (keeping
+/// the aspect ratio) so it never exceeds `max_megapixels` (0 = no cap).
+pub fn target_size(window: &Window, scale: f32, max_megapixels: f32) -> UVec2 {
+    render_size(
+        Vec2::new(window.width(), window.height()),
+        scale,
+        max_megapixels,
+    )
+}
+
+pub fn render_size(logical: Vec2, scale: f32, max_megapixels: f32) -> UVec2 {
+    let mut size = logical * scale.clamp(0.25, 2.0);
+    let pixels = size.x * size.y;
+    let cap = max_megapixels * 1.0e6;
+    if cap > 0.0 && pixels > cap {
+        size *= (cap / pixels).sqrt();
+    }
     UVec2::new(
-        ((window.width() * scale).round() as u32).max(64),
-        ((window.height() * scale).round() as u32).max(64),
+        (size.x.round() as u32).max(64),
+        (size.y.round() as u32).max(64),
     )
 }
 
@@ -252,7 +271,13 @@ fn setup_render_target(
     tuning: Res<Tuning>,
 ) {
     let size = window
-        .map(|w| target_size(&w, tuning.graphics.render_scale))
+        .map(|w| {
+            target_size(
+                &w,
+                tuning.graphics.render_scale,
+                tuning.graphics.max_megapixels,
+            )
+        })
         .unwrap_or(UVec2::new(1470, 956));
     let image = images.add(Image::new_target_texture(
         size.x,
@@ -288,6 +313,9 @@ fn setup_render_target(
         Camera2d,
         IsDefaultUiCamera,
         RenderLayers::layer(UI_LAYER),
+        // The UI draws at native Retina resolution (up to ~7 MP); Bevy's UI shader
+        // anti-aliases its own edges, so 4x MSAA here would only cost bandwidth.
+        Msaa::Off,
         Camera {
             order: 10,
             ..default()
@@ -316,7 +344,11 @@ fn resize_world_target(
     let (Some(window), Some(mut target)) = (window, target) else {
         return;
     };
-    let size = target_size(&window, tuning.graphics.render_scale);
+    let size = target_size(
+        &window,
+        tuning.graphics.render_scale,
+        tuning.graphics.max_megapixels,
+    );
     if size == target.size {
         return;
     }
@@ -390,5 +422,33 @@ fn snap_camera(
         let (transform, eye, look) = player.into_inner();
         camera.translation = transform.translation + Vec3::Y * eye.0;
         camera.rotation = look.rotation();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_size_caps_megapixels_and_keeps_aspect() {
+        // "More Space" scaling on the 15" Air: 1710×1073 logical.
+        let capped = render_size(Vec2::new(1710.0, 1073.0), 1.0, 1.4);
+        let pixels = capped.x as f32 * capped.y as f32;
+        assert!(pixels <= 1.401e6 && pixels > 1.38e6, "{capped}");
+        let aspect = capped.x as f32 / capped.y as f32;
+        assert!((aspect - 1710.0 / 1073.0).abs() < 0.01);
+        // Under the cap, and with no cap, the logical size is kept.
+        assert_eq!(
+            render_size(Vec2::new(1280.0, 800.0), 1.0, 1.4),
+            UVec2::new(1280, 800)
+        );
+        assert_eq!(
+            render_size(Vec2::new(1710.0, 1073.0), 1.0, 0.0),
+            UVec2::new(1710, 1073)
+        );
+        assert_eq!(
+            render_size(Vec2::new(1280.0, 800.0), 0.5, 1.4),
+            UVec2::new(640, 400)
+        );
     }
 }
