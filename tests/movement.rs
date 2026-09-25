@@ -802,12 +802,22 @@ fn footsteps_follow_distance_walked() {
     sim.intent(player).move_axis = Vec2::Y;
     sim.run_seconds(2.0);
     let walked = sim.feet(player).distance(start);
-    let steps = cues(&sim, |c| matches!(c, GameCue::Footstep { .. }));
+    // Only the player's steps: the training dummy walks (and steps) too.
+    let steps = cues(
+        &sim,
+        |c| matches!(c, GameCue::Footstep { who } if *who == player),
+    );
     assert_eq!(steps, (walked / 2.2).floor() as usize, "walked {walked}");
 
     // Crouch walking is quiet.
     sim.clear_recorded::<GameCue>();
     sim.intent(player).crouch = true;
     sim.run_seconds(2.0);
-    assert_eq!(cues(&sim, |c| matches!(c, GameCue::Footstep { .. })), 0);
+    assert_eq!(
+        cues(
+            &sim,
+            |c| matches!(c, GameCue::Footstep { who } if *who == player)
+        ),
+        0
+    );
 }
