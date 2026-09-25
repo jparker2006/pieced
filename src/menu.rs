@@ -103,7 +103,7 @@ impl Setting {
     pub fn label(self) -> &'static str {
         match self {
             Setting::Sensitivity => "Sensitivity",
-            Setting::AdsMultiplier => "Aim-down-sights multiplier",
+            Setting::AdsMultiplier => "ADS multiplier",
             Setting::BuildMultiplier => "Build multiplier",
             Setting::Acceleration => "Acceleration curve",
             Setting::AimFriction => "Aim friction (rifle)",

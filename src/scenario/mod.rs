@@ -7,6 +7,7 @@
 //! `director(name)` function.
 
 pub mod gallery;
+pub mod hud_check;
 pub mod latency;
 pub mod perf;
 pub mod smoke;
@@ -101,6 +102,7 @@ pub fn director_for(name: &str) -> Option<Box<dyn Director>> {
         .or_else(|| perf::director(name))
         .or_else(|| ttk::director(name))
         .or_else(|| latency::director(name))
+        .or_else(|| hud_check::director(name))
 }
 
 /// Present while a scenario controls the game.

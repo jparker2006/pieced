@@ -35,7 +35,9 @@ fn noise_lp(
 ) {
     let mut n = Noise::new(seed);
     let mut f = Svf::default();
-    buf.add(start, length, gain, |t| f.low(n.signed(), cutoff(t)) * env(t));
+    buf.add(start, length, gain, |t| {
+        f.low(n.signed(), cutoff(t)) * env(t)
+    });
 }
 
 /// Band-passed noise with a moving center.

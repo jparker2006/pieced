@@ -170,83 +170,82 @@ fn spawn_menu(mut commands: Commands) {
                     children![text("Esc resume   F3 stats   F4 tuning", 11.0, dim(0.45))],
                 ));
             });
-            root.spawn((SettingsCard, card(900.0), Visibility::Hidden))
-                .with_children(|c| {
-                    c.spawn(Node {
-                        flex_direction: FlexDirection::Row,
-                        justify_content: JustifyContent::SpaceBetween,
-                        align_items: AlignItems::Center,
-                        margin: UiRect::bottom(px(6)),
-                        ..default()
-                    })
-                    .with_children(|header| {
-                        header.spawn((
-                            Text::new("SETTINGS"),
-                            TextFont::from_font_size(24.0),
-                            TextColor(TEXT),
-                            LetterSpacing::Px(5.0),
-                        ));
-                        header
-                            .spawn(Node {
-                                width: px(120),
-                                ..default()
-                            })
-                            .with_children(|b| {
-                                b.spawn(menu_button("BACK", MenuAction::Back, false));
-                            });
-                    });
-                    c.spawn(Node {
-                        flex_direction: FlexDirection::Row,
-                        column_gap: px(40),
-                        ..default()
-                    })
-                    .with_children(|cols| {
-                        let column =
-                            |cols: &mut ChildSpawnerCommands, groups: &[(&str, &[Setting])]| {
-                                cols.spawn(Node {
-                                    flex_direction: FlexDirection::Column,
-                                    flex_basis: px(0),
-                                    flex_grow: 1.0,
-                                    row_gap: px(4),
-                                    ..default()
-                                })
-                                .with_children(|col| {
-                                    for (title, settings) in groups {
-                                        col.spawn((
-                                            Node {
-                                                margin: UiRect::new(px(0), px(0), px(10), px(4)),
-                                                ..default()
-                                            },
-                                            children![caps(*title, 11.0, ACCENT)],
-                                        ));
-                                        for setting in *settings {
-                                            spawn_row(col, *setting);
-                                        }
-                                    }
-                                });
-                            };
-                        column(cols, &[("AIM", AIM)]);
-                        column(
-                            cols,
-                            &[
-                                ("FEEDBACK", FEEDBACK),
-                                ("AUDIO", AUDIO),
-                                ("DISPLAY", DISPLAY),
-                            ],
-                        );
-                    });
-                    c.spawn((
-                        Node {
-                            margin: UiRect::top(px(12)),
-                            ..default()
-                        },
-                        children![text(
-                            "Changes apply immediately and are saved automatically.",
-                            11.0,
-                            dim(0.45)
-                        )],
+            root.spawn((SettingsCard, card(900.0))).with_children(|c| {
+                c.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::SpaceBetween,
+                    align_items: AlignItems::Center,
+                    margin: UiRect::bottom(px(6)),
+                    ..default()
+                })
+                .with_children(|header| {
+                    header.spawn((
+                        Text::new("SETTINGS"),
+                        TextFont::from_font_size(24.0),
+                        TextColor(TEXT),
+                        LetterSpacing::Px(5.0),
                     ));
+                    header
+                        .spawn(Node {
+                            width: px(120),
+                            ..default()
+                        })
+                        .with_children(|b| {
+                            b.spawn(menu_button("BACK", MenuAction::Back, false));
+                        });
                 });
+                c.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: px(40),
+                    ..default()
+                })
+                .with_children(|cols| {
+                    let column = |cols: &mut ChildSpawnerCommands,
+                                  groups: &[(&str, &[Setting])]| {
+                        cols.spawn(Node {
+                            flex_direction: FlexDirection::Column,
+                            flex_basis: px(0),
+                            flex_grow: 1.0,
+                            row_gap: px(4),
+                            ..default()
+                        })
+                        .with_children(|col| {
+                            for (title, settings) in groups {
+                                col.spawn((
+                                    Node {
+                                        margin: UiRect::new(px(0), px(0), px(10), px(4)),
+                                        ..default()
+                                    },
+                                    children![caps(*title, 11.0, ACCENT)],
+                                ));
+                                for setting in *settings {
+                                    spawn_row(col, *setting);
+                                }
+                            }
+                        });
+                    };
+                    column(cols, &[("AIM", AIM)]);
+                    column(
+                        cols,
+                        &[
+                            ("FEEDBACK", FEEDBACK),
+                            ("AUDIO", AUDIO),
+                            ("DISPLAY", DISPLAY),
+                        ],
+                    );
+                });
+                c.spawn((
+                    Node {
+                        margin: UiRect::top(px(12)),
+                        ..default()
+                    },
+                    children![text(
+                        "Changes apply immediately and are saved automatically.",
+                        11.0,
+                        dim(0.45)
+                    )],
+                ));
+            });
         });
 }
 
@@ -407,28 +406,33 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
 
 fn menu_visibility(
     menu: Res<MenuState>,
-    mut root: Query<&mut Visibility, (With<MenuRoot>, Without<MainCard>, Without<SettingsCard>)>,
-    mut main: Query<&mut Visibility, (With<MainCard>, Without<SettingsCard>)>,
-    mut settings: Query<&mut Visibility, With<SettingsCard>>,
+    mut root: Query<&mut Visibility, With<MenuRoot>>,
+    mut main: Query<&mut Node, (With<MainCard>, Without<SettingsCard>)>,
+    mut settings: Query<&mut Node, With<SettingsCard>>,
 ) {
     if !menu.is_changed() {
         return;
     }
-    let show = |on: bool| {
-        if on {
+    for mut v in &mut root {
+        v.set_if_neq(if menu.menu_visible() {
             Visibility::Inherited
         } else {
             Visibility::Hidden
+        });
+    }
+    // Hidden pages take no layout space.
+    let display = |on: bool| if on { Display::Flex } else { Display::None };
+    for mut node in &mut main {
+        let d = display(menu.page == MenuPage::Main);
+        if node.display != d {
+            node.display = d;
         }
-    };
-    for mut v in &mut root {
-        v.set_if_neq(show(menu.menu_visible()));
     }
-    for mut v in &mut main {
-        v.set_if_neq(show(menu.page == MenuPage::Main));
-    }
-    for mut v in &mut settings {
-        v.set_if_neq(show(menu.page == MenuPage::Settings));
+    for mut node in &mut settings {
+        let d = display(menu.page == MenuPage::Settings);
+        if node.display != d {
+            node.display = d;
+        }
     }
 }
 

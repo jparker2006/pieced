@@ -136,8 +136,8 @@ impl NumberKind {
     /// Font size (px).
     pub fn size(self) -> f32 {
         match self {
-            Self::Body | Self::Shield => 26.0,
-            Self::Headshot => 32.0,
+            Self::Body | Self::Shield => 27.0,
+            Self::Headshot => 33.0,
             Self::Structure => 19.0,
         }
     }
@@ -161,7 +161,7 @@ pub fn number_motion(age: f32, lifetime: f32, rise: f32) -> NumberMotion {
     let life = lifetime.max(0.05);
     let t = (age / life).clamp(0.0, 1.0);
     // Ease-out rise, a quick pop in, and a fade over the last 40%.
-    let eased = 1.0 - (1.0 - t).powi(3);
+    let eased = 1.0 - (1.0 - t).powi(2);
     let pop = (age / 0.07).clamp(0.0, 1.0);
     NumberMotion {
         rise: rise * eased,

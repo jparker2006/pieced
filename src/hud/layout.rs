@@ -733,8 +733,8 @@ fn spawn_numbers(root: &mut ChildSpawnerCommands) {
                 TextColor(TEXT),
                 TextLayout::justify(Justify::Center),
                 TextShadow {
-                    offset: Vec2::new(1.5, 2.0),
-                    color: Color::srgba(0.0, 0.0, 0.0, 0.55),
+                    offset: Vec2::new(2.0, 2.0),
+                    color: Color::srgba(0.0, 0.0, 0.0, 0.8),
                 },
                 UiTransform::default(),
                 Visibility::Hidden,

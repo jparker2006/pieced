@@ -602,7 +602,9 @@ fn hit_feedback(
         };
         let kind = NumberKind::of(hit.target_kind, hit.headshot, hit.to_shield);
         *counter = counter.wrapping_add(1);
-        let jitter = (((*counter).wrapping_mul(2_654_435_761) >> 20) % 29) as f32 - 14.0;
+        // Successive numbers fan out left and right so a spray stays readable.
+        const FAN: [f32; 6] = [-26.0, 12.0, -8.0, 28.0, -18.0, 20.0];
+        let jitter = FAN[(*counter as usize) % FAN.len()];
         *number = DamageNumber {
             active: true,
             age: 0.0,
@@ -725,14 +727,17 @@ fn place_damage_numbers(
         let pos = project_to_screen(&camera, fov.0, screen, number.point);
         match (expired, pos) {
             (false, Some(pos)) => {
-                let at = pos - NUMBER_BOX * 0.5 + Vec2::new(number.jitter, -18.0 - motion.rise);
+                // Numbers drift outward as they rise.
+                let drift = number.jitter
+                    * (1.0 + 0.6 * motion.rise / tuning.hud.damage_number_rise.max(1.0));
+                let at = pos - NUMBER_BOX * 0.5 + Vec2::new(drift, -20.0 - motion.rise);
                 *transform = UiTransform {
                     translation: Val2::px(at.x.round(), at.y.round()),
                     scale: Vec2::splat(motion.scale),
                     rotation: Rot2::IDENTITY,
                 };
                 color.0 = number.color.with_alpha(motion.alpha);
-                shadow.color = Color::srgba(0.0, 0.0, 0.0, 0.55 * motion.alpha);
+                shadow.color = Color::srgba(0.0, 0.0, 0.0, 0.8 * motion.alpha);
                 set_visible(&mut vis, true);
             }
             _ => {
