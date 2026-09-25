@@ -97,6 +97,18 @@ def on_battery_lpm(summary):
     return True
 
 
+def conditions(summary):
+    c = (summary.get("scenario") or {}).get("run_conditions")
+    if not c:
+        return "-"
+    start = (c.get("load_average_start") or [None])[0]
+    end = (c.get("load_average_end") or [None])[0]
+    return (
+        f"occluded {num(c.get('window_occluded_ms'), 0)} ms, "
+        f"load {num(start)} -> {num(end)}"
+    )
+
+
 def g2(summary):
     scn = summary.get("scenario") or {}
     frames = scn.get("frames") or summary.get("frames") or {}
@@ -114,8 +126,10 @@ def g2(summary):
         and under18 >= G2_MIN_PCT_UNDER_18
     )
     seconds = scn.get("timed_seconds")
+    occluded = ((scn.get("run_conditions") or {}).get("window_occluded_ms") or 0) > 0
     eligible = (
-        on_battery_lpm(summary)
+        not occluded
+        and on_battery_lpm(summary)
         and summary.get("build") == "release"
         and seconds is not None
         and seconds >= G2_GATE_SECONDS
@@ -196,13 +210,14 @@ def main(argv):
         return 1
     summaries = [(os.path.basename(os.path.normpath(r)), load(r)) for r in runs]
 
-    print("| Run | Scenario | Commit | Build | Power | Low Power Mode | Battery | Graphics |")
-    print("|---|---|---|---|---|---|---|---|")
+    print("| Run | Scenario | Commit | Build | Power | Low Power Mode | Battery | Graphics | Conditions |")
+    print("|---|---|---|---|---|---|---|---|---|")
     for name, s in summaries:
         source, lpm, pct = power(s)
         print(
             f"| {name} | {s.get('scenario_name', '?')} | {s.get('commit', '?')} | "
-            f"{s.get('build', '?')} | {source} | {lpm} | {pct} | {s.get('graphics', '?')} |"
+            f"{s.get('build', '?')} | {source} | {lpm} | {pct} | {s.get('graphics', '?')} | "
+            f"{conditions(s)} |"
         )
     print()
     print("| Gate | Run | Measurement | Threshold | Result |")

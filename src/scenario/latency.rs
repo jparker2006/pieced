@@ -18,7 +18,9 @@
 //! arrives back on the CPU is an upper bound that includes GPU execution and
 //! the readback copy; it also confirms which frame first shows the change.
 
-use super::{Director, DirectorStatus, ScenarioClock, player_entity, set_look, with_intent};
+use super::{
+    Director, DirectorStatus, ScenarioClock, ScenarioRun, player_entity, set_look, with_intent,
+};
 use crate::{
     arena::ArenaLayout,
     dummy::Dummy,
@@ -68,6 +70,11 @@ pub fn director(name: &str) -> Option<Box<dyn Director>> {
 /// capture: strongly positive for sky, near zero or negative for ground.
 /// Points avoid the crosshair at the center and the HUD at the bottom.
 pub fn sky_score(image: &Image) -> Option<f32> {
+    sample_points(image).map(|(sky, _)| sky)
+}
+
+/// (mean blue − red, mean brightness) over the sample points.
+fn sample_points(image: &Image) -> Option<(f32, f32)> {
     let data = image.data.as_deref()?;
     let bgra = match image.texture_descriptor.format {
         TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => true,
@@ -76,6 +83,7 @@ pub fn sky_score(image: &Image) -> Option<f32> {
     };
     let (w, h) = (image.width() as usize, image.height() as usize);
     let mut sum = 0.0;
+    let mut luma = 0.0;
     let mut n = 0.0;
     for fy in [0.18, 0.26, 0.34] {
         for fx in [0.2, 0.32, 0.68, 0.8] {
@@ -84,10 +92,11 @@ pub fn sky_score(image: &Image) -> Option<f32> {
             let px = data.get(i..i + 4)?;
             let (r, b) = if bgra { (px[2], px[0]) } else { (px[0], px[2]) };
             sum += b as f32 - r as f32;
+            luma += (r as f32 + px[1] as f32 + b as f32) / 3.0;
             n += 1.0;
         }
     }
-    Some(sum / n)
+    Some((sum / n, luma / n))
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +115,7 @@ struct Capture {
     offset: i32,
     at: Instant,
     score: Option<f32>,
+    brightness: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -140,6 +150,7 @@ struct Latency {
     trials: Vec<Trial>,
     captures: Arc<Mutex<Vec<Capture>>>,
     notes: Vec<String>,
+    load_start: Option<[f64; 3]>,
 }
 
 impl Latency {
@@ -155,6 +166,7 @@ impl Latency {
             trials: Vec::new(),
             captures: Arc::new(Mutex::new(Vec::new())),
             notes: Vec::new(),
+            load_start: None,
         }
     }
 
@@ -170,16 +182,30 @@ impl Latency {
 
     fn request_capture(&self, world: &mut World, trial: usize, offset: i32) {
         let captures = self.captures.clone();
+        // Keep the first two trials' before/after frames as evidence.
+        let save = (trial < 2 && offset <= 0)
+            .then(|| world.get_resource::<ScenarioRun>().map(|r| r.out.clone()))
+            .flatten()
+            .map(|dir| dir.join(format!("latency-readback-t{trial}-f{offset}.png")));
         world.spawn(Screenshot::primary_window()).observe(
             move |capture: On<ScreenshotCaptured>| {
                 let at = Instant::now();
-                let score = sky_score(&capture.image);
+                let points = sample_points(&capture.image);
                 if let Ok(mut list) = captures.lock() {
                     list.push(Capture {
                         trial,
                         offset,
                         at,
-                        score,
+                        score: points.map(|p| p.0),
+                        brightness: points.map(|p| p.1),
+                    });
+                }
+                if let Some(path) = save.clone() {
+                    let image = capture.image.clone();
+                    std::thread::spawn(move || {
+                        if let Ok(image) = image.try_into_dynamic() {
+                            let _ = image.to_rgb8().save(path);
+                        }
                     });
                 }
             },
@@ -265,6 +291,9 @@ impl Director for Latency {
         self.resolve_submits(&submits);
         match self.step {
             Step::Setup => {
+                if self.load_start.is_none() {
+                    self.load_start = telemetry::load_average();
+                }
                 world.resource_mut::<Tuning>().dummy.stand_still = true;
                 // Park the dummy behind the player, out of view.
                 let spawn = world.resource::<ArenaLayout>().player_spawn;
@@ -385,13 +414,15 @@ impl Director for Latency {
             if first_changed.is_some_and(|(o, _)| o == 0) {
                 same_frame += 1;
             }
-            let mut scores: Vec<(i32, Option<f32>)> =
-                mine.iter().map(|c| (c.offset, c.score)).collect();
+            let mut scores: Vec<(i32, Option<f32>, Option<f32>)> = mine
+                .iter()
+                .map(|c| (c.offset, c.score, c.brightness))
+                .collect();
             scores.sort_by_key(|s| s.0);
             trials.push(json!({
                 "trial": i,
                 "direction": if t.direction > 0.0 { "down_to_up" } else { "up_to_down" },
-                "sky_score_by_frame_offset": scores.iter().map(|(o, s)| json!([o, s])).collect::<Vec<_>>(),
+                "frame_offset_sky_score_brightness": scores.iter().map(|(o, s, b)| json!([o, s, b])).collect::<Vec<_>>(),
                 "first_changed_frame_offset": first_changed.map(|(o, _)| o),
                 "input_to_readback_ms": latency,
                 "input_to_render_submit_ms": t.applied.zip(t.submitted).map(|(a, s)| ms(s - a)),
@@ -457,6 +488,7 @@ impl Director for Latency {
             "g3_threshold_median_ms": telemetry::g3::MEDIAN_MAX_MS,
             "gate": gate,
             "gate_apply_basis": gate_apply,
+            "run_conditions": telemetry::run_conditions_json(world, self.load_start),
             "notes": self.notes,
         })
     }

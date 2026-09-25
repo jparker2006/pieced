@@ -6,7 +6,7 @@ use crate::{render::GraphicsTuning, shared::AppState, tuning::Tuning};
 use bevy::{
     prelude::*,
     render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems},
-    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowOccluded},
 };
 use serde::Serialize;
 use std::{
@@ -77,9 +77,10 @@ impl Plugin for TelemetryPlugin {
             .init_resource::<FrameClock>()
             .init_resource::<MainFrame>()
             .insert_resource(submits.clone())
+            .init_resource::<RunConditions>()
             .add_systems(First, count_main_frame)
             .add_systems(FixedFirst, count_fixed_tick)
-            .add_systems(Last, (record_frame, detect_controllable));
+            .add_systems(Last, (record_frame, detect_controllable, track_occlusion));
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .insert_resource(submits)
@@ -216,6 +217,80 @@ fn extract_main_frame(mut rendered: ResMut<RenderedFrame>, main: Extract<Res<Mai
 
 fn record_submit(rendered: Res<RenderedFrame>, clock: Res<SubmitClock>) {
     clock.record(rendered.0, Instant::now());
+}
+
+// ---------------------------------------------------------------------------
+// Run conditions (what outside the game can spoil a timing run)
+// ---------------------------------------------------------------------------
+
+/// Window occlusion over the run. macOS stops compositing an occluded window
+/// (another window or app covering it), which changes how presentation paces
+/// frames, so timing from an occluded stretch does not describe play.
+#[derive(Resource, Debug, Default, Clone, Serialize)]
+pub struct RunConditions {
+    pub occluded_now: bool,
+    pub occlusion_changes: u32,
+    pub occluded_ms: f64,
+    #[serde(skip)]
+    occluded_since: Option<Instant>,
+}
+
+impl RunConditions {
+    /// Total occluded time so far, including an occlusion still in progress.
+    pub fn occluded_ms_now(&self) -> f64 {
+        self.occluded_ms
+            + self
+                .occluded_since
+                .map_or(0.0, |t| t.elapsed().as_secs_f64() * 1000.0)
+    }
+}
+
+fn track_occlusion(
+    mut events: MessageReader<WindowOccluded>,
+    mut conditions: ResMut<RunConditions>,
+) {
+    for e in events.read() {
+        if e.occluded == conditions.occluded_now {
+            continue;
+        }
+        conditions.occluded_now = e.occluded;
+        conditions.occlusion_changes += 1;
+        if e.occluded {
+            conditions.occluded_since = Some(Instant::now());
+        } else if let Some(since) = conditions.occluded_since.take() {
+            conditions.occluded_ms += since.elapsed().as_secs_f64() * 1000.0;
+        }
+    }
+}
+
+/// The system load averages (1, 5 and 15 minutes), when available.
+pub fn load_average() -> Option<[f64; 3]> {
+    let out = std::process::Command::new("sysctl")
+        .args(["-n", "vm.loadavg"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let v: Vec<f64> = text
+        .split_whitespace()
+        .filter_map(|t| t.parse().ok())
+        .collect();
+    (v.len() >= 3).then(|| [v[0], v[1], v[2]])
+}
+
+/// Run-condition record for a scenario summary: occlusion and load averages.
+pub fn run_conditions_json(world: &World, load_start: Option<[f64; 3]>) -> serde_json::Value {
+    let c = world
+        .get_resource::<RunConditions>()
+        .cloned()
+        .unwrap_or_default();
+    serde_json::json!({
+        "window_occluded_at_end": c.occluded_now,
+        "window_occlusion_changes": c.occlusion_changes,
+        "window_occluded_ms": c.occluded_ms_now(),
+        "load_average_start": load_start,
+        "load_average_end": load_average(),
+        "note": "Load averages count every runnable process on the machine (other builds or games raise them); occluded time means the window was covered and not composited.",
+    })
 }
 
 // ---------------------------------------------------------------------------

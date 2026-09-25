@@ -507,6 +507,7 @@ struct Perf {
     at_end: Option<Load>,
     activity_seconds: [f64; 9],
     timed_end_ms: Option<f64>,
+    load_start: Option<[f64; 3]>,
 }
 
 impl Perf {
@@ -529,6 +530,7 @@ impl Perf {
             at_end: None,
             activity_seconds: [0.0; 9],
             timed_end_ms: None,
+            load_start: None,
         }
     }
 
@@ -661,6 +663,9 @@ impl Director for Perf {
                 .and_then(|run| run.warmup_override)
                 .unwrap_or(WARMUP_SECONDS);
             self.script = Some(PerfScript::new(self.seed, self.warmup + self.seconds));
+            if world.contains_resource::<ScenarioRun>() {
+                self.load_start = telemetry::load_average();
+            }
         }
         let t = clock.seconds;
         let dt = (t - self.t_prev).max(0.0) as f32;
@@ -769,7 +774,8 @@ impl Director for Perf {
                 "min_pct_frames_under_fast": telemetry::g2::MIN_PCT_FAST,
             },
             "gate": gate,
-            "gate_note": "Counts as the G2 gate only when power_start and power_end show battery power with Low Power Mode on, with the Battery preset, the window visible, a release build and a 300 s timed window.",
+            "run_conditions": telemetry::run_conditions_json(world, self.load_start),
+            "gate_note": "Counts as the G2 gate only when power_start and power_end show battery power with Low Power Mode on, with the Battery preset, the window visible (no occluded time), no other heavy process running, a release build and a 300 s timed window.",
         })
     }
 }
