@@ -6,6 +6,7 @@
 //! Scenario slices add a director in their own file and return it from that file's
 //! `director(name)` function.
 
+pub mod fx_check;
 pub mod gallery;
 pub mod hud_check;
 pub mod latency;
@@ -103,6 +104,7 @@ pub fn director_for(name: &str) -> Option<Box<dyn Director>> {
         .or_else(|| ttk::director(name))
         .or_else(|| latency::director(name))
         .or_else(|| hud_check::director(name))
+        .or_else(|| fx_check::director(name))
 }
 
 /// Present while a scenario controls the game.
