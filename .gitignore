@@ -1,0 +1,6 @@
+/target
+/evidence/
+/userdata/
+/.claude/worktrees/
+.DS_Store
+*.app
