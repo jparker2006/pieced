@@ -66,7 +66,7 @@ fn tuning_panel(
         *styled = true;
         let mut visuals = egui::Visuals::dark();
         visuals.window_corner_radius = egui::CornerRadius::same(10);
-        visuals.window_fill = egui::Color32::from_rgba_unmultiplied(18, 20, 26, 242);
+        visuals.window_fill = egui::Color32::from_rgb(18, 20, 26);
         visuals.panel_fill = visuals.window_fill;
         ctx.set_visuals(visuals);
     }
@@ -82,6 +82,7 @@ fn tuning_panel(
         .open(&mut open)
         .anchor(egui::Align2::RIGHT_TOP, [-12.0, 12.0])
         .default_width(390.0)
+        .min_height((screen.height() - 24.0).min(620.0))
         .max_height(screen.height() - 24.0)
         .resizable(false)
         .collapsible(false)
