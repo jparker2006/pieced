@@ -143,9 +143,10 @@ fn dummy_turns_back_before_leaving_the_arena() {
     let d = dummy(&mut sim);
     let layout = sim.world().resource::<ArenaLayout>().clone();
     // Hug the east edge: whatever the pattern says, it must never strafe outward.
+    // Movement carries it inward, so pin it back to the edge before every tick.
     for z in [-15.0, 0.0, 10.0] {
-        place(&mut sim, d, Vec3::new(layout.bounds_max.x, 0.0, z));
         for _ in 0..(60 * 5) {
+            place(&mut sim, d, Vec3::new(layout.bounds_max.x, 0.0, z));
             sim.tick();
             let (_, right) = sim.get::<LookAngles>(d).flat_basis();
             let world_dir = right * sim.get::<PlayerIntent>(d).move_axis.x;
