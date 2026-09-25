@@ -34,7 +34,7 @@ use bevy::{
         settings::{Backends, RenderCreation, WgpuSettings},
     },
     time::TimeUpdateStrategy,
-    window::{MonitorSelection, PresentMode, WindowLevel, WindowMode, WindowResolution},
+    window::{MonitorSelection, WindowLevel, WindowMode, WindowResolution},
 };
 use std::num::NonZero;
 
@@ -148,6 +148,10 @@ pub struct GameOptions {
     pub scenario: Option<ScenarioArgs>,
     pub windowed: bool,
     pub input_probe: bool,
+    /// `--no-vsync`: present without vsync, paced by the frame cap.
+    pub no_vsync: bool,
+    /// `--frame-cap N`: frame cap used without vsync (0 = uncapped).
+    pub frame_cap: Option<u32>,
 }
 
 impl GameOptions {
@@ -156,13 +160,30 @@ impl GameOptions {
             scenario: ScenarioArgs::from_args(args),
             windowed: args.iter().any(|a| a == "--windowed"),
             input_probe: args.iter().any(|a| a == "--input-probe"),
+            no_vsync: args.iter().any(|a| a == "--no-vsync"),
+            frame_cap: args
+                .iter()
+                .position(|a| a == "--frame-cap")
+                .and_then(|i| args.get(i + 1))
+                .and_then(|v| v.parse().ok()),
+        }
+    }
+
+    /// Applies the command-line graphics overrides (vsync A/B runs).
+    pub fn apply_graphics_overrides(&self, graphics: &mut crate::render::GraphicsTuning) {
+        if self.no_vsync {
+            graphics.vsync = false;
+        }
+        if let Some(cap) = self.frame_cap {
+            graphics.frame_cap = cap;
         }
     }
 }
 
 /// The full game.
 pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
-    let tuning = Tuning::load_or_default(&Tuning::settings_path());
+    let mut tuning = Tuning::load_or_default(&Tuning::settings_path());
+    options.apply_graphics_overrides(&mut tuning.graphics);
     let scenario = options.scenario.map(ScenarioRun::new).transpose()?;
     let windowed = options.windowed || !tuning.graphics.fullscreen;
     let window = Window {
@@ -173,11 +194,7 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
             WindowMode::BorderlessFullscreen(MonitorSelection::Primary)
         },
         resolution: WindowResolution::new(1280, 800),
-        present_mode: if tuning.graphics.vsync {
-            PresentMode::Fifo
-        } else {
-            PresentMode::AutoNoVsync
-        },
+        present_mode: crate::render::present_mode_for(&tuning.graphics),
         desired_maximum_frame_latency: NonZero::new(1),
         window_level: if scenario.is_some() {
             WindowLevel::AlwaysOnTop

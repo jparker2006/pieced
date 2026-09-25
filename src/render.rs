@@ -10,10 +10,14 @@ use crate::{
 use bevy::{
     camera::{RenderTarget, visibility::RenderLayers},
     prelude::*,
-    render::render_resource::{Extent3d, TextureFormat},
-    window::PrimaryWindow,
+    render::{
+        Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
+        render_resource::{Extent3d, TextureFormat},
+    },
+    window::{PresentMode, PrimaryWindow},
 };
 use serde::{Deserialize, Serialize};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub enum QualityPreset {
@@ -104,7 +108,132 @@ impl Plugin for RenderSetupPlugin {
                 CameraFollowSet.before(TransformSystems::Propagate),
             )
             .add_systems(PostUpdate, follow_player_eye.in_set(CameraFollowSet))
-            .add_systems(OnEnter(AppState::Playing), snap_camera);
+            .add_systems(OnEnter(AppState::Playing), snap_camera)
+            .add_systems(Update, sync_present_mode);
+        if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
+            render_app
+                .init_resource::<FrameLimiter>()
+                .add_systems(ExtractSchedule, extract_frame_limit)
+                .add_systems(Render, limit_frame_rate.after(RenderSystems::PostCleanup));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Present mode and frame cap
+// ---------------------------------------------------------------------------
+
+/// The present mode the graphics settings ask for: vsync is `Fifo`; no vsync is
+/// `AutoNoVsync` (Immediate on Metal) paced by the frame limiter.
+pub fn present_mode_for(graphics: &GraphicsTuning) -> PresentMode {
+    if graphics.vsync {
+        PresentMode::Fifo
+    } else {
+        PresentMode::AutoNoVsync
+    }
+}
+
+fn sync_present_mode(
+    tuning: Res<Tuning>,
+    window: Option<Single<&mut Window, With<PrimaryWindow>>>,
+) {
+    let Some(mut window) = window else {
+        return;
+    };
+    let wanted = present_mode_for(&tuning.graphics);
+    if window.present_mode != wanted {
+        window.present_mode = wanted;
+    }
+}
+
+/// Target frame interval for a frame cap (`None` when uncapped).
+pub fn frame_interval(cap: u32) -> Option<Duration> {
+    (cap > 0).then(|| Duration::from_secs_f64(1.0 / cap as f64))
+}
+
+/// The limiter sleeps until this much before the deadline, then spins, because
+/// `thread::sleep` on macOS can overshoot by a fraction of a millisecond.
+pub const LIMITER_SPIN: Duration = Duration::from_micros(1000);
+
+/// Frame-cap arithmetic: a fixed cadence of frame deadlines `interval` apart.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FramePacer {
+    interval: Duration,
+    deadline: Option<Instant>,
+}
+
+impl FramePacer {
+    pub fn new(interval: Duration) -> Self {
+        Self {
+            interval,
+            deadline: None,
+        }
+    }
+
+    pub fn interval(&self) -> Duration {
+        self.interval
+    }
+
+    /// When the frame finishing at `now` should end. Deadlines keep a fixed
+    /// cadence, so a slightly late frame is followed by a shorter wait. A frame
+    /// that overruns its slot by more than half an interval restarts the cadence
+    /// at `now` rather than rushing several frames to catch up.
+    pub fn next_deadline(&mut self, now: Instant) -> Instant {
+        let deadline = match self.deadline {
+            None => now,
+            Some(previous) => {
+                let next = previous + self.interval;
+                if now > next + self.interval / 2 {
+                    now
+                } else {
+                    next
+                }
+            }
+        };
+        self.deadline = Some(deadline);
+        deadline
+    }
+}
+
+/// How to wait from `now` until `deadline`: (sleep, then spin).
+pub fn wait_split(now: Instant, deadline: Instant, spin: Duration) -> (Duration, Duration) {
+    let total = deadline.saturating_duration_since(now);
+    let sleep = total.saturating_sub(spin);
+    (sleep, total - sleep)
+}
+
+fn wait_until(deadline: Instant) {
+    let (sleep, _) = wait_split(Instant::now(), deadline, LIMITER_SPIN);
+    if !sleep.is_zero() {
+        std::thread::sleep(sleep);
+    }
+    while Instant::now() < deadline {
+        std::hint::spin_loop();
+    }
+}
+
+/// Render-world frame limiter, active only with vsync off and a nonzero cap.
+#[derive(Resource, Debug, Default)]
+struct FrameLimiter(Option<FramePacer>);
+
+fn extract_frame_limit(mut limiter: ResMut<FrameLimiter>, tuning: Extract<Res<Tuning>>) {
+    let graphics = &tuning.graphics;
+    let interval = if graphics.vsync {
+        None
+    } else {
+        frame_interval(graphics.frame_cap)
+    };
+    if limiter.0.as_ref().map(FramePacer::interval) != interval {
+        limiter.0 = interval.map(FramePacer::new);
+    }
+}
+
+/// Runs at the very end of the frame, after the frame was submitted and
+/// presented, so the wait happens before the next frame gathers input.
+fn limit_frame_rate(mut limiter: ResMut<FrameLimiter>) {
+    if let Some(pacer) = limiter.0.as_mut() {
+        let deadline = pacer.next_deadline(Instant::now());
+        wait_until(deadline);
     }
 }
 
