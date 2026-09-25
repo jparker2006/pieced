@@ -198,6 +198,91 @@ fn device_to_intent(
 mod tests {
     use super::*;
 
+    fn adapter_world() -> (World, Entity) {
+        let mut world = World::new();
+        world.insert_resource(ButtonInput::<KeyCode>::default());
+        world.insert_resource(ButtonInput::<MouseButton>::default());
+        world.insert_resource(AccumulatedMouseMotion::default());
+        world.insert_resource(Tuning::default());
+        world.insert_resource(IgnoreNextLook(false));
+        let player = world
+            .spawn((
+                Player,
+                PlayerIntent::default(),
+                ActiveTool::default(),
+                Ads(false),
+            ))
+            .id();
+        (world, player)
+    }
+
+    fn run_adapter(world: &mut World) {
+        use bevy::ecs::system::RunSystemOnce;
+        world.run_system_once(device_to_intent).unwrap();
+    }
+
+    #[test]
+    fn keys_and_trackpad_map_to_intent() {
+        use bevy::ecs::system::RunSystemOnce as _;
+        let (mut world, player) = adapter_world();
+        // Two-finger click (right button) toggles ADS.
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Right);
+        run_adapter(&mut world);
+        assert!(
+            world
+                .get::<PlayerIntent>(player)
+                .unwrap()
+                .ads_toggle_pressed
+        );
+        world.get_mut::<PlayerIntent>(player).unwrap().clear_edges();
+        world.resource_mut::<ButtonInput<MouseButton>>().clear();
+        // So does V.
+        world
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyV);
+        run_adapter(&mut world);
+        assert!(
+            world
+                .get::<PlayerIntent>(player)
+                .unwrap()
+                .ads_toggle_pressed
+        );
+        world.get_mut::<PlayerIntent>(player).unwrap().clear_edges();
+        world.resource_mut::<ButtonInput<KeyCode>>().clear();
+        // Held W + physical click: moving forward and firing on the press.
+        world
+            .resource_mut::<ButtonInput<KeyCode>>()
+            .press(KeyCode::KeyW);
+        world
+            .resource_mut::<ButtonInput<MouseButton>>()
+            .press(MouseButton::Left);
+        world.resource_mut::<AccumulatedMouseMotion>().delta = Vec2::new(12.0, 0.0);
+        run_adapter(&mut world);
+        let intent = world.get::<PlayerIntent>(player).unwrap().clone();
+        assert_eq!(intent.move_axis, Vec2::Y);
+        assert!(intent.fire && intent.fire_pressed);
+        assert!(intent.look_delta.x < 0.0, "swiping right turns right");
+        // Piece and gun keys select tools.
+        for (key, tool) in [
+            (KeyCode::KeyQ, ActiveTool::Build(PieceKind::Wall)),
+            (KeyCode::KeyE, ActiveTool::Build(PieceKind::Ramp)),
+            (KeyCode::KeyF, ActiveTool::Build(PieceKind::Floor)),
+            (KeyCode::Digit2, ActiveTool::Weapon(WeaponKind::Pump)),
+            (KeyCode::Digit1, ActiveTool::Weapon(WeaponKind::Rifle)),
+        ] {
+            world.resource_mut::<ButtonInput<KeyCode>>().clear();
+            world.resource_mut::<ButtonInput<KeyCode>>().press(key);
+            world.run_system_once(device_to_intent).unwrap();
+            assert_eq!(
+                world.get::<PlayerIntent>(player).unwrap().select,
+                Some(tool)
+            );
+            world.resource_mut::<ButtonInput<KeyCode>>().release(key);
+        }
+    }
+
     #[test]
     fn look_delta_directions_and_multipliers() {
         let look = LookTuning::default();
