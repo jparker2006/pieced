@@ -116,9 +116,9 @@ impl Family {
             Family::Tracer => (Color::srgb(1.0, 0.88, 0.5), AlphaMode::Blend, 0.95, false),
             Family::White => (palette::HIT_WHITE, AlphaMode::Add, 0.8, true),
             Family::Yellow => (palette::HEADSHOT, AlphaMode::Add, 0.95, true),
-            Family::Shield => (palette::SHIELD, AlphaMode::Add, 0.9, false),
+            Family::Shield => (shade(palette::SHIELD, 1.2), AlphaMode::Blend, 0.9, false),
             Family::ShieldShell => (palette::SHIELD, AlphaMode::Blend, 0.38, true),
-            Family::Dust => (shade(palette::SAND, 1.08), AlphaMode::Blend, 0.5, true),
+            Family::Dust => (shade(palette::SAND, 1.1), AlphaMode::Blend, 0.32, true),
             Family::Rim => (palette::TARGET, AlphaMode::Blend, 0.85, false),
         };
         FamilyLook {
@@ -558,15 +558,15 @@ impl Emitter<'_> {
                 gravity: 16.0,
                 drag: 3.0,
                 life: self.rng.range(0.12, 0.26),
-                size: Vec3::new(0.016, 0.016, 0.02),
-                stretch: 0.016,
+                size: Vec3::new(0.028, 0.028, 0.03),
+                stretch: 0.02,
                 shrink_start: 0.3,
                 ..default()
             };
             let mesh = self.assets.spark.clone();
             self.particle(p, mesh, Paint::Fade(Family::Spark));
         }
-        self.pop(point + normal * 0.03, 0.07, 1.8, 0.07, Family::Spark);
+        self.pop(point + normal * 0.03, 0.11, 2.0, 0.08, Family::Spark);
     }
 
     /// Wood chips and a puff of dust off a building piece.
@@ -682,7 +682,7 @@ impl Emitter<'_> {
         self.pop(point, 0.32, 2.6, 0.16, Family::Shield);
         self.ring(center, eye - center, 0.4, 4.0, 0.24, Family::Shield);
         let out = (point - center).normalize_or(Vec3::Y);
-        for _ in 0..16 {
+        for _ in 0..18 {
             let dir = (self.rng.dir() + out * 0.8).normalize_or(out);
             let p = Particle {
                 pos: point + self.rng.dir() * 0.15,
@@ -692,7 +692,11 @@ impl Emitter<'_> {
                 gravity: 12.0,
                 drag: 1.0,
                 life: self.rng.range(0.35, 0.6),
-                size: Vec3::new(0.015, self.rng.range(0.06, 0.1), self.rng.range(0.06, 0.1)),
+                size: Vec3::new(
+                    0.018,
+                    self.rng.range(0.09, 0.14),
+                    self.rng.range(0.09, 0.14),
+                ),
                 shrink_start: 0.5,
                 ..default()
             };
@@ -819,7 +823,7 @@ impl Emitter<'_> {
             let p = Particle {
                 pos: frame.transform_point(local),
                 vel: Vec3::Y * 0.5 + self.rng.dir() * 0.5,
-                size: Vec3::splat(0.35),
+                size: Vec3::splat(0.3),
                 birth_scale: 0.5,
                 grow: 2.4,
                 drag: 2.5,
@@ -835,7 +839,7 @@ impl Emitter<'_> {
     /// Coral chunks, a flash and an expanding ring, readable across the arena.
     fn elimination(&mut self, feet: Vec3, eye: Vec3) {
         let center = feet + Vec3::Y * 0.95;
-        self.pop(center, 0.55, 2.4, 0.2, Family::White);
+        self.pop(center, 0.42, 2.2, 0.18, Family::White);
         self.ring(center, eye - center, 0.5, 7.0, 0.42, Family::Rim);
         self.ring(feet + Vec3::Y * 0.06, Vec3::Y, 0.4, 8.0, 0.5, Family::Rim);
         for _ in 0..24 {
@@ -973,7 +977,7 @@ fn emit_fx(
             } else if pieces.contains(hit) || !exists.contains(hit) {
                 fx.chips(trace.end, trace.normal, if pump { 2 } else { 5 });
             } else {
-                fx.sparks(trace.end, trace.normal, if pump { 3 } else { 6 });
+                fx.sparks(trace.end, trace.normal, if pump { 3 } else { 8 });
             }
         }
     }

@@ -33,6 +33,7 @@ use anim::{
 };
 use bevy::{
     camera::{ClearColorConfig, RenderTarget, visibility::RenderLayers},
+    core_pipeline::tonemapping::Tonemapping,
     light::{AmbientLight, GlobalAmbientLight, NotShadowCaster, NotShadowReceiver},
     prelude::*,
 };
@@ -53,8 +54,12 @@ pub struct MuzzlePoint(pub Option<Vec3>);
 #[derive(Component, Debug)]
 pub struct ViewmodelCamera;
 
+/// Mirrors the world's n-th brightest directional light on the viewmodel layer.
 #[derive(Component, Debug)]
-struct ViewmodelLight;
+struct ViewmodelLight(usize);
+
+/// How many world directional lights (sun, sky fill) the viewmodel mirrors.
+const MIRRORED_LIGHTS: usize = 2;
 
 /// What the viewmodel can hold up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,18 +264,20 @@ fn spawn_viewmodel(
             ChildOf(*main),
         ))
         .id();
-    commands.spawn((
-        Name::new("Viewmodel light"),
-        ViewmodelLight,
-        DirectionalLight {
-            illuminance: 9000.0,
-            color: palette::SUNLIGHT,
-            shadow_maps_enabled: false,
-            ..default()
-        },
-        Transform::from_xyz(20.0, 30.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
-        layer.clone(),
-    ));
+    for index in 0..MIRRORED_LIGHTS {
+        commands.spawn((
+            Name::new("Viewmodel light"),
+            ViewmodelLight(index),
+            DirectionalLight {
+                illuminance: if index == 0 { 9000.0 } else { 0.0 },
+                color: palette::SUNLIGHT,
+                shadow_maps_enabled: false,
+                ..default()
+            },
+            Transform::from_xyz(20.0, 30.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
+            layer.clone(),
+        ));
+    }
 
     let rig = commands
         .spawn((
@@ -432,27 +439,29 @@ fn spawn_viewmodel(
     }
 }
 
-/// Keeps the viewmodel light and ambient matched to the world's sun and ambient.
+/// Keeps the viewmodel lights, ambient and tonemapping matched to the world's,
+/// so the guns sit in the same light as everything else.
 fn match_sun(
-    suns: Query<(&DirectionalLight, &GlobalTransform), Without<ViewmodelLight>>,
-    light: Option<Single<(&mut DirectionalLight, &mut Transform), With<ViewmodelLight>>>,
+    world_lights: Query<(&DirectionalLight, &GlobalTransform), Without<ViewmodelLight>>,
+    mut vm_lights: Query<(&ViewmodelLight, &mut DirectionalLight, &mut Transform)>,
     global: Res<GlobalAmbientLight>,
     ambient: Option<Single<&mut AmbientLight, With<ViewmodelCamera>>>,
+    main_tonemapping: Option<Single<&Tonemapping, (With<MainCamera>, Without<ViewmodelCamera>)>>,
+    vm_tonemapping: Option<Single<&mut Tonemapping, With<ViewmodelCamera>>>,
 ) {
-    if let Some(light) = light
-        && let Some((sun, sun_tf)) = suns
-            .iter()
-            .max_by(|a, b| a.0.illuminance.total_cmp(&b.0.illuminance))
-    {
-        let (mut vm_light, mut tf) = light.into_inner();
-        let rotation = sun_tf.rotation();
+    let mut lights: Vec<_> = world_lights.iter().collect();
+    lights.sort_by(|a, b| b.0.illuminance.total_cmp(&a.0.illuminance));
+    for (index, mut light, mut tf) in &mut vm_lights {
+        let (illuminance, color, rotation) = match lights.get(index.0) {
+            Some((src, src_tf)) => (src.illuminance * LIGHT_GAIN, src.color, src_tf.rotation()),
+            None => (0.0, light.color, tf.rotation),
+        };
         if tf.rotation != rotation {
             tf.rotation = rotation;
         }
-        let illuminance = sun.illuminance * LIGHT_GAIN;
-        if vm_light.illuminance != illuminance || vm_light.color != sun.color {
-            vm_light.illuminance = illuminance;
-            vm_light.color = sun.color;
+        if light.illuminance != illuminance || light.color != color {
+            light.illuminance = illuminance;
+            light.color = color;
         }
     }
     if let Some(mut ambient) = ambient {
@@ -461,6 +470,11 @@ fn match_sun(
             ambient.brightness = brightness;
             ambient.color = global.color;
         }
+    }
+    if let (Some(main), Some(mut vm)) = (main_tonemapping, vm_tonemapping)
+        && **vm != **main
+    {
+        **vm = **main;
     }
 }
 
@@ -721,8 +735,8 @@ fn animate_viewmodel(
             }
             reload = reload
                 + PoseOffset {
-                    pos: Vec3::new(0.0, -0.008, 0.01),
-                    euler: Vec3::new(0.0, 0.0, -0.07),
+                    pos: Vec3::new(0.0, -0.006, 0.02),
+                    euler: Vec3::new(0.06, 0.03, -0.09),
                 }
                 .scaled(rack);
         }

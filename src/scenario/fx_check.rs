@@ -219,7 +219,7 @@ impl Director for FxCheck {
         if t >= 7.6 && self.once("pump_reload") {
             with_intent(world, |i| i.reload_pressed = true);
         }
-        if t >= 7.95 && self.once("pump_reload_snap") {
+        if t >= 7.8 && self.once("pump_reload_snap") {
             self.snap(world, clock, "08_pump_reload");
         }
 

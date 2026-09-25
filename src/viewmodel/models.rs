@@ -50,7 +50,7 @@ pub const RIFLE_MAG_TILT: f32 = 0.14;
 /// The pump forend's rest position in pump model space (its local origin).
 pub const PUMP_FOREND_REST: Vec3 = Vec3::new(0.0, -0.016, -0.39);
 /// How far the forend travels back when racking.
-pub const PUMP_RACK_TRAVEL: f32 = 0.085;
+pub const PUMP_RACK_TRAVEL: f32 = 0.105;
 /// Where a loaded shell disappears into the loading port (pump model space).
 pub const PUMP_LOADING_PORT: Vec3 = Vec3::new(0.0, -0.05, -0.06);
 
@@ -479,18 +479,15 @@ pub fn mini_piece(kind: crate::shared::PieceKind) -> ModelBuilder {
     let mut m = ModelBuilder::new();
     match kind {
         PieceKind::Wall => {
-            m.chamfer_box(v3(-0.05, 0.0, -0.007), v3(0.05, 0.075, 0.007), 0.002, WOOD);
-            m.cube(v3(-0.052, 0.0, -0.009), v3(0.052, 0.008, 0.009), WOOD_TRIM);
-            m.cube(
-                v3(-0.052, 0.067, -0.009),
-                v3(0.052, 0.075, 0.009),
-                WOOD_TRIM,
+            m.chamfer_box(
+                v3(-0.04, 0.0, -0.006),
+                v3(0.04, 0.06, 0.006),
+                0.002,
+                WOOD_LIGHT,
             );
-            m.cube(
-                v3(-0.004, 0.008, -0.008),
-                v3(0.004, 0.067, 0.008),
-                WOOD_DARK,
-            );
+            m.cube(v3(-0.042, 0.0, -0.008), v3(0.042, 0.007, 0.008), WOOD_TRIM);
+            m.cube(v3(-0.042, 0.053, -0.008), v3(0.042, 0.06, 0.008), WOOD_TRIM);
+            m.cube(v3(-0.0035, 0.007, -0.007), v3(0.0035, 0.053, 0.007), WOOD);
         }
         PieceKind::Floor => {
             m.chamfer_box(v3(-0.05, 0.0, -0.05), v3(0.05, 0.009, 0.05), 0.002, WOOD);
