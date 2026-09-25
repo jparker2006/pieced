@@ -425,6 +425,7 @@ fn a_wall_that_would_overlap_a_character_is_rejected() {
 fn your_own_walls_never_trap_you() {
     let mut sim = empty_sim();
     let tuning = BuildTuning::default();
+    let own_north = PieceSlot::wall(cell(4, 10, 0), Facing::North);
     select(&mut sim, PieceKind::Wall);
     // Walk up to the north edge of a cell in small steps, pressing each time.
     for step in 0..40 {
@@ -441,7 +442,28 @@ fn your_own_walls_never_trap_you() {
             );
         }
     }
-    assert_eq!(piece_count(&sim), 2, "own edge first, then the next line");
+    // Pressed up against your own wall, the ghost stays on it.
+    assert_eq!(piece_count(&sim), 1);
+    assert_eq!(
+        player_target(&mut sim),
+        Some(pieced::building::BuildCandidate {
+            slot: own_north,
+            placement: Placement::Occupied
+        })
+    );
+
+    // Pressed up to an empty grid line, the wall goes on the next one.
+    clear_pieces(sim.world_mut());
+    let feet = center(4, 10) + Vec3::NEG_Z * 1.7;
+    put_player(&mut sim, feet, Facing::North.yaw(), 0.0);
+    press(&mut sim);
+    let next = PieceSlot::wall(cell(4, 9, 0), Facing::North);
+    assert!(occupant(&sim, next).is_some());
+    assert!(occupant(&sim, own_north).is_none());
+    let (min, max) = next.aabb(&tuning);
+    assert!(!pieced::building::capsule_overlaps_box(
+        feet, &tuning, min, max
+    ));
 }
 
 // ---------------------------------------------------------------------------

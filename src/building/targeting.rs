@@ -7,8 +7,9 @@
 //! - Reach is your own cell plus one cell ahead along `facing`.
 //! - **Wall:** on the first grid line in front of you that is at least a body
 //!   width away: your cell's front edge, or the next cell's front edge when you're
-//!   pressed up to your own. It sits on whatever you stand on (the top of a ramp
-//!   you're climbing), and looking up past that level's top builds one level higher.
+//!   pressed up to an empty one (up against your own wall, the ghost stays on it).
+//!   It sits on whatever you stand on (the top of a ramp you're climbing), and
+//!   looking up past that level's top builds one level higher.
 //! - **Floor / ramp:** in the cell ahead, at the level of the ground there (one up
 //!   while climbing a ramp). Looking down at your own cell targets it instead;
 //!   looking up past the next level's height builds one level higher (above your
@@ -124,16 +125,22 @@ pub fn target_slot(
 
     match kind {
         PieceKind::Wall => {
-            let (cell, edge_distance) = if d_front >= tuning.min_wall_distance() {
-                (own, d_front)
-            } else {
-                (ahead(0), d_front + CELL_SIZE)
-            };
             let ground = ahead_level as f32 * LEVEL_HEIGHT;
-            let up = ((height_at(edge_distance) - ground) / LEVEL_HEIGHT)
-                .floor()
-                .clamp(0.0, 1.0) as i32;
-            PieceSlot::wall(GridCell::new(cell.x, cell.z, ahead_level + up), facing)
+            let wall = |cell: GridCell, edge_distance: f32| {
+                let up = ((height_at(edge_distance) - ground) / LEVEL_HEIGHT)
+                    .floor()
+                    .clamp(0.0, 1.0) as i32;
+                PieceSlot::wall(GridCell::new(cell.x, cell.z, ahead_level + up), facing)
+            };
+            let own_wall = wall(own, d_front);
+            // Pressed up to a free grid line, build on the next one; pressed up to
+            // your own wall, keep showing that wall (occupied) rather than
+            // building unseen behind it.
+            if d_front >= tuning.min_wall_distance() || map.get(own_wall.key()).is_some() {
+                own_wall
+            } else {
+                wall(ahead(0), d_front + CELL_SIZE)
+            }
         }
         PieceKind::Floor | PieceKind::Ramp => {
             let own_ground = base as f32 * LEVEL_HEIGHT;

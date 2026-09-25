@@ -207,6 +207,8 @@ impl MeshBuilder {
             let perp = Vec2::new(-dir.y, dir.x);
             let wa = width * (1.0 - 0.7 * i as f32 / segments) / 2.0;
             let wb = width * (1.0 - 0.7 * (i as f32 + 1.0) / segments) / 2.0;
+            // Overlap neighbouring segments so the joins have no notches.
+            let (a, b) = (a - dir * wa, b + dir * wb);
             let quad = [
                 map(a - perp * wa),
                 map(b - perp * wb),
@@ -355,13 +357,18 @@ pub(crate) fn wall_mesh(stage: u8) -> MeshBuilder {
     let len = diag.length();
     let angle = diag.y.atan2(diag.x);
     for s in [-1.0f32, 1.0] {
-        let keep = if stage >= 2 && s > 0.0 { 0.56 } else { 1.0 };
+        // Badly cracked: each face's brace has snapped, at different ends.
+        let (from, to) = match (stage >= 2, s > 0.0) {
+            (false, _) => (0.0, 1.0),
+            (true, true) => (0.0, 0.56),
+            (true, false) => (0.38, 1.0),
+        };
         let z0 = s * 0.075;
         let z1 = s * 0.104;
         m.with(Affine3A::from_rotation_z(angle), |m| {
             m.chamfer_box(
-                Vec3::new(-len / 2.0, -0.1, z0.min(z1)),
-                Vec3::new(-len / 2.0 + len * keep, 0.1, z0.max(z1)),
+                Vec3::new(-len / 2.0 + len * from, -0.1, z0.min(z1)),
+                Vec3::new(-len / 2.0 + len * to, 0.1, z0.max(z1)),
                 0.02,
                 shade(palette::WOOD_DARK, 1.04),
             );
@@ -428,12 +435,13 @@ pub(crate) fn floor_mesh(stage: u8) -> MeshBuilder {
             palette::WOOD_DARK,
         );
     }
-    // Core under the planks (its underside is the floor's ceiling face).
+    // Core under the planks. Its underside is the ceiling of a box, so it uses
+    // a mid wood tone rather than the dark trim.
     m.chamfer_box(
         Vec3::new(-inner, bottom, -inner),
         Vec3::new(inner, -0.05, inner),
         0.0,
-        palette::WOOD_TRIM,
+        palette::WOOD_DARK,
     );
     let count = 5;
     let pitch = 2.0 * inner / count as f32;
@@ -630,11 +638,12 @@ pub(crate) fn ramp_mesh(stage: u8) -> MeshBuilder {
             shade(palette::WOOD_DARK, 0.95),
         );
     }
-    // Back panel at the high end, up under the deck: core plus three planks.
+    // Back panel at the high end: a core reaching up into the top tread (so no
+    // light leaks under the deck) plus three planks.
     let back_top = rise - 0.22;
     m.chamfer_box(
         Vec3::new(-inner, 0.0, -HALF_W + 0.03),
-        Vec3::new(inner, back_top, -HALF_W + 0.1),
+        Vec3::new(inner, rise - 0.1, -HALF_W + 0.1),
         0.0,
         palette::WOOD_TRIM,
     );
@@ -642,7 +651,7 @@ pub(crate) fn ramp_mesh(stage: u8) -> MeshBuilder {
     for i in 0..3 {
         let y0 = i as f32 * pitch + 0.02;
         m.chamfer_box(
-            Vec3::new(-inner - 0.01, y0, -HALF_W + 0.005),
+            Vec3::new(-inner - 0.01, y0, -HALF_W),
             Vec3::new(inner + 0.01, y0 + pitch - 0.04, -HALF_W + 0.07),
             0.025,
             shade(plank_color(i + 3), 0.9),
@@ -657,7 +666,7 @@ pub(crate) fn ramp_mesh(stage: u8) -> MeshBuilder {
             Vec3::new(-HALF_W, 0.002, HALF_W),
         ],
         Vec3::new(0.0, 1.0, 0.0),
-        linear(palette::WOOD_TRIM, 1.0),
+        linear(palette::WOOD_DARK, 1.0),
     );
     m
 }
@@ -666,7 +675,7 @@ pub(crate) fn ramp_mesh(stage: u8) -> MeshBuilder {
 // Ghost previews: the piece's volume, slightly enlarged, with bright edges.
 // ---------------------------------------------------------------------------
 
-const GHOST_FACE_ALPHA: f32 = 0.26;
+const GHOST_FACE_ALPHA: f32 = 0.3;
 const GHOST_EDGE_ALPHA: f32 = 0.8;
 const GHOST_EDGE: f32 = 0.035;
 
