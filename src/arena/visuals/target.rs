@@ -3,7 +3,7 @@
 //! background and still reads in greyscale. The figure fits the gameplay hitboxes
 //! (body capsule r 0.33 from y 0.05 to 1.45, head sphere r 0.2 at y 1.62).
 
-use super::geo::{Geo, Rgba, blob, lin, ring, shade};
+use super::geo::{Geo, Rgba, blob, lin, mix, ring, shade};
 use crate::palette;
 use bevy::{
     pbr::{ExtendedMaterial, MaterialExtension},
@@ -31,7 +31,7 @@ impl Default for TargetRim {
     fn default() -> Self {
         Self {
             color: palette::TARGET_RIM.to_linear(),
-            params: Vec4::new(2.4, 0.85, 0.14, 0.0),
+            params: Vec4::new(2.0, 1.5, 0.12, 0.0),
         }
     }
 }
@@ -118,7 +118,9 @@ fn plate(geo: &mut Geo, center: Vec3, radius: f32, thickness: f32, back: bool, c
 
 /// The training-dummy figure, feet at the origin, facing -Z.
 pub fn figure() -> Geo {
-    let body = lin(palette::TARGET);
+    // A touch deeper than the pure hue: in greyscale the body reads darker than
+    // the mid-grey world while the rim and bullseye read lighter.
+    let body = mix(lin(palette::TARGET), lin(palette::TARGET_DARK), 0.3);
     let dark = lin(palette::TARGET_DARK);
     let light = lin(palette::TARGET_LIGHT);
     let mut g = Geo::default();

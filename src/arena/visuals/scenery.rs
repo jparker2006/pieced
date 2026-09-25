@@ -43,7 +43,7 @@ fn plateau_height(x: f32, z: f32) -> f32 {
         .normalize_or_zero()
         .dot(sun_direction().xz().normalize());
     let bias = 1.0 - 0.45 * toward_sun.max(0.0);
-    (4.0 + 3.4 * fbm2(x * 0.045 + 3.1, z * 0.045 - 7.7, 11)) * bias
+    (3.3 + 3.0 * fbm2(x * 0.045 + 3.1, z * 0.045 - 7.7, 11)) * bias
 }
 
 /// Terrain height. Exactly 0 on the playable floor and on a thin apron around it.
@@ -61,7 +61,7 @@ pub fn height(x: f32, z: f32) -> f32 {
 
 /// Soft mask (0..1) of the sandy clearings on the arena floor.
 pub fn sand_mask(x: f32, z: f32) -> f32 {
-    smoothstep(0.66, 0.78, fbm2(x * 0.08 - 3.0, z * 0.08 + 5.0, 23))
+    smoothstep(0.68, 0.8, fbm2(x * 0.08 - 3.0, z * 0.08 + 5.0, 23))
 }
 
 /// Everything static, as merged triangle soups grouped by how they render.
@@ -256,7 +256,11 @@ fn ground_color(p: Vec3, class: Ground) -> Rgba {
                 smoothstep(ARENA_HALF - 1.6, ARENA_HALF, rim) * 0.6,
             )
         }
-        Ground::HillFace => mix(olive, sand, 0.35 + 0.3 * fbm2(x * 0.02, z * 0.02, 27)),
+        Ground::HillFace => mix(
+            mix(grass_dark, olive, 0.6),
+            sand,
+            0.1 + 0.15 * fbm2(x * 0.02, z * 0.02, 27),
+        ),
         Ground::Rock => mix(
             lin(palette::ROCK),
             lin(palette::ROCK_WARM),
@@ -274,7 +278,7 @@ fn ground_color(p: Vec3, class: Ground) -> Rgba {
                 smoothstep(0.5, 0.8, fbm2(x * 0.02, z * 0.02, 26)) * 0.6,
             );
             col = mix(col, lin(palette::SAGE), smoothstep(80.0, 400.0, d) * 0.45);
-            mix(col, sand, smoothstep(25.0, 70.0, p.y) * 0.35)
+            mix(col, sand, smoothstep(30.0, 80.0, p.y) * 0.15)
         }
     }
 }
@@ -293,25 +297,26 @@ fn rock_mass(geo: &mut Geo, base: Vec3, radius: f32, top: f32, grassy: bool, rng
     let h = (top - base.y).max(1.0);
     let lean = Vec3::new(rng.range(-1.0, 1.0), 0.0, rng.range(-1.0, 1.0)) * 0.06 * radius;
     // (height fraction, radius scale): ledges where the radius steps in.
-    let profile: &[(f32, f32)] = if h > 4.5 {
-        &[
-            (0.0, 1.05),
-            (0.3, 1.0),
-            (0.35, 0.93),
-            (0.62, 0.91),
-            (0.67, 0.84),
-            (0.93, 0.8),
-            (1.0, 0.6),
-        ]
-    } else {
-        &[
-            (0.0, 1.05),
-            (0.5, 0.98),
-            (0.56, 0.9),
-            (0.9, 0.84),
-            (1.0, 0.62),
-        ]
-    };
+    // Ledge heights vary per mass so strata don't line up like masonry.
+    let (l1, l2) = (rng.range(0.22, 0.42), rng.range(0.55, 0.78));
+    let (s1, s2) = (rng.range(0.9, 0.95), rng.range(0.82, 0.88));
+    let tall = [
+        (0.0, 1.05),
+        (l1, 1.0),
+        (l1 + 0.05, s1),
+        (l2, s1 - 0.02),
+        (l2 + 0.05, s2),
+        (0.93, s2 - 0.04),
+        (1.0, 0.6),
+    ];
+    let short = [
+        (0.0, 1.05),
+        (l2 - 0.1, 0.98),
+        (l2 - 0.04, s1 - 0.02),
+        (0.9, s2),
+        (1.0, 0.62),
+    ];
+    let profile: &[(f32, f32)] = if h > 4.5 { &tall } else { &short };
     let mut rings: Vec<Vec<Vec3>> = profile
         .iter()
         .enumerate()
