@@ -328,17 +328,19 @@ fn smooth(t: f32) -> f32 {
 pub const TRACER_LEAD: f32 = 0.014;
 
 /// A tracer streak along a path of `length` meters, `age` seconds after the shot:
-/// the (tail, head) distances from the muzzle, or `None` once it has faded. The
-/// head reaches the end at half the lifetime; the visible streak is never longer
-/// than `max_streak`.
+/// the (tail, head) distances from the muzzle, or `None` once it has faded. It
+/// always starts at the muzzle, the head reaches the end at half the lifetime,
+/// and the streak is no longer than `max_streak` (or its first-frame length, for
+/// long shots).
 pub fn tracer_segment(age: f32, life: f32, length: f32, max_streak: f32) -> Option<(f32, f32)> {
     if age >= life || length <= 0.0 {
         return None;
     }
-    let head_t = ((age + TRACER_LEAD) / (life * 0.5)).min(1.0);
+    let reach = |a: f32| ((a + TRACER_LEAD) / (life * 0.5)).min(1.0) * length;
+    let streak = max_streak.max(reach(0.0));
+    let head = reach(age);
     let tail_t = ((age - life * 0.2) / (life * 0.8)).clamp(0.0, 1.0);
-    let head = head_t * length;
-    let tail = (tail_t * length).max(head - max_streak).max(0.0);
+    let tail = (tail_t * length).max(head - streak).max(0.0);
     (head - tail > 1e-3).then_some((tail, head))
 }
 

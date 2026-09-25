@@ -90,8 +90,8 @@ enum VmPart {
 const BLUEPRINT: GunSpec = GunSpec {
     sight: Vec3::ZERO,
     muzzle: Vec3::ZERO,
-    hip: Vec3::new(0.15, -0.19, -0.34),
-    hip_euler: Vec3::new(0.95, -0.25, 0.12),
+    hip: Vec3::new(0.165, -0.15, -0.40),
+    hip_euler: Vec3::new(0.62, -0.32, 0.10),
     ads_distance: 0.3,
 };
 
@@ -107,8 +107,9 @@ const SLIDE_POSE: PoseOffset = PoseOffset {
     pos: Vec3::new(-0.01, -0.02, 0.0),
     euler: Vec3::new(0.0, 0.05, 0.22),
 };
-const RIFLE_KICK: Spring = Spring::new(38.0);
-const PUMP_KICK: Spring = Spring::new(19.0);
+/// Recoil springs: the rifle kick is small and quick, the pump kick big and slower.
+pub const RIFLE_KICK: Spring = Spring::new(42.0);
+pub const PUMP_KICK: Spring = Spring::new(19.0);
 const SWAY: Spring = Spring::new(13.0);
 /// Walk bob: one left-right cycle per this many meters walked.
 const BOB_STRIDE: f32 = 2.8;
@@ -143,6 +144,8 @@ struct ViewmodelState {
     flash_kind: WeaponKind,
     flash_roll: f32,
     flash_scale: f32,
+    /// Frames left drawing the flash invisibly small so its pipeline is ready.
+    prewarm: u32,
     rng: FxRng,
 }
 
@@ -173,6 +176,7 @@ impl Default for ViewmodelState {
             flash_kind: WeaponKind::Rifle,
             flash_roll: 0.0,
             flash_scale: 1.0,
+            prewarm: 120,
             rng: FxRng::new(0x51DE),
         }
     }
@@ -818,8 +822,10 @@ fn animate_viewmodel(
                 if on {
                     tf.rotation = Quat::from_rotation_z(st.flash_roll);
                     tf.scale = Vec3::splat(flash_size);
+                } else if st.prewarm > 0 {
+                    tf.scale = Vec3::splat(1e-4);
                 }
-                on
+                on || st.prewarm > 0
             }
             VmPart::Mini(kind) => Some(kind) == build_kind,
         };
@@ -831,4 +837,5 @@ fn animate_viewmodel(
         vis.set_if_neq(v);
     }
     st.flash_frames = st.flash_frames.saturating_sub(1);
+    st.prewarm = st.prewarm.saturating_sub(1);
 }

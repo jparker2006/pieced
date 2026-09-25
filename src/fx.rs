@@ -25,7 +25,10 @@ use crate::{
         mesh::{ModelBuilder, linear, shade},
     },
 };
-use bevy::{light::NotShadowCaster, platform::collections::HashMap, prelude::*};
+use bevy::{
+    light::NotShadowCaster, platform::collections::HashMap, prelude::*,
+    render::render_resource::Face,
+};
 use serde::{Deserialize, Serialize};
 use sim::{FxRng, Hitstop, Particle, Shake, SlotPool, fade_step, tracer_segment};
 
@@ -77,34 +80,52 @@ enum Family {
     White,
     Yellow,
     Shield,
+    ShieldShell,
     Dust,
     Rim,
 }
 
-const FAMILIES: [Family; 7] = [
+const FAMILIES: [Family; 8] = [
     Family::Spark,
     Family::Tracer,
     Family::White,
     Family::Yellow,
     Family::Shield,
+    Family::ShieldShell,
     Family::Dust,
     Family::Rim,
 ];
+
+/// How a fade family draws: color, blending, starting alpha, and whether back
+/// faces are culled (closed shells) or drawn (flat cards and rings).
+struct FamilyLook {
+    color: Color,
+    alpha_mode: AlphaMode,
+    alpha: f32,
+    cull_back: bool,
+}
 
 impl Family {
     fn index(self) -> usize {
         FAMILIES.iter().position(|f| *f == self).unwrap_or(0)
     }
 
-    fn look(self) -> (Color, AlphaMode) {
-        match self {
-            Family::Spark => (Color::srgb(1.0, 0.93, 0.62), AlphaMode::Blend),
-            Family::Tracer => (Color::srgb(1.0, 0.95, 0.72), AlphaMode::Blend),
-            Family::White => (palette::HIT_WHITE, AlphaMode::Add),
-            Family::Yellow => (palette::HEADSHOT, AlphaMode::Add),
-            Family::Shield => (palette::SHIELD, AlphaMode::Add),
-            Family::Dust => (shade(palette::SAND, 1.08), AlphaMode::Blend),
-            Family::Rim => (palette::TARGET_RIM, AlphaMode::Blend),
+    fn look(self) -> FamilyLook {
+        let (color, alpha_mode, alpha, cull_back) = match self {
+            Family::Spark => (Color::srgb(1.0, 0.9, 0.5), AlphaMode::Blend, 1.0, false),
+            Family::Tracer => (Color::srgb(1.0, 0.88, 0.5), AlphaMode::Blend, 0.95, false),
+            Family::White => (palette::HIT_WHITE, AlphaMode::Add, 0.8, true),
+            Family::Yellow => (palette::HEADSHOT, AlphaMode::Add, 0.95, true),
+            Family::Shield => (palette::SHIELD, AlphaMode::Add, 0.9, false),
+            Family::ShieldShell => (palette::SHIELD, AlphaMode::Blend, 0.38, true),
+            Family::Dust => (shade(palette::SAND, 1.08), AlphaMode::Blend, 0.5, true),
+            Family::Rim => (palette::TARGET, AlphaMode::Blend, 0.85, false),
+        };
+        FamilyLook {
+            color,
+            alpha_mode,
+            alpha,
+            cull_back,
         }
     }
 }
@@ -231,6 +252,16 @@ struct RemovedPieces(HashMap<Entity, (Piece, u8)>);
 #[derive(Component)]
 struct FxEntity;
 
+/// Frames to keep the pipeline warm-up draws alive after startup.
+const PREWARM_FRAMES: u32 = 120;
+
+/// Tiny always-visible draws of each effect material during boot.
+#[derive(Resource)]
+struct Prewarm {
+    entities: Vec<Entity>,
+    frames_left: u32,
+}
+
 pub struct FxPlugin;
 
 impl Plugin for FxPlugin {
@@ -252,7 +283,7 @@ impl Plugin for FxPlugin {
             )
             .add_systems(
                 PostUpdate,
-                (emit_fx, simulate_fx)
+                (emit_fx, simulate_fx, prewarm_fx)
                     .chain()
                     .after(ViewmodelSet)
                     .before(TransformSystems::Propagate),
@@ -305,8 +336,8 @@ fn setup_fx(
     let tracer = meshes.add(unit_mesh(|m| {
         m.cube(Vec3::new(-0.5, -0.5, 0.0), Vec3::new(0.5, 0.5, 1.0), white)
     }));
-    let ico = meshes.add(unit_mesh(|m| m.icosahedron(1.0, linear(white, 1.0))));
-    let ring = meshes.add(unit_mesh(|m| m.ring_xz(0.8, 1.0, 28, linear(white, 1.0))));
+    let ico = meshes.add(unit_mesh(|m| m.geosphere(1.0, 2, linear(white, 1.0))));
+    let ring = meshes.add(unit_mesh(|m| m.ring_xz(0.72, 1.0, 32, linear(white, 1.0))));
 
     let mut lit = |color: Color| {
         materials.add(StandardMaterial {
@@ -340,14 +371,14 @@ fn setup_fx(
     let fades = FAMILIES
         .iter()
         .map(|family| {
-            let (color, alpha_mode) = family.look();
+            let look = family.look();
             std::array::from_fn(|k| {
-                let alpha = 1.0 - k as f32 / FADE_STEPS as f32;
+                let alpha = look.alpha * (1.0 - k as f32 / FADE_STEPS as f32);
                 materials.add(StandardMaterial {
-                    base_color: color.with_alpha(alpha),
+                    base_color: look.color.with_alpha(alpha),
                     unlit: true,
-                    alpha_mode,
-                    cull_mode: None,
+                    alpha_mode: look.alpha_mode,
+                    cull_mode: look.cull_back.then_some(Face::Back),
                     ..default()
                 })
             })
@@ -382,7 +413,31 @@ fn setup_fx(
         &wood[0],
     );
     let tracer_entities = spawn_pool(TRACER_POOL, &tracer, &fades[Family::Tracer.index()][0]);
-    let shimmer_entities = spawn_pool(SHIMMER_POOL, &ico, &fades[Family::Shield.index()][0]);
+    let shimmer_entities = spawn_pool(SHIMMER_POOL, &ico, &fades[Family::ShieldShell.index()][0]);
+
+    // Draw every effect material once, too small to see, while the game boots,
+    // so their pipelines are compiled before the first shot instead of during it.
+    let mut warm: Vec<Handle<StandardMaterial>> =
+        fades.iter().map(|steps| steps[0].clone()).collect();
+    warm.extend([wood[0].clone(), coral[0].clone(), hot_white.clone()]);
+    let prewarm = warm
+        .into_iter()
+        .map(|material| {
+            commands
+                .spawn((
+                    Mesh3d(ico.clone()),
+                    MeshMaterial3d(material),
+                    Transform::from_scale(Vec3::splat(1e-4)),
+                    Visibility::Visible,
+                    NotShadowCaster,
+                ))
+                .id()
+        })
+        .collect();
+    commands.insert_resource(Prewarm {
+        entities: prewarm,
+        frames_left: PREWARM_FRAMES,
+    });
 
     commands.insert_resource(FxPools {
         particles: ParticlePool::new(particles),
@@ -593,10 +648,10 @@ impl Emitter<'_> {
     fn hit_burst(&mut self, point: Vec3, normal: Vec3, headshot: bool) {
         let normal = normal.normalize_or(Vec3::Y);
         if headshot {
-            self.pop(point + normal * 0.05, 0.2, 2.0, 0.12, Family::Yellow);
+            self.pop(point + normal * 0.05, 0.15, 2.1, 0.12, Family::Yellow);
             self.bits(point, normal, 10, true, 6.0);
         } else {
-            self.pop(point + normal * 0.05, 0.13, 1.9, 0.09, Family::White);
+            self.pop(point + normal * 0.05, 0.09, 1.9, 0.08, Family::White);
             self.bits(point, normal, 6, false, 5.0);
         }
     }
@@ -764,7 +819,7 @@ impl Emitter<'_> {
             let p = Particle {
                 pos: frame.transform_point(local),
                 vel: Vec3::Y * 0.5 + self.rng.dir() * 0.5,
-                size: Vec3::splat(0.45),
+                size: Vec3::splat(0.35),
                 birth_scale: 0.5,
                 grow: 2.4,
                 drag: 2.5,
@@ -905,7 +960,7 @@ fn emit_fx(
         } else {
             shot.origin + first_dir * 0.5
         };
-        let (width, life) = if pump { (0.016, 0.07) } else { (0.024, 0.085) };
+        let (width, life) = if pump { (0.018, 0.075) } else { (0.03, 0.085) };
         for trace in &shot.traces {
             fx.tracer(start, trace.end, width, life);
             let Some(hit) = trace.hit else {
@@ -1070,7 +1125,7 @@ fn simulate_fx(
         let step = fade_step(t, FADE_STEPS);
         if step != shimmer.step {
             shimmer.step = step;
-            material.0 = assets.fade(Family::Shield, step);
+            material.0 = assets.fade(Family::ShieldShell, step);
         }
         tf.translation = target.translation + Vec3::Y * 0.92;
         tf.rotation = Quat::IDENTITY;
@@ -1082,5 +1137,34 @@ fn simulate_fx(
 fn end_hitstop_frame(mut state: ResMut<FxState>, mut virtual_time: ResMut<Time<Virtual>>) {
     if state.hitstop.end_frame() {
         virtual_time.unpause();
+    }
+}
+
+/// Keeps the warm-up draws just in front of the camera for the first frames,
+/// then removes them.
+fn prewarm_fx(
+    mut commands: Commands,
+    prewarm: Option<ResMut<Prewarm>>,
+    camera: Option<Single<&Transform, (With<MainCamera>, Without<FxEntity>)>>,
+    mut transforms: Query<&mut Transform, (Without<MainCamera>, Without<FxEntity>)>,
+) {
+    let Some(mut prewarm) = prewarm else {
+        return;
+    };
+    if prewarm.frames_left == 0 {
+        for entity in prewarm.entities.drain(..) {
+            commands.entity(entity).despawn();
+        }
+        commands.remove_resource::<Prewarm>();
+        return;
+    }
+    prewarm.frames_left -= 1;
+    let Some(camera) = camera else {
+        return;
+    };
+    for (i, entity) in prewarm.entities.iter().enumerate() {
+        if let Ok(mut tf) = transforms.get_mut(*entity) {
+            tf.translation = camera.transform_point(Vec3::new(i as f32 * 0.002, 0.0, -1.0));
+        }
     }
 }

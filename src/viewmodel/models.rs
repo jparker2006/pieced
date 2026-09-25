@@ -28,19 +28,19 @@ pub struct GunSpec {
 }
 
 pub const RIFLE: GunSpec = GunSpec {
-    sight: Vec3::new(0.0, 0.117, -0.062),
+    sight: Vec3::new(0.0, 0.1245, -0.061),
     muzzle: Vec3::new(0.0, 0.020, -0.815),
-    hip: Vec3::new(0.165, -0.175, -0.40),
-    hip_euler: Vec3::new(0.015, 0.035, -0.02),
-    ads_distance: 0.17,
+    hip: Vec3::new(0.205, -0.215, -0.50),
+    hip_euler: Vec3::new(0.02, 0.03, -0.03),
+    ads_distance: 0.25,
 };
 
 pub const PUMP: GunSpec = GunSpec {
     sight: Vec3::new(0.0, 0.060, -0.05),
     muzzle: Vec3::new(0.0, 0.024, -0.80),
-    hip: Vec3::new(0.175, -0.170, -0.38),
-    hip_euler: Vec3::new(0.02, 0.04, -0.025),
-    ads_distance: 0.20,
+    hip: Vec3::new(0.205, -0.205, -0.47),
+    hip_euler: Vec3::new(0.025, 0.035, -0.03),
+    ads_distance: 0.24,
 };
 
 /// The rifle magazine's seat in rifle model space (its local origin).
@@ -145,7 +145,7 @@ pub fn rifle() -> RifleParts {
     // Top rail with chunky teeth.
     let rail = shade(metal, 0.9);
     m.cube(v3(-0.017, 0.058, -0.555), v3(0.017, 0.070, 0.085), rail);
-    for i in 0..22 {
+    for i in 0..15 {
         let z0 = -0.545 + i as f32 * 0.028;
         m.cube(v3(-0.019, 0.070, z0), v3(0.019, 0.077, z0 + 0.014), rail);
     }
@@ -181,39 +181,38 @@ pub fn rifle() -> RifleParts {
         metal,
     );
 
-    // Holographic sight: base, hood posts, top bar with an accent lip.
+    // Holographic sight: a raised base and a slim open hood with an accent lip.
     m.chamfer_box(
-        v3(-0.022, 0.077, -0.11),
-        v3(0.022, 0.090, 0.015),
+        v3(-0.019, 0.077, -0.098),
+        v3(0.019, 0.094, 0.004),
         0.003,
         metal,
     );
-    m.cube(v3(-0.026, 0.090, -0.097), v3(-0.018, 0.150, -0.028), poly);
-    m.cube(v3(0.018, 0.090, -0.097), v3(0.026, 0.150, -0.028), poly);
+    m.cube(v3(-0.024, 0.092, -0.092), v3(-0.0195, 0.160, -0.034), poly);
+    m.cube(v3(0.0195, 0.092, -0.092), v3(0.024, 0.160, -0.034), poly);
     m.chamfer_box(
-        v3(-0.026, 0.144, -0.102),
-        v3(0.026, 0.156, -0.024),
-        0.003,
+        v3(-0.024, 0.155, -0.094),
+        v3(0.024, 0.162, -0.032),
+        0.002,
         poly,
     );
     m.cube(
-        v3(-0.026, 0.156, -0.102),
-        v3(0.026, 0.160, -0.088),
+        v3(-0.024, 0.162, -0.094),
+        v3(0.024, 0.165, -0.084),
         GUN_ACCENT,
     );
     m.cube(
-        v3(-0.018, 0.090, -0.03),
-        v3(0.018, 0.095, 0.012),
+        v3(-0.016, 0.094, -0.03),
+        v3(0.016, 0.099, 0.0),
         shade(metal, 0.7),
     );
 
-    // Stock: top bar, cheek riser, lower strut, butt plate.
-    m.chamfer_box(v3(-0.020, 0.008, 0.10), v3(0.020, 0.055, 0.35), 0.006, poly);
-    m.chamfer_box(v3(-0.017, 0.055, 0.18), v3(0.017, 0.074, 0.32), 0.006, poly);
-    m.bar(v3(0.0, -0.036, 0.10), v3(0.0, -0.024, 0.345), 0.011, poly);
+    // Stock: top bar, lower strut, butt plate.
+    m.chamfer_box(v3(-0.020, 0.008, 0.10), v3(0.020, 0.055, 0.30), 0.006, poly);
+    m.bar(v3(0.0, -0.036, 0.10), v3(0.0, -0.024, 0.295), 0.011, poly);
     m.chamfer_box(
-        v3(-0.026, -0.075, 0.34),
-        v3(0.026, 0.075, 0.385),
+        v3(-0.026, -0.070, 0.295),
+        v3(0.026, 0.066, 0.33),
         0.008,
         shade(poly, 0.8),
     );
@@ -358,8 +357,8 @@ pub fn pump() -> PumpParts {
         shade(poly, 0.6),
     );
     m.cube(
-        v3(-0.0245, -0.012, 0.22),
-        v3(-0.022, -0.002, 0.40),
+        v3(-0.0245, -0.010, 0.27),
+        v3(-0.022, -0.002, 0.36),
         GUN_ACCENT,
     );
 
@@ -450,27 +449,27 @@ pub fn blueprint() -> ModelBuilder {
     let paper = shade(SHIELD, 0.5);
     let line = shade(SHIELD, 0.95);
     m.chamfer_box(
-        v3(-0.085, -0.010, -0.062),
-        v3(0.085, 0.0, 0.062),
+        v3(-0.07, -0.010, -0.052),
+        v3(0.07, 0.0, 0.052),
         0.004,
         shade(SHIELD, 0.32),
     );
-    m.cube(v3(-0.078, 0.0, -0.055), v3(0.078, 0.003, 0.055), paper);
+    m.cube(v3(-0.064, 0.0, -0.046), v3(0.064, 0.003, 0.046), paper);
     for i in 0..3 {
-        let x = -0.039 + i as f32 * 0.039;
+        let x = -0.032 + i as f32 * 0.032;
         m.cube(
-            v3(x - 0.0012, 0.003, -0.05),
-            v3(x + 0.0012, 0.0036, 0.05),
+            v3(x - 0.001, 0.003, -0.042),
+            v3(x + 0.001, 0.0036, 0.042),
             line,
         );
-        let z = -0.027 + i as f32 * 0.027;
+        let z = -0.023 + i as f32 * 0.023;
         m.cube(
-            v3(-0.072, 0.003, z - 0.0012),
-            v3(0.072, 0.0036, z + 0.0012),
+            v3(-0.06, 0.003, z - 0.001),
+            v3(0.06, 0.0036, z + 0.001),
             line,
         );
     }
-    m.cube(v3(0.060, 0.0, -0.060), v3(0.084, 0.006, -0.046), GUN_ACCENT);
+    m.cube(v3(0.048, 0.0, -0.050), v3(0.068, 0.006, -0.038), GUN_ACCENT);
     m
 }
 

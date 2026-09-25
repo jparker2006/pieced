@@ -128,8 +128,8 @@ pub fn rifle_reload(p: f32) -> RifleReloadPose {
 
 /// The pump's reload stance (applied with a blend while reloading).
 pub const PUMP_RELOAD_STANCE: PoseOffset = PoseOffset {
-    pos: Vec3::new(-0.02, -0.035, 0.02),
-    euler: Vec3::new(0.14, 0.12, -0.55),
+    pos: Vec3::new(-0.035, 0.03, 0.01),
+    euler: Vec3::new(0.18, 0.20, -0.80),
 };
 
 /// One shell going in at per-shell progress `p` (0..=1): the shell's position
@@ -145,7 +145,7 @@ pub struct ShellPose {
 
 pub fn pump_shell(p: f32) -> ShellPose {
     let p = p.clamp(0.0, 1.0);
-    let below = PUMP_LOADING_PORT + Vec3::new(0.02, -0.16, 0.10);
+    let below = PUMP_LOADING_PORT + Vec3::new(0.05, -0.09, 0.07);
     let into_tube = PUMP_LOADING_PORT + Vec3::new(0.0, 0.03, -0.09);
     let push = 0.008 * bump((p - 0.58) / 0.2);
     if p < 0.12 {

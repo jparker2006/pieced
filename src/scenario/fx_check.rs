@@ -33,8 +33,8 @@ const WALL_VIEW: Vec3 = Vec3::new(-6.0, 0.0, 8.8);
 #[derive(Default)]
 struct FxCheck {
     done: HashSet<&'static str>,
-    /// Captures scheduled for a later frame.
-    pending: Vec<(u64, String)>,
+    /// Captures scheduled for a later time (seconds).
+    pending: Vec<(f64, String)>,
     wall: Option<Entity>,
     kill_frame: Option<u64>,
     shots: Vec<Value>,
@@ -51,8 +51,8 @@ impl FxCheck {
             .push(json!({ "name": name, "t": clock.seconds, "frame": clock.frame }));
     }
 
-    fn snap_later(&mut self, frame: u64, name: &str) {
-        self.pending.push((frame, name.to_string()));
+    fn snap_later(&mut self, at: f64, name: &str) {
+        self.pending.push((at, name.to_string()));
     }
 }
 
@@ -98,17 +98,28 @@ fn aim_at(world: &mut World, target: Vec3) {
     set_look(world, yaw, pitch);
 }
 
-/// True when the held rifle will fire on this frame's fixed tick.
+/// Fixed ticks this frame will run (the director runs before the fixed step,
+/// after virtual time has advanced).
+fn ticks_this_frame(world: &World) -> u32 {
+    let fixed = world.resource::<Time<Fixed>>();
+    let delta = world.resource::<Time<Virtual>>().delta();
+    let step = fixed.timestep().as_secs_f64();
+    ((fixed.overstep().as_secs_f64() + delta.as_secs_f64()) / step).floor() as u32
+}
+
+/// True when the held rifle will fire during this frame's fixed ticks.
 fn rifle_fires_now(world: &mut World) -> bool {
+    let ticks = ticks_this_frame(world);
     let Some(player) = player_entity(world) else {
         return false;
     };
-    world.get::<Loadout>(player).is_some_and(|l| {
-        !l.is_switching()
-            && l.rifle.ammo > 0
-            && !l.rifle.is_reloading()
-            && l.rifle.cooldown - 1.0 / 60.0 <= 1e-4
-    })
+    ticks > 0
+        && world.get::<Loadout>(player).is_some_and(|l| {
+            !l.is_switching()
+                && l.rifle.ammo > 0
+                && !l.rifle.is_reloading()
+                && l.rifle.cooldown - ticks as f32 / 60.0 <= 1e-4
+        })
 }
 
 fn select(world: &mut World, tool: ActiveTool) {
@@ -123,12 +134,9 @@ impl Director for FxCheck {
     fn update(&mut self, world: &mut World, clock: &ScenarioClock) -> DirectorStatus {
         let t = clock.seconds;
         let frame = clock.frame;
-        let due: Vec<String> = self
-            .pending
-            .iter()
-            .filter(|(f, _)| *f == frame)
-            .map(|(_, n)| n.clone())
-            .collect();
+        let (due, later): (Vec<_>, Vec<_>) = self.pending.drain(..).partition(|(at, _)| *at <= t);
+        self.pending = later;
+        let due: Vec<String> = due.into_iter().map(|(_, n)| n).collect();
         for name in due {
             self.snap(world, clock, &name);
         }
@@ -140,6 +148,10 @@ impl Director for FxCheck {
                 place_dummy(world, DUMMY_SPOT, 100.0, 100.0);
                 teleport(world, Vec3::new(2.0, 0.0, 3.0));
             }
+            // Again once physics has picked up the spawn positions.
+            if t >= 0.5 && self.once("setup_again") {
+                place_dummy(world, DUMMY_SPOT, 100.0, 100.0);
+            }
             aim_at(world, chest);
         }
         if t >= 1.2 && self.once("hip") {
@@ -150,7 +162,7 @@ impl Director for FxCheck {
             if t >= 1.9 && !self.done.contains("rifle_fire") && rifle_fires_now(world) {
                 self.once("rifle_fire");
                 self.snap(world, clock, "02_rifle_fire");
-                self.snap_later(frame + 2, "02b_rifle_fire_after");
+                self.snap_later(t + 0.035, "02b_rifle_fire_after");
             }
         }
         if t >= 2.4 && self.once("release1") {
@@ -192,7 +204,7 @@ impl Director for FxCheck {
             teleport(world, Vec3::new(2.4, 0.0, -1.5));
             select(world, ActiveTool::Weapon(WeaponKind::Pump));
         }
-        if t >= 5.87 && self.once("switch_mid") {
+        if t >= 5.85 && self.once("switch_mid") {
             self.snap(world, clock, "05_switch_mid");
         }
         if (5.8..8.3).contains(&t) {
@@ -201,8 +213,8 @@ impl Director for FxCheck {
         if t >= 6.5 && self.once("pump_fire") {
             with_intent(world, |i| i.fire_pressed = true);
             self.snap(world, clock, "06_pump_blast");
-            self.snap_later(frame + 3, "06b_pump_blast_after");
-            self.snap_later(frame + 18, "07_pump_rack");
+            self.snap_later(t + 0.05, "06b_pump_blast_after");
+            self.snap_later(t + 0.29, "07_pump_rack");
         }
         if t >= 7.6 && self.once("pump_reload") {
             with_intent(world, |i| i.reload_pressed = true);
@@ -211,14 +223,28 @@ impl Director for FxCheck {
             self.snap(world, clock, "08_pump_reload");
         }
 
-        // Wood chips and a piece break.
-        if t >= 8.3 && self.once("wall_setup") {
+        // Sparks off the ground, then wood chips and a piece break.
+        if t >= 8.3 && self.once("wall_view") {
             select(world, ActiveTool::Weapon(WeaponKind::Rifle));
             teleport(world, WALL_VIEW);
-            self.wall = place_piece(world, PieceSlot::wall(WALL_CELL, Facing::North)).ok();
         }
         let wall_center = PieceSlot::wall(WALL_CELL, Facing::North).center();
-        if (8.3..11.0).contains(&t) {
+        if (8.3..8.8).contains(&t) {
+            aim_at(world, Vec3::new(WALL_VIEW.x + 0.4, 0.0, WALL_VIEW.z - 3.2));
+            if t >= 8.55 {
+                with_intent(world, |i| i.fire = true);
+                if !self.done.contains("sparks") && rifle_fires_now(world) {
+                    self.once("sparks");
+                    self.snap(world, clock, "09a_world_sparks");
+                    self.snap_later(t + 0.05, "09b_world_sparks_after");
+                }
+            }
+        }
+        if t >= 8.8 && self.once("wall_setup") {
+            with_intent(world, |i| i.fire = false);
+            self.wall = place_piece(world, PieceSlot::wall(WALL_CELL, Facing::North)).ok();
+        }
+        if (8.8..11.0).contains(&t) {
             aim_at(world, wall_center + Vec3::new(0.3, -0.2, 0.0));
         }
         if (8.9..9.5).contains(&t) {
@@ -235,9 +261,9 @@ impl Director for FxCheck {
             if let Some(wall) = self.wall {
                 damage_piece(world, wall, 10_000.0);
             }
-            self.snap_later(frame + 8, "10_piece_break_a");
-            self.snap_later(frame + 22, "10b_piece_break_b");
-            self.snap_later(frame + 50, "10c_piece_break_c");
+            self.snap_later(t + 0.13, "10_piece_break_a");
+            self.snap_later(t + 0.37, "10b_piece_break_b");
+            self.snap_later(t + 0.85, "10c_piece_break_c");
         }
 
         // Elimination from 7 m.
@@ -257,8 +283,8 @@ impl Director for FxCheck {
                 self.kill_frame = Some(frame);
                 with_intent(world, |i| i.fire = false);
                 self.snap(world, clock, "11_elim_a");
-                self.snap_later(frame + 7, "11b_elim_b");
-                self.snap_later(frame + 18, "11c_elim_c");
+                self.snap_later(t + 0.12, "11b_elim_b");
+                self.snap_later(t + 0.3, "11c_elim_c");
             }
         }
 

@@ -267,8 +267,35 @@ impl ModelBuilder {
         });
     }
 
-    /// A regular icosahedron of radius `r` (pops, shimmer shells).
+    /// A regular icosahedron of radius `r`.
     pub fn icosahedron(&mut self, r: f32, color: [f32; 4]) {
+        self.geosphere(r, 0, color);
+    }
+
+    /// A geodesic sphere: an icosahedron with each face split `subdivisions`
+    /// times (0 = 20 faces, 1 = 80, 2 = 320), for round pops and shells.
+    pub fn geosphere(&mut self, r: f32, subdivisions: u32, color: [f32; 4]) {
+        let mut faces: Vec<[Vec3; 3]> = icosahedron_faces();
+        for _ in 0..subdivisions {
+            faces = faces
+                .into_iter()
+                .flat_map(|[a, b, c]| {
+                    let ab = (a + b).normalize();
+                    let bc = (b + c).normalize();
+                    let ca = (c + a).normalize();
+                    [[a, ab, ca], [ab, b, bc], [ca, bc, c], [ab, bc, ca]]
+                })
+                .collect();
+        }
+        for [a, b, c] in faces {
+            self.poly(&[a * r, b * r, c * r], Vec3::ZERO, color);
+        }
+    }
+}
+
+/// The 20 faces of a unit icosahedron.
+fn icosahedron_faces() -> Vec<[Vec3; 3]> {
+    {
         let t = (1.0 + 5f32.sqrt()) / 2.0;
         let v = [
             Vec3::new(-1.0, t, 0.0),
@@ -284,7 +311,7 @@ impl ModelBuilder {
             Vec3::new(-t, 0.0, -1.0),
             Vec3::new(-t, 0.0, 1.0),
         ]
-        .map(|p| p.normalize() * r);
+        .map(|p| p.normalize());
         const F: [[usize; 3]; 20] = [
             [0, 11, 5],
             [0, 5, 1],
@@ -307,11 +334,11 @@ impl ModelBuilder {
             [8, 6, 7],
             [9, 8, 1],
         ];
-        for f in F {
-            self.poly(&[v[f[0]], v[f[1]], v[f[2]]], Vec3::ZERO, color);
-        }
+        F.iter().map(|f| [v[f[0]], v[f[1]], v[f[2]]]).collect()
     }
+}
 
+impl ModelBuilder {
     /// A flat ring (annulus) in the XZ plane, facing +Y.
     pub fn ring_xz(&mut self, inner: f32, outer: f32, segments: usize, color: [f32; 4]) {
         let segments = segments.max(3);
