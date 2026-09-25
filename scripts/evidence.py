@@ -156,16 +156,20 @@ def g3(summary):
     rb = readback.get("input_to_readback_ms") or {}
     n = arrival.get("samples", 0)
     median = arrival.get("median_ms")
+    covered = ((scn.get("run_conditions") or {}).get("window_occluded_ms") or 0) > 0
     ok = n >= G3_MIN_SAMPLES and median is not None and median <= G3_MEDIAN_MAX_MS
     measurement = (
         f"n={n}; arrival->submit median {num(median)} / p95 {num(arrival.get('p95_ms'))} / "
         f"max {num(arrival.get('max_ms'))} ms; apply->submit median {num(apply.get('median_ms'))} ms; "
         f"est. photon upper bound median {num(upper.get('median_ms'))} ms; GPU readback median "
         f"{num(rb.get('median_ms'))} ms ({readback.get('trials_with_visible_change', '-')}/"
-        f"{readback.get('trials', '-')} seen, {readback.get('change_visible_in_the_input_frame', '-')} "
+        f"{readback.get('trials_with_window_visible', readback.get('trials', '-'))} seen, "
+        f"{readback.get('change_visible_in_the_input_frame', '-')} "
         f"in the input frame); vsync {scn.get('vsync')}, cap {scn.get('frame_cap')}"
     )
-    return measurement, "median <= 33 ms, n >= 100", verdict(ok)
+    measurement += f"; window covered {num((scn.get('run_conditions') or {}).get('window_occluded_ms'), 0)} ms"
+    note = " (window covered: sampling paused)" if covered and n else ""
+    return measurement, "median <= 33 ms, n >= 100", verdict(ok) + note
 
 
 def g6(summary):

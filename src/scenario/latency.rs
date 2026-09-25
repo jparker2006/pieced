@@ -56,6 +56,8 @@ pub const REFRESH_MS: f64 = 1000.0 / 60.0;
 pub const WARMUP_SECONDS: f64 = 4.0;
 /// Latest virtual arrival after scheduling (random within this window).
 const ARRIVAL_WINDOW: Duration = Duration::from_millis(40);
+/// Give up sampling this long after the warm-up (the window may stay covered).
+pub const MAX_SAMPLING_SECONDS: f64 = 240.0;
 /// Minimum change of the sky score that counts as the view having flipped.
 pub const FLIP_THRESHOLD: f32 = 20.0;
 /// Screenshots per readback trial: the frame before the change, the frame of
@@ -127,6 +129,8 @@ struct Trial {
     submitted: Option<Instant>,
     /// Frames since the trial began.
     frames: i32,
+    /// The window was covered at some point during the trial.
+    occluded: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -151,6 +155,9 @@ struct Latency {
     captures: Arc<Mutex<Vec<Capture>>>,
     notes: Vec<String>,
     load_start: Option<[f64; 3]>,
+    /// Samples dropped because the window was covered (not composited).
+    skipped_occluded: u32,
+    occluded_frames: u64,
 }
 
 impl Latency {
@@ -167,6 +174,8 @@ impl Latency {
             captures: Arc::new(Mutex::new(Vec::new())),
             notes: Vec::new(),
             load_start: None,
+            skipped_occluded: 0,
+            occluded_frames: 0,
         }
     }
 
@@ -289,6 +298,26 @@ impl Director for Latency {
         let frame = world.resource::<MainFrame>().0;
         let submits = world.resource::<SubmitClock>().clone();
         self.resolve_submits(&submits);
+        // A covered window is not composited: presentation stops pacing and
+        // readbacks come back black, so nothing is sampled while it is covered.
+        let occluded = world
+            .get_resource::<telemetry::RunConditions>()
+            .is_some_and(|c| c.occluded_now);
+        if occluded && self.step != Step::Setup {
+            self.occluded_frames += 1;
+        }
+        if self.step != Step::Setup
+            && self.step != Step::Done
+            && clock.seconds > WARMUP_SECONDS + MAX_SAMPLING_SECONDS
+        {
+            self.notes.push(format!(
+                "stopped after {MAX_SAMPLING_SECONDS} s of sampling with {} samples and {} readback trials",
+                self.samples.len(),
+                self.trials.len()
+            ));
+            self.step = Step::Done;
+            self.gap_frames = 10;
+        }
         match self.step {
             Step::Setup => {
                 if self.load_start.is_none() {
@@ -316,6 +345,11 @@ impl Director for Latency {
                     self.step = Step::Primary;
                 }
             }
+            Step::Primary if occluded => {
+                if self.arrival.take().is_some() {
+                    self.skipped_occluded += 1;
+                }
+            }
             Step::Primary => {
                 self.primary(world, frame, now);
                 if self.samples.len() >= SAMPLES && self.arrival.is_none() {
@@ -325,12 +359,17 @@ impl Director for Latency {
             }
             Step::Readback => {
                 let current = self.trials.len().checked_sub(1);
+                if occluded && let Some(t) = self.trials.last_mut() {
+                    t.occluded = true;
+                }
                 let finished = current.is_none_or(|i| self.trial_done(i));
                 if !finished {
                     self.readback(world, frame, now);
                 } else if self.gap_frames > 0 {
                     self.gap_frames -= 1;
-                } else if self.trials.len() >= READBACK_TRIALS {
+                } else if occluded {
+                    // Start trials only while the window is visible.
+                } else if self.trials.iter().filter(|t| !t.occluded).count() >= READBACK_TRIALS {
                     self.step = Step::Done;
                     self.gap_frames = 10;
                 } else {
@@ -340,6 +379,7 @@ impl Director for Latency {
                         applied: None,
                         submitted: None,
                         frames: 0,
+                        occluded: false,
                     });
                     self.readback(world, frame, now);
                     self.gap_frames = 10 + (self.rng.next_u64() % 10) as u32;
@@ -408,11 +448,13 @@ impl Director for Latency {
             let latency = first_changed
                 .zip(t.applied)
                 .map(|((_, at), applied)| ms(at - applied));
-            if let Some(l) = latency {
-                readback_ms.push(l);
-            }
-            if first_changed.is_some_and(|(o, _)| o == 0) {
-                same_frame += 1;
+            if !t.occluded {
+                if let Some(l) = latency {
+                    readback_ms.push(l);
+                }
+                if first_changed.is_some_and(|(o, _)| o == 0) {
+                    same_frame += 1;
+                }
             }
             let mut scores: Vec<(i32, Option<f32>, Option<f32>)> = mine
                 .iter()
@@ -421,6 +463,7 @@ impl Director for Latency {
             scores.sort_by_key(|s| s.0);
             trials.push(json!({
                 "trial": i,
+                "window_covered": t.occluded,
                 "direction": if t.direction > 0.0 { "down_to_up" } else { "up_to_down" },
                 "frame_offset_sky_score_brightness": scores.iter().map(|(o, s, b)| json!([o, s, b])).collect::<Vec<_>>(),
                 "first_changed_frame_offset": first_changed.map(|(o, _)| o),
@@ -465,6 +508,8 @@ impl Director for Latency {
             ],
             "samples_requested": SAMPLES,
             "samples_resolved": resolved.len(),
+            "samples_skipped_while_window_covered": self.skipped_occluded,
+            "frames_with_window_covered_while_sampling": self.occluded_frames,
             "apply_to_render_submit_ms": apply_stats,
             "arrival_to_render_submit_ms": arrival_stats,
             "arrival_wait_until_frame_samples_input_ms": telemetry::latency_stats(&queue_wait),
@@ -476,6 +521,7 @@ impl Director for Latency {
             },
             "gpu_readback": {
                 "trials": self.trials.len(),
+                "trials_with_window_visible": self.trials.iter().filter(|t| !t.occluded).count(),
                 "trials_with_visible_change": readback_ms.len(),
                 "change_visible_in_the_input_frame": same_frame,
                 "input_to_readback_ms": telemetry::latency_stats(&readback_ms),
