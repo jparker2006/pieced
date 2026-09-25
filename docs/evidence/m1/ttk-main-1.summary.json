@@ -1,0 +1,251 @@
+{
+  "build": "release",
+  "commit": "f18e8f89013d",
+  "frames": {
+    "frames": 1914,
+    "max_ms": 507.45375,
+    "mean_ms": 14.79747535684429,
+    "over_18_ms": 200,
+    "over_20_ms": 106,
+    "over_25_ms": 68,
+    "p50_ms": 15.687166999999999,
+    "p95_ms": 20.645375,
+    "p99_ms": 47.711166,
+    "pct_under_18_ms": 89.55067920585162
+  },
+  "graphics": "Battery preset, render scale 1.00, vsync true, cap 60",
+  "launch_to_controllable_ms": 1658.146417,
+  "power_end": {
+    "battery": "-InternalBattery-0 (id=22478947)\t15%; charging; 4:49 remaining present: true",
+    "low_power_mode": true,
+    "source": "AC Power"
+  },
+  "power_start": {
+    "battery": "-InternalBattery-0 (id=22478947)\t15%; charging; 4:49 remaining present: true",
+    "low_power_mode": true,
+    "source": "AC Power"
+  },
+  "scenario": {
+    "g6_thresholds": {
+      "min_rifle_kills": 5,
+      "pump_kills_from_full_allowed": 0,
+      "rifle_ttk_s_max": 2.0,
+      "rifle_ttk_s_min": 1.0,
+      "wall_soak_s_min": 1.0
+    },
+    "gate": {
+      "checks": [
+        {
+          "name": "rifle_kills",
+          "pass": true,
+          "threshold": "≥ 5",
+          "value": 6
+        },
+        {
+          "name": "rifle_ttk_s",
+          "pass": true,
+          "threshold": "every kill 1–2 s",
+          "value": [
+            1.1666667275130749,
+            1.1666667275130749,
+            1.5000000782310963,
+            1.3333334028720856,
+            1.1666667275130749,
+            1.1666667275130749
+          ]
+        },
+        {
+          "name": "pump_shots_that_killed_from_full",
+          "pass": true,
+          "threshold": "0 of ≥ 1 shots",
+          "value": 0
+        },
+        {
+          "name": "wall_soak_s",
+          "pass": true,
+          "threshold": "≥ 1 s",
+          "value": 1.1666667275130749
+        }
+      ],
+      "gate": "G6",
+      "pass": true
+    },
+    "measures": "G6 time to kill. A standing dummy (stand_still) at 15 m, full 100 HP + 100 shield, under continuous rifle fire aimed at its chest; one point-blank pump body shot per range on a full-health dummy; a wall placed between the player and the dummy under continuous rifle fire. Times are simulation ticks (1/60 s) from the damage, elimination and piece messages; wall-clock times of the observing frames are included for reference.",
+    "notes": [],
+    "pump_shots": [
+      {
+        "any_headshot_pellet": false,
+        "damage": 100.0,
+        "health_after": {
+          "hp": 100.0,
+          "shield": 0.0
+        },
+        "killed": false,
+        "pellets_fired": 10,
+        "pellets_hit_dummy": 10,
+        "range_m": 1.5,
+        "start_total_health": 200.0,
+        "survived": true
+      },
+      {
+        "any_headshot_pellet": false,
+        "damage": 100.0,
+        "health_after": {
+          "hp": 100.0,
+          "shield": 0.0
+        },
+        "killed": false,
+        "pellets_fired": 10,
+        "pellets_hit_dummy": 10,
+        "range_m": 2.5,
+        "start_total_health": 200.0,
+        "survived": true
+      },
+      {
+        "any_headshot_pellet": false,
+        "damage": 100.0,
+        "health_after": {
+          "hp": 100.0,
+          "shield": 0.0
+        },
+        "killed": false,
+        "pellets_fired": 10,
+        "pellets_hit_dummy": 10,
+        "range_m": 3.5,
+        "start_total_health": 200.0,
+        "survived": true
+      }
+    ],
+    "rifle_kills": [
+      {
+        "combat_stats_last_ttk_s": 1.1666667461395264,
+        "headshots": 0,
+        "hits": 8,
+        "kill": 1,
+        "killed": true,
+        "range_m": 15.0,
+        "shots": 8,
+        "start_total_health": 200.0,
+        "trigger_to_kill_s": 1.1666667275130749,
+        "ttk_first_damage_to_kill_s": 1.1666667275130749,
+        "wall_clock_first_damage_to_kill_s": 1.16246525,
+        "wall_clock_trigger_to_kill_s": 1.18335075
+      },
+      {
+        "combat_stats_last_ttk_s": 1.1666667461395264,
+        "headshots": 0,
+        "hits": 8,
+        "kill": 2,
+        "killed": true,
+        "range_m": 15.0,
+        "shots": 8,
+        "start_total_health": 200.0,
+        "trigger_to_kill_s": 1.1666667275130749,
+        "ttk_first_damage_to_kill_s": 1.1666667275130749,
+        "wall_clock_first_damage_to_kill_s": 1.57788975,
+        "wall_clock_trigger_to_kill_s": 1.594364042
+      },
+      {
+        "combat_stats_last_ttk_s": 1.5000001192092896,
+        "headshots": 0,
+        "hits": 8,
+        "kill": 3,
+        "killed": true,
+        "range_m": 15.0,
+        "shots": 10,
+        "start_total_health": 200.0,
+        "trigger_to_kill_s": 1.5000000782310963,
+        "ttk_first_damage_to_kill_s": 1.5000000782310963,
+        "wall_clock_first_damage_to_kill_s": 1.488977292,
+        "wall_clock_trigger_to_kill_s": 1.51231325
+      },
+      {
+        "combat_stats_last_ttk_s": 1.3333333730697632,
+        "headshots": 0,
+        "hits": 8,
+        "kill": 4,
+        "killed": true,
+        "range_m": 15.0,
+        "shots": 9,
+        "start_total_health": 200.0,
+        "trigger_to_kill_s": 1.3333334028720856,
+        "ttk_first_damage_to_kill_s": 1.3333334028720856,
+        "wall_clock_first_damage_to_kill_s": 1.321631042,
+        "wall_clock_trigger_to_kill_s": 1.3334315
+      },
+      {
+        "combat_stats_last_ttk_s": 1.1666667461395264,
+        "headshots": 0,
+        "hits": 8,
+        "kill": 5,
+        "killed": true,
+        "range_m": 15.0,
+        "shots": 8,
+        "start_total_health": 200.0,
+        "trigger_to_kill_s": 1.1666667275130749,
+        "ttk_first_damage_to_kill_s": 1.1666667275130749,
+        "wall_clock_first_damage_to_kill_s": 1.16587575,
+        "wall_clock_trigger_to_kill_s": 1.183827666
+      },
+      {
+        "combat_stats_last_ttk_s": 1.1666667461395264,
+        "headshots": 0,
+        "hits": 8,
+        "kill": 6,
+        "killed": true,
+        "range_m": 15.0,
+        "shots": 8,
+        "start_total_health": 200.0,
+        "trigger_to_kill_s": 1.1666667275130749,
+        "ttk_first_damage_to_kill_s": 1.1666667275130749,
+        "wall_clock_first_damage_to_kill_s": 1.165561334,
+        "wall_clock_trigger_to_kill_s": 1.182968542
+      }
+    ],
+    "rifle_ttk_s": {
+      "max_ms": 1.5000000782310963,
+      "mean_ms": 1.2500000651925802,
+      "median_ms": 1.1666667275130749,
+      "min_ms": 1.1666667275130749,
+      "p95_ms": 1.5000000782310963,
+      "samples": 6
+    },
+    "setup": {
+      "aim": "dummy chest, 0.9 m above its feet",
+      "dummy_stand_still": true,
+      "player_feet": [
+        2.0,
+        0.0,
+        14.0
+      ],
+      "range_m": 15.0,
+      "rifle": {
+        "damage": 28.0,
+        "fire_interval_s": 0.1666666716337204,
+        "structure_damage": 28.0
+      },
+      "wall_hp": 200.0
+    },
+    "wall_soak": {
+      "damage_to_dummy_before_break": 0.0,
+      "first_hit_to_break_s": 1.1666667275130749,
+      "first_hit_to_first_dummy_hit_s": 1.3333334028720856,
+      "hits_on_wall": 8,
+      "placed": true,
+      "placement_error": null,
+      "slot": "PieceSlot { kind: Wall, cell: GridCell { x: 6, z: 7, level: 0 }, facing: North }",
+      "trigger_to_break_s": 1.1666667275130749,
+      "wall_center": [
+        2.0,
+        1.5,
+        4.0
+      ]
+    }
+  },
+  "scenario_name": "ttk",
+  "screenshots": [
+    "ttk-rifle-aim.png",
+    "ttk-wall.png"
+  ],
+  "warmup_seconds": 2.0
+}
