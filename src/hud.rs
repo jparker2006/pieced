@@ -55,7 +55,7 @@ impl Default for HudTuning {
             hitmarker_seconds: 0.2,
             kill_marker_seconds: 0.45,
             damage_number_seconds: 0.85,
-            damage_number_rise: 46.0,
+            damage_number_rise: 60.0,
             bar_trail_hold: 0.35,
             bar_trail_rate: 1.2,
         }
@@ -129,7 +129,7 @@ impl NumberKind {
             Self::Body => palette::HIT_WHITE,
             Self::Headshot => palette::HEADSHOT,
             Self::Shield => palette::SHIELD,
-            Self::Structure => palette::WOOD_LIGHT,
+            Self::Structure => Color::srgb(0.87, 0.88, 0.9),
         }
     }
 

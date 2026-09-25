@@ -3,7 +3,7 @@
 //! grouped by section, with reset-to-default buttons per section and group.
 
 use super::{Autosave, MenuState};
-use crate::tuning::Tuning;
+use crate::{shared::AppState, tuning::Tuning};
 use bevy::prelude::*;
 use bevy_egui::{
     EguiContexts, EguiGlobalSettings, EguiPlugin, EguiPrimaryContextPass, PrimaryEguiContext, egui,
@@ -51,6 +51,8 @@ fn pretty(key: &str) -> String {
 
 fn tuning_panel(
     mut contexts: EguiContexts,
+    state: Res<State<AppState>>,
+    mut next: ResMut<NextState<AppState>>,
     mut menu: ResMut<MenuState>,
     mut tuning: ResMut<Tuning>,
     mut autosave: Option<ResMut<Autosave>>,
@@ -117,8 +119,8 @@ fn tuning_panel(
             }
         });
 
-    if !open {
-        menu.panel_open = false;
+    if !open && menu.close_panel() && *state.get() == AppState::Paused {
+        next.set(AppState::Playing);
     }
     if edited != original
         && let Ok(next) = serde_json::from_value::<Tuning>(edited)

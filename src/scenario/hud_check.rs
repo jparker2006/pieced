@@ -5,8 +5,8 @@
 //! and the F3 overlay (on throughout). The summary counts how many hits showed their
 //! hitmarker, damage number and sound on the frame the hit registered.
 //!
-//! The script advances on game events (hits, the kill), not wall-clock alone, so it
-//! captures the same moments on a slow machine.
+//! The script advances on game events (hits, the kill) and game time, not wall
+//! clock, so it captures the same moments on a slow or hitching machine.
 
 use super::{
     Director, DirectorStatus, ScenarioClock, capture, player_entity, set_look, teleport,
@@ -49,11 +49,13 @@ enum Phase {
 #[derive(Default)]
 struct HudCheck {
     phase: Phase,
-    /// Scenario seconds when the current phase began.
+    /// Game seconds when the current phase began.
     since: f64,
     captured: Vec<&'static str>,
     kill_at: Option<f64>,
     wall_at: Option<Vec3>,
+    last_capture_frame: Option<u32>,
+    player_hurt: bool,
 }
 
 impl HudCheck {
@@ -62,8 +64,12 @@ impl HudCheck {
         self.since = now;
     }
 
+    /// Captures `name` once. At most one screenshot per frame: a second request
+    /// on the same frame waits for the next one.
     fn capture_once(&mut self, world: &mut World, name: &'static str) {
-        if !self.captured.contains(&name) {
+        let frame = world.resource::<bevy::diagnostic::FrameCount>().0;
+        if !self.captured.contains(&name) && self.last_capture_frame != Some(frame) {
+            self.last_capture_frame = Some(frame);
             self.captured.push(name);
             capture(world, name, false);
         }
@@ -108,7 +114,8 @@ fn select(world: &mut World, tool: ActiveTool) {
 
 impl Director for HudCheck {
     fn update(&mut self, world: &mut World, clock: &ScenarioClock) -> DirectorStatus {
-        let now = clock.seconds;
+        // Game time, so a long hitch (shader compiles at startup) never skips a step.
+        let now = clock.tick as f64 / 60.0;
         let dt = now - self.since;
         let player = player_entity(world);
         let feet = feet_of(world, player).unwrap_or_default();
@@ -145,6 +152,14 @@ impl Director for HudCheck {
                 let stats = world.resource::<CombatStats>().clone();
                 let firing = dt > 0.8 && self.kill_at.is_none() && dt < 8.0;
                 hold_fire(world, firing);
+                if stats.hits >= 1 && !self.player_hurt {
+                    // The dummy can't shoot back yet: take a hit so the bars show
+                    // their trailing chunk.
+                    self.player_hurt = true;
+                    if let Some(mut health) = player.and_then(|p| world.get_mut::<Health>(p)) {
+                        health.apply(135.0);
+                    }
+                }
                 if stats.hits >= 2 {
                     self.capture_once(world, "hud-fight-shield");
                 }
@@ -161,7 +176,9 @@ impl Director for HudCheck {
                     && now >= kill + 0.03
                 {
                     self.capture_once(world, "hud-kill");
-                    self.go(Phase::Reload, now);
+                    if self.captured.contains(&"hud-kill") {
+                        self.go(Phase::Reload, now);
+                    }
                 } else if dt >= 8.0 {
                     self.go(Phase::Reload, now);
                 }
@@ -182,6 +199,8 @@ impl Director for HudCheck {
             Phase::Pump => {
                 if dt >= 0.6 {
                     self.capture_once(world, "hud-pump");
+                }
+                if dt >= 0.8 {
                     select(world, ActiveTool::Build(PieceKind::Wall));
                     self.go(Phase::Build, now);
                 }

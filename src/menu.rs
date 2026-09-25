@@ -44,6 +44,13 @@ impl MenuState {
     pub fn menu_visible(&self) -> bool {
         self.menu_open && !self.panel_open
     }
+
+    /// Closes the tuning panel. Returns true when play should resume (the panel
+    /// was opened from play rather than from the pause menu).
+    pub fn close_panel(&mut self) -> bool {
+        let was_open = std::mem::take(&mut self.panel_open);
+        was_open && std::mem::take(&mut self.resume_on_close)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -393,7 +400,7 @@ fn open_menu(mut menu: ResMut<MenuState>) {
 
 fn close_menus(mut menu: ResMut<MenuState>) {
     menu.menu_open = false;
-    menu.panel_open = false;
+    menu.close_panel();
     menu.page = MenuPage::Main;
 }
 
@@ -408,8 +415,7 @@ fn toggle_panel(
         return;
     }
     if menu.panel_open {
-        menu.panel_open = false;
-        if menu.resume_on_close && *state.get() == AppState::Paused {
+        if menu.close_panel() && *state.get() == AppState::Paused {
             next.set(AppState::Playing);
         }
     } else {

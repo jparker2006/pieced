@@ -50,6 +50,8 @@ use style::{ACCENT, TEXT, caps, dim, text};
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum El {
     Root,
+    Crosshair,
+    Numbers,
     ShieldFill,
     ShieldTrail,
     ShieldValue,
@@ -165,6 +167,7 @@ fn spawn_hud(mut commands: Commands, tuning: Option<Res<crate::tuning::Tuning>>)
 
 fn spawn_crosshair(root: &mut ChildSpawnerCommands, _hud: &HudTuning) {
     root.spawn((
+        El::Crosshair,
         Name::new("Crosshair"),
         Node {
             position_type: PositionType::Absolute,
@@ -706,6 +709,7 @@ fn spawn_perf(root: &mut ChildSpawnerCommands) {
 
 fn spawn_numbers(root: &mut ChildSpawnerCommands) {
     root.spawn((
+        El::Numbers,
         Name::new("Damage numbers"),
         Node {
             left: px(0),

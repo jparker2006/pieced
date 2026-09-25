@@ -70,7 +70,7 @@ const FEEDBACK: &[Setting] = &[Setting::Bloom, Setting::DamageNumbers, Setting::
 const AUDIO: &[Setting] = &[Setting::Volume, Setting::Mute];
 const DISPLAY: &[Setting] = &[Setting::Quality, Setting::WindowMode];
 
-const CARD_BG: Color = Color::srgba(0.07, 0.075, 0.1, 0.95);
+const CARD_BG: Color = Color::srgba(0.07, 0.075, 0.1, 0.98);
 const BUTTON_BG: Color = Color::srgba(1.0, 1.0, 1.0, 0.055);
 const BUTTON_HOVER: Color = Color::srgba(1.0, 1.0, 1.0, 0.11);
 const BUTTON_BORDER: Color = Color::srgba(1.0, 1.0, 1.0, 0.08);

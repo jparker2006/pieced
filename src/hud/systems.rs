@@ -10,6 +10,7 @@ use super::{
 use crate::{
     building::AimedPiece,
     combat::{CombatStats, Loadout},
+    menu::MenuState,
     palette,
     render::{CameraFollowSet, CurrentFov, MainCamera},
     shared::{ActiveTool, Ads, DamageDealt, DamageTarget, Health, PieceKind, Player, WeaponKind},
@@ -129,6 +130,7 @@ fn update_status(
     tuning: Res<Tuning>,
     stats: Res<CombatStats>,
     frame: Option<Res<FrameStats>>,
+    menu: Option<Res<MenuState>>,
     player: Option<
         Single<(&Health, &ActiveTool, Option<&Loadout>, Option<&AimedPiece>), With<Player>>,
     >,
@@ -248,9 +250,15 @@ fn update_status(
         }
     }
     let perf = memory.perf.clone();
+    let menu_up = menu.is_some_and(|m| m.menu_visible());
 
     for (el, node, text, color, bg, border, vis, transform) in &mut parts {
         match *el {
+            El::Crosshair | El::Numbers => {
+                if let Some(mut v) = vis {
+                    set_visible(&mut v, !menu_up);
+                }
+            }
             El::ShieldFill => {
                 if let Some(mut n) = node {
                     set_width_pct(&mut n, shield);
@@ -603,7 +611,7 @@ fn hit_feedback(
         let kind = NumberKind::of(hit.target_kind, hit.headshot, hit.to_shield);
         *counter = counter.wrapping_add(1);
         // Successive numbers fan out left and right so a spray stays readable.
-        const FAN: [f32; 6] = [-26.0, 12.0, -8.0, 28.0, -18.0, 20.0];
+        const FAN: [f32; 6] = [-28.0, 26.0, -12.0, 40.0, -40.0, 12.0];
         let jitter = FAN[(*counter as usize) % FAN.len()];
         *number = DamageNumber {
             active: true,
@@ -730,7 +738,8 @@ fn place_damage_numbers(
                 // Numbers drift outward as they rise.
                 let drift = number.jitter
                     * (1.0 + 0.6 * motion.rise / tuning.hud.damage_number_rise.max(1.0));
-                let at = pos - NUMBER_BOX * 0.5 + Vec2::new(drift, -20.0 - motion.rise);
+                // Up and to the right of the hit, clear of the crosshair.
+                let at = pos - NUMBER_BOX * 0.5 + Vec2::new(18.0 + drift, -34.0 - motion.rise);
                 *transform = UiTransform {
                     translation: Val2::px(at.x.round(), at.y.round()),
                     scale: Vec2::splat(motion.scale),
