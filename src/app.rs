@@ -225,6 +225,12 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     .add_plugins(ClientPlugins)
     .insert_resource(tuning)
     .insert_resource(bevy::winit::WinitSettings::continuous());
+    if let Some(knobs) =
+        crate::perf_knobs::PerfKnobs::from_args(&std::env::args().collect::<Vec<_>>())
+    {
+        app.insert_resource(knobs)
+            .add_plugins(crate::perf_knobs::PerfKnobsPlugin);
+    }
     if options.input_probe {
         app.init_resource::<InputProbe>();
     }

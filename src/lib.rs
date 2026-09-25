@@ -20,6 +20,7 @@ pub mod menu;
 pub mod movement;
 pub mod native;
 pub mod palette;
+pub mod perf_knobs;
 pub mod player;
 pub mod render;
 pub mod rng;

@@ -228,6 +228,7 @@ fn finish(world: &mut World) {
         "power_start": run.power_start,
         "power_end": telemetry::power_state(),
         "graphics": graphics,
+        "knobs": world.get_resource::<crate::perf_knobs::PerfKnobs>().map(|k| k.raw.clone()),
         "launch_to_controllable_ms": launch_ms,
         "warmup_seconds": warmup,
         "frames": summary,
