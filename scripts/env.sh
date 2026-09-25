@@ -7,3 +7,15 @@ export RUSTUP_HOME="$_pieced_ws/work/rustup"
 export PATH="$CARGO_HOME/bin:$PATH"
 export CARGO_TARGET_DIR="$(cd "$_pieced_main/.." && pwd)/pieced-target"
 unset _pieced_main _pieced_ws
+
+# Every worktree compiles this crate to the same artifact names in the shared cache,
+# and cargo judges freshness by mtime, so it could reuse another worktree's build.
+# Touch this checkout's sources before every cargo command so it always rebuilds them.
+cargo() {
+  _pieced_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+  if [ -n "$_pieced_root" ]; then
+    find "$_pieced_root/src" "$_pieced_root/tests" -name '*.rs' -exec touch {} + 2>/dev/null
+  fi
+  unset _pieced_root
+  command cargo "$@"
+}
