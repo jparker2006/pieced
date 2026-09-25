@@ -40,8 +40,10 @@ pub const RANGE: f32 = 15.0;
 pub const KILLS: usize = 6;
 /// Point-blank pump ranges (m).
 pub const PUMP_RANGES: [f32; 3] = [1.5, 2.5, 3.5];
-/// Aim point above the dummy's feet (m).
-pub const CHEST: f32 = 1.1;
+/// Aim point above the dummy's feet (m): mid-torso. The TTK contract is about
+/// body hits; at 15 m full rifle bloom (1.8°) strays up to ~0.47 m, so aiming
+/// here keeps bloom from landing headshots (head sphere starts at 1.42 m).
+pub const CHEST: f32 = 0.9;
 /// Give up on a step after this long (s).
 const TIMEOUT: f64 = 6.0;
 
