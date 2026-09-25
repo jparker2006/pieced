@@ -17,7 +17,7 @@
 
 use crate::{
     arena::ArenaLayout,
-    player::{BODY_BOTTOM, BODY_TOP, HEAD_CENTER},
+    player::{BODY_BOTTOM, BODY_RADIUS, BODY_TOP, HEAD_CENTER},
     shared::{Character, EyeHeight, GameCue, Hitbox, Layer, LookAngles, PlayerIntent, SimSet},
     tuning::Tuning,
 };
@@ -774,25 +774,35 @@ fn move_characters(
     }
 }
 
-/// Lowers each character's hitboxes by however far its eye has dropped from
-/// standing height, so crouching characters are shot where they appear.
+/// Fits each character's hitboxes to its current eye height: the head drops with
+/// the eye, and the body capsule shortens from the top (its bottom stays at the
+/// feet), so crouching characters are shot where they appear and never through
+/// the floor beneath them.
 fn place_hitboxes(
     tuning: Res<Tuning>,
     characters: Query<&EyeHeight, With<Character>>,
-    mut hitboxes: Query<(&Hitbox, &mut Transform), Without<Character>>,
+    mut hitboxes: Query<(&Hitbox, &mut Transform, &mut Collider), Without<Character>>,
 ) {
-    let body_center = (BODY_BOTTOM + BODY_TOP) / 2.0;
-    for (hitbox, mut transform) in &mut hitboxes {
+    for (hitbox, mut transform, mut collider) in &mut hitboxes {
         let Ok(eye) = characters.get(hitbox.owner) else {
             continue;
         };
         let drop = (tuning.movement.eye_height - eye.0).max(0.0);
-        let standing = if hitbox.head {
-            HEAD_CENTER
+        let y = if hitbox.head {
+            HEAD_CENTER - drop
         } else {
-            body_center
+            let top = (BODY_TOP - drop).max(BODY_BOTTOM + 2.0 * BODY_RADIUS);
+            let length = top - BODY_BOTTOM - 2.0 * BODY_RADIUS;
+            let current = collider
+                .shape()
+                .as_capsule()
+                .map(|c| c.segment.length())
+                .unwrap_or(length);
+            if (current - length).abs() > 0.005 {
+                *collider = Collider::capsule(BODY_RADIUS, length);
+            }
+            (BODY_BOTTOM + top) / 2.0
         };
-        let y = standing - drop;
         if (transform.translation.y - y).abs() > 1e-5 {
             transform.translation.y = y;
         }

@@ -156,7 +156,16 @@ pub fn target_slot(
             } else {
                 let ceiling = own_ground + LEVEL_HEIGHT;
                 let next = ahead_ground + LEVEL_HEIGHT;
-                if slope > 1e-4 && eye.y < ceiling && (ceiling - eye.y) / slope < d_front / along {
+                // Climbing a ramp puts the eye just under the next level, so any
+                // upward look crosses it inside our own cell. Building there would
+                // cap the ramp we're on (and wedge us under it), so while climbing
+                // the ramp rush always continues ahead.
+                let climbing = ahead_level > base;
+                if !climbing
+                    && slope > 1e-4
+                    && eye.y < ceiling
+                    && (ceiling - eye.y) / slope < d_front / along
+                {
                     // Looking steeply up: above our own cell.
                     GridCell::new(own.x, own.z, base + 1)
                 } else if slope > 1e-4
