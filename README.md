@@ -13,9 +13,12 @@ Pieced is a solo first-person shooter with Fortnite-style building. You fight wi
 This needs Apple Silicon macOS and the workspace-local Rust 1.98.1 toolchain.
 
 ```sh
-source scripts/env.sh
-cargo run --release
+scripts/play.sh            # full screen
+scripts/play.sh --windowed # in a window
 ```
+
+Developers: `source scripts/env.sh` first, then `cargo test --locked`. Scenarios for evidence runs:
+`cargo run --release -- --scenario <smoke|gallery|perf|ttk|latency> --evidence evidence/<name>`.
 
 ## Controls (Milestone 1)
 
