@@ -239,6 +239,9 @@ struct Gallery {
     pieces_placed: u32,
     pieces_broken: u32,
     shots_fired: u32,
+    /// Simulation tick of the last applied action: at most one action per tick,
+    /// so a frame hitch can't collapse "look, tap, look, tap" into a single tap.
+    last_act_tick: Option<u64>,
 }
 
 impl Gallery {
@@ -259,6 +262,7 @@ impl Gallery {
             pieces_placed: 0,
             pieces_broken: 0,
             shots_fired: 0,
+            last_act_tick: None,
         }
     }
 
@@ -439,12 +443,13 @@ impl Director for Gallery {
         let start = *self.shot_start.get_or_insert(clock.seconds);
         let t = clock.seconds - start;
         let mut due = Vec::new();
-        while let Some(&(at, act)) = shot.script.get(self.next_act) {
-            if t < at {
-                break;
-            }
+        if self.last_act_tick != Some(clock.tick)
+            && let Some(&(at, act)) = shot.script.get(self.next_act)
+            && t >= at
+        {
             due.push(act);
             self.next_act += 1;
+            self.last_act_tick = Some(clock.tick);
         }
         let finished = self.next_act >= shot.script.len()
             && t >= shot.script.last().map_or(0.0, |(at, _)| *at) + shot.tail;
