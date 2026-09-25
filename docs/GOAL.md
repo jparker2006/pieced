@@ -41,7 +41,13 @@ The goal is complete only when gates **G1–G9** below are all **PASS**, each wi
 **Roles**
 
 - **Orchestrator** (the main session, Opus): owns the plan, shared types, merges into `main`, running the gates, pushes, the art review and every conversation with Jake. Keeps a running checklist in the conversation.
-- **`pieced-builder` subagents** (Opus, medium effort; defined in `.claude/agents/`): implement one slice each in an isolated git worktree (`isolation: "worktree"`, or `git worktree add .claude/worktrees/<slice> -b m1/<slice>`). Builders:
+- **`pieced-builder` subagents** (Opus, medium effort; defined in `.claude/agents/`): implement one slice each in their own git worktree of **this** repo. How to dispatch them depends on where the session runs:
+  - **Session opened in the Pieced repo:** use the `pieced-builder` agent type with `isolation: "worktree"`.
+  - **Session running anywhere else**, for example Chunky's folder: `isolation: "worktree"` would copy the wrong repo, so don't use it. Instead:
+    1. The orchestrator creates the worktree itself: `git -C <pieced> worktree add .claude/worktrees/<slice> -b m1/<slice>`.
+    2. It dispatches a general-purpose subagent with `model: opus`, telling it to work only in that worktree path and to follow `.claude/agents/pieced-builder.md` as its operating rules.
+
+  Builders:
   - run `source scripts/env.sh`, then `cargo test --locked` for their slice;
   - commit on their branch with clear messages;
   - **never push, never merge, and never edit files owned by another slice**;
