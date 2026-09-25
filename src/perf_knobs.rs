@@ -3,7 +3,7 @@
 //! (Metal has no per-pass GPU timestamps in Bevy). Never used in normal play.
 //!
 //! Knobs: `shadows=off`, `msaa=1|2|4`, `viewmodel=off`, `scale=<f32>`,
-//! `fog=off`, `sky=off`.
+//! `fog=off`, `sky=off`, `vmmsaa=1|2|4` (viewmodel camera only).
 
 use crate::{render::MainCamera, tuning::Tuning, viewmodel::ViewmodelCamera};
 use bevy::{pbr::DistanceFog, prelude::*};
@@ -17,6 +17,7 @@ pub struct PerfKnobs {
     pub scale: Option<f32>,
     pub fog: Option<bool>,
     pub sky: Option<bool>,
+    pub viewmodel_msaa: Option<u32>,
 }
 
 impl PerfKnobs {
@@ -40,6 +41,7 @@ impl PerfKnobs {
                 "scale" => knobs.scale = value.parse().ok(),
                 "fog" => knobs.fog = Some(on),
                 "sky" => knobs.sky = Some(on),
+                "vmmsaa" => knobs.viewmodel_msaa = value.parse().ok(),
                 other => eprintln!("unknown knob '{other}'"),
             }
         }
@@ -86,6 +88,18 @@ fn apply_knobs(
         };
         for (_, mut msaa, main, vm) in &mut cameras {
             if (main || vm) && *msaa != want {
+                *msaa = want;
+            }
+        }
+    }
+    if let Some(samples) = knobs.viewmodel_msaa {
+        let want = match samples {
+            1 => Msaa::Off,
+            2 => Msaa::Sample2,
+            _ => Msaa::Sample4,
+        };
+        for (_, mut msaa, _, vm) in &mut cameras {
+            if vm && *msaa != want {
                 *msaa = want;
             }
         }
