@@ -24,7 +24,10 @@ use pieced::{
             rifle_reload, squash_scale, squash_transform,
         },
         model_to_node,
-        models::{GLOVES_MODEL, GunSpec, PUMP, PUMP_RACK_TRAVEL, RIFLE, gun_model, gun_spec},
+        models::{
+            GLOVES_MODEL, GunSpec, PUMP, PUMP_RACK_TRAVEL, RIFLE, RIFLE_INSPECT, gun_model,
+            gun_spec,
+        },
         node_to_model,
     },
 };
@@ -87,6 +90,51 @@ fn hip_poses_hold_the_gun_low_right_with_the_crystal_in_view() {
         let forward = rig.rotation * Vec3::NEG_Z;
         assert!(forward.dot(Vec3::NEG_Z) > 0.9, "{kind:?}: points ahead");
     }
+}
+
+/// The gallery-only inspect pose (target T02): the rifle turned about 30°
+/// further toward the camera than at the hip, crossing the frame from the
+/// crystal low right of centre to the muzzle up and left of it, bigger on
+/// screen than at the hip.
+#[test]
+fn the_inspect_pose_turns_the_rifle_toward_the_camera_across_the_frame() {
+    let spec = &*RIFLE;
+    let hip = Transform::from_translation(spec.hip).with_rotation(euler(spec.hip_euler));
+    let inspect = Transform::from_translation(RIFLE_INSPECT.rig_translation(spec))
+        .with_rotation(euler(RIFLE_INSPECT.euler));
+    assert!(
+        inspect
+            .transform_point(spec.socket)
+            .distance(RIFLE_INSPECT.anchor)
+            < 1e-5,
+        "the crystal sits at the pose's anchor"
+    );
+    let turn = (RIFLE_INSPECT.euler.y - spec.hip_euler.y).to_degrees();
+    assert!(
+        (20.0..=32.0).contains(&turn),
+        "turned {turn}° toward the camera"
+    );
+    let crystal = ndc(inspect.transform_point(spec.socket));
+    let muzzle = ndc(inspect.transform_point(spec.muzzle));
+    assert!(
+        (0.05..0.6).contains(&crystal.x) && (-0.6..-0.05).contains(&crystal.y),
+        "crystal low right of centre: {crystal}"
+    );
+    assert!(
+        (-0.8..-0.2).contains(&muzzle.x) && (0.05..0.6).contains(&muzzle.y),
+        "muzzle up and left: {muzzle}"
+    );
+    let span = |rig: Transform| {
+        (ndc(rig.transform_point(spec.muzzle)) - ndc(rig.transform_point(spec.socket))).length()
+    };
+    assert!(
+        span(inspect) > 1.15 * span(hip),
+        "bigger on screen: {} vs {} at the hip",
+        span(inspect),
+        span(hip)
+    );
+    // Still pointing away into the scene.
+    assert!(inspect.transform_point(spec.muzzle).z < inspect.transform_point(spec.socket).z);
 }
 
 // ---------------------------------------------------------------------------
@@ -529,4 +577,125 @@ fn gloves_land_on_each_guns_grips_and_parts_on_their_sockets() {
         assert!(back.translation.distance(node.translation) < 1e-5);
         assert!(back.rotation.angle_between(node.rotation) < 1e-5);
     }
+}
+
+// ---------------------------------------------------------------------------
+// The rig in the app: put away while paused, the inspect pose on request
+// ---------------------------------------------------------------------------
+
+/// The simulation plus the viewmodel, headless (no window, GPU or models).
+fn rig_app() -> App {
+    use pieced::{
+        app::SimPlugins,
+        look::{ModelDressed, ToonMaterial, warmup::WarmupState},
+        render::{CurrentFov, MainCamera, WorldTarget},
+        shared::tick_duration,
+        viewmodel::ViewmodelPlugin,
+    };
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        TransformPlugin,
+        bevy::state::app::StatesPlugin,
+        AssetPlugin::default(),
+        MeshPlugin,
+        WorldSerializationPlugin,
+        avian3d::prelude::PhysicsPlugins::default(),
+        bevy::input::InputPlugin,
+    ))
+    .add_plugins(SimPlugins)
+    .init_asset::<Image>()
+    .init_asset::<StandardMaterial>()
+    .init_asset::<ToonMaterial>()
+    .add_message::<ModelDressed>()
+    .init_resource::<WarmupState>()
+    .init_resource::<CurrentFov>()
+    .insert_resource(WorldTarget {
+        image: Handle::default(),
+        size: UVec2::new(1280, 800),
+    })
+    .insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        tick_duration(),
+    ))
+    .add_plugins(ViewmodelPlugin);
+    app.world_mut()
+        .spawn((MainCamera, Transform::default(), Visibility::default()));
+    app.finish();
+    app.cleanup();
+    app
+}
+
+fn rig(app: &mut App) -> (Transform, Visibility) {
+    let world = app.world_mut();
+    world
+        .query::<(&Name, &Transform, &Visibility)>()
+        .iter(world)
+        .find(|(n, ..)| n.as_str() == "Viewmodel rig")
+        .map(|(_, t, v)| (*t, *v))
+        .expect("the viewmodel rig")
+}
+
+fn set_state(app: &mut App, to: pieced::shared::AppState) {
+    app.world_mut()
+        .resource_mut::<NextState<pieced::shared::AppState>>()
+        .set(to);
+    for _ in 0..3 {
+        app.update();
+    }
+}
+
+#[test]
+fn the_gun_is_put_away_while_the_pause_menu_is_open_and_back_after() {
+    use pieced::shared::AppState;
+    let mut app = rig_app();
+    set_state(&mut app, AppState::Playing);
+    for _ in 0..30 {
+        app.update();
+    }
+    assert_eq!(
+        rig(&mut app).1,
+        Visibility::Visible,
+        "the gun is up in play"
+    );
+    set_state(&mut app, AppState::Paused);
+    assert_eq!(
+        rig(&mut app).1,
+        Visibility::Hidden,
+        "put away in the pause menu"
+    );
+    set_state(&mut app, AppState::Playing);
+    assert_eq!(rig(&mut app).1, Visibility::Visible, "back up on resume");
+}
+
+#[test]
+fn only_the_gallery_inspect_resource_swaps_the_rifle_into_its_inspect_pose() {
+    use pieced::{shared::AppState, viewmodel::ViewmodelInspect};
+    let mut app = rig_app();
+    set_state(&mut app, AppState::Playing);
+    for _ in 0..30 {
+        app.update();
+    }
+    let hip = rig(&mut app).0;
+    assert!(
+        hip.translation.distance(RIFLE.hip) < 0.02,
+        "at the hip: {hip:?}"
+    );
+    app.world_mut().insert_resource(ViewmodelInspect);
+    app.update();
+    let inspect = rig(&mut app).0;
+    let want = RIFLE_INSPECT.rig_translation(&RIFLE);
+    assert!(
+        inspect.translation.distance(want) < 0.02,
+        "inspect pose: {inspect:?}"
+    );
+    assert!(
+        inspect.rotation.angle_between(euler(RIFLE_INSPECT.euler)) < 0.05,
+        "turned toward the camera"
+    );
+    app.world_mut().remove_resource::<ViewmodelInspect>();
+    app.update();
+    assert!(
+        rig(&mut app).0.translation.distance(RIFLE.hip) < 0.02,
+        "back at the hip"
+    );
 }

@@ -7,6 +7,9 @@
 //!   headshot, a shield break, the elimination), the fort's pieces all place and
 //!   the ghost shows beside it, the pause menu is up, and the knight's chest sits
 //!   where the target paints him, in view and not behind a piece;
+//! - the knight views frame him as close and as big as the targets paint him
+//!   (polish round 1), from a crouched, low eye; only T02 shows the rifle's
+//!   inspect pose;
 //! - [`GalleryFreeze`] stops the knight's animation clock and eye timers, and the
 //!   dummy's movement (strafing, mid-jump, respawn), and everything resumes when
 //!   it lifts.
@@ -248,6 +251,60 @@ fn a_gallery_run_captures_every_view_on_its_moment() {
         record("T10").camera.unwrap().forward().y > 0.2,
         "T10 looks up"
     );
+}
+
+/// How far (m) the camera stands from the knight's chest in each knight view,
+/// and how tall (half-heights, feet to hat) he shows: the targets paint him big.
+const KNIGHT_FRAMING: [(&str, f32, f32); 6] = [
+    ("T03", 8.0, 0.33),
+    ("T04", 4.0, 0.6),
+    ("T05", 5.0, 0.5),
+    ("T06", 6.0, 0.42),
+    ("T07", 4.5, 0.55),
+    ("T08", 5.0, 0.5),
+];
+
+#[test]
+fn the_knight_views_frame_him_close_and_big_from_a_low_eye() {
+    let (_, records, table) = run_gallery();
+    let fov = GALLERY_FOV_DEG.to_radians();
+    let crouch_eye = pieced::movement::MovementTuning::default().crouch_eye_height;
+    for (id, distance, height) in KNIGHT_FRAMING {
+        let (view, record) = table
+            .iter()
+            .zip(&records)
+            .find(|(v, _)| v.id == id)
+            .unwrap();
+        assert!(view.crouch, "{id}: a low eye, as the target paints it");
+        let camera = record.camera.unwrap();
+        assert!(
+            (camera.translation.y - crouch_eye).abs() < 0.05,
+            "{id}: eye at {}",
+            camera.translation.y
+        );
+        let feet = Vec3::from_array(record.knight_feet.unwrap());
+        let chest = feet + Vec3::Y;
+        let d = camera.translation.distance(chest);
+        assert!(
+            (d - distance).abs() < 0.35,
+            "{id}: the knight {d:.2} m out, want about {distance} m"
+        );
+        let top = screen_point(&camera, fov, feet + Vec3::Y * 1.84).unwrap();
+        let bottom = screen_point(&camera, fov, feet).unwrap();
+        let tall = top.y - bottom.y;
+        assert!(
+            tall >= height,
+            "{id}: the knight shows {tall:.2} half-heights tall, want at least {height}"
+        );
+    }
+    // Only the rifle close-up uses the inspect pose; views without the knight
+    // near keep the standing eye.
+    for view in &table {
+        assert_eq!(view.inspect, view.id == "T02", "{}: inspect pose", view.id);
+        if !KNIGHT_FRAMING.iter().any(|(id, ..)| *id == view.id) {
+            assert!(!view.crouch, "{}: standing", view.id);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -27,14 +27,15 @@ use bevy::{light::NotShadowCaster, mesh::MeshTag, prelude::*};
 pub const HAT_MODEL: &str = "knight_hat";
 /// How many hats can lie on the grass at once (one per eliminated knight).
 pub const HAT_POOL: usize = 4;
-/// Blob shadow under a hat.
-const HAT_SHADOW: f32 = 0.26;
+/// Blob shadow under a hat (its radius, grown with the hat).
+const HAT_SHADOW: f32 = 0.2 * HAT_SCALE;
 /// Where the hat sits on the knight's head (feet space, m), when his rig
 /// can't say (no model).
 pub const HAT_HEIGHT: f32 = 1.72;
 /// The dropped hat grows this much bigger than it sat on his head over its
-/// first [`HAT_GROW_TIME`] s, cartoon-style, so it reads on the grass (T08).
-pub const HAT_SCALE: f32 = 1.3;
+/// first [`HAT_GROW_TIME`] s, cartoon-style, so it reads on the grass (T08
+/// paints it about a metre across).
+pub const HAT_SCALE: f32 = 2.1;
 pub const HAT_GROW_TIME: f32 = 0.2;
 
 /// A pooled hat prop's root. `victim` is the knight it fell off, while shown.
@@ -321,10 +322,11 @@ pub(super) fn simulate_hats(
 }
 
 /// The hat's launch when its knight is eliminated: up and toward whoever is
-/// watching (so it lands in view, as in T08), a little sideways, spinning.
+/// watching, so it lands in view in front of the poof (as in T08), a little
+/// sideways, spinning.
 pub fn hat_launch(toward: Vec3, side: f32, spin_sign: f32) -> (Vec3, f32) {
     let toward = toward.with_y(0.0).normalize_or(Vec3::Z);
     let right = Vec3::Y.cross(toward);
-    let vel = Vec3::Y * 1.2 + toward * 1.25 + right * side;
+    let vel = Vec3::Y * 1.2 + toward * 2.0 + right * side;
     (vel, 11.0 * spin_sign)
 }

@@ -26,7 +26,7 @@ use crate::{
     },
     telemetry::FrameStats,
     tuning::Tuning,
-    viewmodel::CrystalGlow,
+    viewmodel::{CrystalGlow, ViewmodelSet},
 };
 use bevy::{prelude::*, text::FontSize, ui::UiSystems, window::PrimaryWindow};
 
@@ -43,8 +43,11 @@ pub(super) fn build(app: &mut App) {
         )
         .add_systems(
             PostUpdate,
+            // Projected with the camera as it renders: after the eye follow,
+            // the shake and the gallery's framing (all before ViewmodelSet).
             place_damage_numbers
                 .after(CameraFollowSet)
+                .after(ViewmodelSet)
                 .before(UiSystems::Prepare),
         );
 }

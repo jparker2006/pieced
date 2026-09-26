@@ -77,7 +77,7 @@ pub const WOBBLE_KICK: f32 = 2.4;
 pub const POP_K: f32 = 240.0;
 pub const POP_C: f32 = 13.0;
 /// Headshot hat bounce: launch speed (m/s), gravity (m/s²), restitution.
-pub const HAT_POP: f32 = 2.3;
+pub const HAT_POP: f32 = 3.4;
 pub const HAT_GRAVITY: f32 = 24.0;
 pub const HAT_BOUNCE: f32 = 0.35;
 /// Eyes: blink every 2–5 s for this long; wide this long after a hit.

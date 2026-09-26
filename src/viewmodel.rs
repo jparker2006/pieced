@@ -23,7 +23,10 @@
 //! Every frame (PostUpdate, after the camera follows the eye) the rig's pose is
 //! composed from the hip/ADS pose, look and movement sway, walk bob, spring
 //! recoil, reload and switch animations, and the muzzle's world position is
-//! published in [`MuzzlePoint`], where spell bolts start.
+//! published in [`MuzzlePoint`], where spell bolts start. While the game is
+//! paused the rig is hidden, so the pause menu shows over the world alone (T12).
+//! The gallery's rifle close-up (T02) swaps the hip pose for an inspect pose
+//! ([`ViewmodelInspect`]).
 
 pub mod anim;
 pub mod mesh;
@@ -44,7 +47,9 @@ use crate::{
         CameraFollowSet, CurrentFov, MainCamera, VIEWMODEL_CAMERA_ORDER, VIEWMODEL_LAYER,
         WorldTarget,
     },
-    shared::{ActiveTool, Ads, GameCue, LookAngles, PieceKind, Player, ShotFired, WeaponKind},
+    shared::{
+        ActiveTool, Ads, AppState, GameCue, LookAngles, PieceKind, Player, ShotFired, WeaponKind,
+    },
     tuning::Tuning,
 };
 use anim::{
@@ -75,6 +80,13 @@ pub struct MuzzlePoint(pub Option<Vec3>);
 /// The viewmodel camera.
 #[derive(Component, Debug)]
 pub struct ViewmodelCamera;
+
+/// Gallery only (target T02): while this resource exists the held rifle shows
+/// in its inspect pose ([`models::RIFLE_INSPECT`]) instead of the hip pose.
+/// Only `scenario::gallery` inserts it, for the one view that asks; play never
+/// does. ADS, sway, recoil and reloads still add on top as usual.
+#[derive(Resource, Debug, Default, Clone, Copy)]
+pub struct ViewmodelInspect;
 
 /// A gun's muzzle flash, at its `MuzzleTip`. This module shows it for two
 /// frames per shot; `fx::spells` gives it its spell look (mesh, material, glow).
@@ -820,8 +832,12 @@ fn animate_viewmodel(
     main_camera: Option<Single<&Transform, (With<MainCamera>, Without<VmPart>)>>,
     mut vm_camera: Option<Single<&mut Projection, With<ViewmodelCamera>>>,
     mut parts: Query<(&VmPart, &mut Transform, &mut Visibility)>,
+    inspect: Option<Res<ViewmodelInspect>>,
+    app_state: Option<Res<State<AppState>>>,
 ) {
     let dt = time.delta_secs();
+    // The pause menu shows over the world alone, the gun put away (T12).
+    let paused = app_state.is_some_and(|s| *s.get() == AppState::Paused);
     let Some(player) = player else {
         for (part, _, mut vis) in &mut parts {
             if *part == VmPart::Rig {
@@ -1054,9 +1070,16 @@ fn animate_viewmodel(
     st.shown = gun;
 
     // Compose the rig pose.
-    let hip = PoseOffset {
-        pos: spec.hip,
-        euler: spec.hip_euler,
+    let hip = match (inspect, shown) {
+        // The gallery's rifle close-up (T02).
+        (Some(_), Item::Rifle) => PoseOffset {
+            pos: models::RIFLE_INSPECT.rig_translation(spec),
+            euler: models::RIFLE_INSPECT.euler,
+        },
+        _ => PoseOffset {
+            pos: spec.hip,
+            euler: spec.hip_euler,
+        },
     };
     let base = if gun.is_some() {
         hip.scaled(1.0 - ads_e)
@@ -1115,7 +1138,8 @@ fn animate_viewmodel(
         * if st.flash_kind == WeaponKind::Pump {
             1.9
         } else {
-            1.0
+            // The rifle's star, big as T03 paints it.
+            1.6
         };
     let build_kind = match tool {
         ActiveTool::Build(kind) => Some(*kind),
@@ -1125,7 +1149,7 @@ fn animate_viewmodel(
         let want = match *part {
             VmPart::Rig => {
                 *tf = rig_tf;
-                true
+                !paused
             }
             VmPart::Item(it) => it == shown,
             VmPart::Kick(kind) => {

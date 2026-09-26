@@ -21,8 +21,9 @@ use pieced::{
             bolt_progress, orbit_offset, pellet_flight, rifle_flight, screen_to_path,
         },
         spells::{
-            BOLT_POOL, BoltHead, DIZZY_TIME, HALO_POOL, ImpactKind, SpellGlow, SpellHalo,
-            SpellSolid, SpellTiming, SpellsPlugin, pool_counts,
+            BOLT_POOL, BoltHead, DIZZY_TIME, HALO_POOL, ImpactKind, RIFLE_HEAD_ANGLE,
+            RIFLE_HEAD_SIZE, RIFLE_TRAIL_SPARKLES, SpellGlow, SpellHalo, SpellSolid, SpellTiming,
+            SpellsPlugin, pool_counts,
         },
     },
     hud::{HitFeedbackStats, HudPlugin},
@@ -418,6 +419,52 @@ fn the_freeze_holds_a_bolt_in_flight() {
     assert!(
         game.visible_heads()[0].1.distance(end) < 1e-3,
         "lands once let go"
+    );
+}
+
+/// T03 paints the rifle bolt as a big glowing starburst trailing a dense
+/// sparkle ribbon: the head is at least [`RIFLE_HEAD_ANGLE`] across wherever
+/// it flies, and the path is strewn with [`RIFLE_TRAIL_SPARKLES`] sparkles.
+#[test]
+fn a_rifle_bolt_is_a_big_starburst_with_a_dense_sparkle_trail() {
+    let mut game = Game::new(66, |_| {});
+    let feet = game.feet(game.dummy);
+    game.aim_at(chest(feet));
+    game.clear_shots();
+    game.fire();
+    let shot = game.shots().pop().expect("the shot");
+    let (origin, end) = (shot.origin, shot.traces[0].end);
+    let world = game.app.world_mut();
+    let heads: Vec<(Vec3, f32)> = world
+        .query::<(&BoltHead, &Transform, &Visibility)>()
+        .iter(world)
+        .filter(|(_, _, v)| **v == Visibility::Visible)
+        .map(|(_, t, _)| (t.translation, t.scale.x))
+        .collect();
+    assert_eq!(heads.len(), 1, "one head in flight");
+    let (at, size) = heads[0];
+    let want = RIFLE_HEAD_SIZE.max(at.distance(origin) * RIFLE_HEAD_ANGLE);
+    assert!(
+        size >= want * 0.99 && RIFLE_HEAD_ANGLE >= 0.14,
+        "head {size:.3} m across at {:.1} m (want {want:.3})",
+        at.distance(origin)
+    );
+    // By the frame after, every trail sparkle is out along the path (the
+    // impact at its end not counted).
+    game.frames(2);
+    let world = game.app.world_mut();
+    let trail = world
+        .query_filtered::<(&Transform, &Visibility), With<SpellGlow>>()
+        .iter(world)
+        .filter(|(t, v)| {
+            **v == Visibility::Visible
+                && off_segment(t.translation, origin, end) < 0.5
+                && t.translation.distance(end) > 1.5
+        })
+        .count();
+    assert!(
+        trail >= RIFLE_TRAIL_SPARKLES && RIFLE_TRAIL_SPARKLES >= 10,
+        "{trail} sparkles along the trail"
     );
 }
 
