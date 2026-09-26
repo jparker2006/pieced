@@ -22,7 +22,9 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["NSA
 
 [profile.dev]
 opt-level = 1
-debug = "line-tables-only"
+# No debug info: on macOS, split debug info leaves every rebuild's object files in
+# the shared target dir (18.7 GB of them by 2026-09-26). Panics still name file:line.
+debug = false
 
 [profile.dev.package."*"]
 opt-level = 3
