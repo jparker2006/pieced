@@ -74,6 +74,8 @@ pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "floor_plank_crack2",
     "gloves",
     "knight",
+    // The prop the knight's hat becomes when he is eliminated (src/fx/hat.rs).
+    "knight_hat",
     "plank_splinter",
     "pump",
     "ramp_plank",

@@ -30,6 +30,8 @@ from `art/palette.json`, sampled from the target images by
 | `models/axis_probe.json` | `art/blender/assets/probe.py` | Sidecar |
 | `models/knight.glb` | `art/blender/assets/knight.py` | The knight-wizard enemy, 1.86 m, fitted to the dummy's hitboxes; named parts, joint pivots and eye states |
 | `models/knight.json` | `art/blender/assets/knight.py` | Sidecar |
+| `models/knight_hat.glb` | `art/blender/assets/knight.py` | The knight's `Hat` on its own, pivot at the brim's base: the prop that drops off him when he's eliminated |
+| `models/knight_hat.json` | `art/blender/assets/knight.py` | Sidecar |
 | `models/gloves.glb` | `art/blender/assets/gloves.py` | White four-finger cartoon gloves (`GloveR`, `GloveL`) with dark sleeves; each pivots on its grip frame |
 | `models/gloves.json` | `art/blender/assets/gloves.py` | Sidecar |
 | `models/pump.glb` | `art/blender/assets/guns.py` | Pump viewmodel: bell muzzle, sliding `PumpGrip`, violet `Crystal` in spinning gold `Rings`, `Shard` shell |
@@ -93,6 +95,7 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 | `shaders/ground.wgsl` | hand-written, used by `src/look/ground.rs` | The island's toon-lit grass with the glowing build grid in world space |
 | `shaders/barrier.wgsl` | hand-written, used by `src/arena/visuals/barrier.rs` | The island's shimmering rune barrier on the arena edge (translucent, fades in near the player) |
 | `shaders/waterfall.wgsl` | hand-written, used by `src/far/waterfall.rs` | Additive scrolling waterfall streaks for the far models |
+| `shaders/spell.wgsl` | hand-written, used by `src/fx/material.rs` | Additive, vertex-coloured spell glow (bolts, sparks, bursts, shield glass) tinted per effect through its `MeshTag` |
 
 ## UI images (`assets/ui/`)
 

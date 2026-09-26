@@ -1,8 +1,15 @@
-//! Slice E — `fx_check`: a scripted tour of the viewmodel and effects, captured
-//! mid-action: rifle fire (tracers + muzzle flash), rifle ADS, the rifle reload,
-//! a pump blast at the dummy (sparks, hit pops, shield shimmer and break), the
-//! pump rack and shell reload, wood chips and a piece break, an elimination
-//! burst, and build mode with the gun lowered.
+//! Slice E — `fx_check`: a scripted tour of the viewmodel and the spells,
+//! captured mid-action: rifle bolts (muzzle burst, bolt, shield shimmer),
+//! rifle ADS, the rifle reload, a pump blast at the knight (the violet-and-gold
+//! fan and sparks), the pump rack and shell reload, a fizzle on the grass,
+//! brick chips and a piece break, the elimination poof and the dropped hat, a
+//! headshot, a shield break with circling stars, and build mode.
+//!
+//! **Gate S6 evidence.** `summary.json` → `scenario.spell_timing` logs every
+//! hit of the player's on the knight by rendered-frame index: the frame the hit
+//! registered, and the frames its impact effect, hitmarker and damage number
+//! appeared on; and every rifle bolt's firing and landing frame
+//! (`fx::spells::SpellTiming`). `scenario.s6` sums it up.
 
 use super::{
     Director, DirectorStatus, ScenarioClock, capture, player_entity, set_look, teleport,
@@ -12,6 +19,8 @@ use crate::{
     building::{PieceSlot, damage_piece, place_piece},
     combat::{Downed, Loadout},
     dummy::Dummy,
+    fx::{sim::BOLT_ARRIVAL_FRAMES, spells::SpellTiming},
+    hud::HitFeedbackStats,
     shared::{
         ActiveTool, EyeHeight, Facing, GridCell, Health, PieceKind, PreviousFeet, WeaponKind,
     },
@@ -285,29 +294,105 @@ impl Director for FxCheck {
                 self.snap(world, clock, "11_elim_a");
                 self.snap_later(t + 0.12, "11b_elim_b");
                 self.snap_later(t + 0.3, "11c_elim_c");
+                self.snap_later(t + 0.45, "11d_elim_hat_lands");
+                self.snap_later(t + 1.5, "11e_hat_on_the_grass");
+            }
+        }
+
+        // Headshot from 7 m: a gold flash and his hat bouncing.
+        if t >= 13.2 && self.once("head_setup") {
+            place_dummy(world, DUMMY_SPOT, 100.0, 0.0);
+            teleport(world, Vec3::new(2.0, 0.0, 1.0));
+        }
+        if (13.2..14.4).contains(&t) {
+            aim_at(world, DUMMY_SPOT + Vec3::Y * 1.62);
+            if t >= 13.7 && !self.done.contains("headshot") && rifle_fires_now(world) {
+                self.once("headshot");
+                with_intent(world, |i| i.fire_pressed = true);
+                self.snap(world, clock, "13_headshot");
+                self.snap_later(t + 0.1, "13b_headshot_after");
+            }
+        }
+
+        // Shield break: glass bursts off and stars circle his helmet.
+        if t >= 14.4 && self.once("break_setup") {
+            place_dummy(world, DUMMY_SPOT, 100.0, 10.0);
+        }
+        if (14.4..15.8).contains(&t) {
+            aim_at(world, chest);
+            if t >= 14.9 && !self.done.contains("shield_break") && rifle_fires_now(world) {
+                self.once("shield_break");
+                with_intent(world, |i| i.fire_pressed = true);
+                self.snap(world, clock, "14_shield_break");
+                self.snap_later(t + 0.15, "14b_shield_break_shards");
+                self.snap_later(t + 0.55, "14c_shield_break_stars");
             }
         }
 
         // Build mode: the gun lowers away and the blueprint comes up.
-        if t >= 12.8 && self.once("build") {
+        if t >= 15.8 && self.once("build") {
             with_intent(world, |i| i.fire = false);
             select(world, ActiveTool::Build(PieceKind::Wall));
             set_look(world, 0.0, -0.25);
         }
-        if t >= 12.87 && self.once("build_mid") {
+        if t >= 15.87 && self.once("build_mid") {
             self.snap(world, clock, "12a_to_build_mid");
         }
-        if t >= 13.4 && self.once("build_snap") {
+        if t >= 16.4 && self.once("build_snap") {
             self.snap(world, clock, "12_build_mode");
         }
-        if t >= 13.8 {
+        if t >= 16.8 {
             DirectorStatus::Done
         } else {
             DirectorStatus::Running
         }
     }
 
-    fn summary(&mut self, _world: &mut World) -> Value {
-        json!({ "captures": self.shots, "kill_frame": self.kill_frame })
+    fn summary(&mut self, world: &mut World) -> Value {
+        let timing = world.get_resource::<SpellTiming>().cloned();
+        let hud = world.get_resource::<HitFeedbackStats>().cloned();
+        json!({
+            "captures": self.shots,
+            "kill_frame": self.kill_frame,
+            "s6": timing.as_ref().map(s6_verdict),
+            "hud_feedback": hud,
+            "spell_timing": timing,
+        })
     }
+}
+
+/// Gate S6 from the spell timing log: every hit's impact, hitmarker and damage
+/// number on the frame the hit registered, and every rifle bolt on its hit
+/// point within [`BOLT_ARRIVAL_FRAMES`] frames.
+pub fn s6_verdict(timing: &SpellTiming) -> Value {
+    let hits = timing.hits.len();
+    let same = |f: Option<u64>, frame: u64| f == Some(frame);
+    let all_same = timing
+        .hits
+        .iter()
+        .filter(|h| {
+            h.hit_this_frame
+                && same(h.impact_frame, h.frame)
+                && same(h.marker_frame, h.frame)
+                && same(h.number_frame, h.frame)
+        })
+        .count();
+    let bolts = timing.bolts.len();
+    let landed: Vec<u64> = timing
+        .bolts
+        .iter()
+        .filter_map(|b| b.arrived_frame.map(|a| a - b.fired_frame))
+        .collect();
+    let in_time = landed
+        .iter()
+        .filter(|&&f| f <= u64::from(BOLT_ARRIVAL_FRAMES))
+        .count();
+    json!({
+        "hits": hits,
+        "hits_with_impact_marker_and_number_on_the_hit_frame": all_same,
+        "bolts": bolts,
+        "bolts_on_their_hit_point_within_2_frames": in_time,
+        "worst_bolt_frames": landed.iter().max(),
+        "pass": hits > 0 && all_same == hits && bolts > 0 && in_time == bolts,
+    })
 }

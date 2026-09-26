@@ -23,7 +23,7 @@
 //! Every frame (PostUpdate, after the camera follows the eye) the rig's pose is
 //! composed from the hip/ADS pose, look and movement sway, walk bob, spring
 //! recoil, reload and switch animations, and the muzzle's world position is
-//! published in [`MuzzlePoint`] for tracers.
+//! published in [`MuzzlePoint`], where spell bolts start.
 
 pub mod anim;
 pub mod mesh;
@@ -68,13 +68,18 @@ pub struct ViewmodelSet;
 
 /// World-space position of the held gun's muzzle as it appears on screen this
 /// frame (projected from the viewmodel FOV into the world camera), or `None`
-/// when no gun is up. Tracers start here.
+/// when no gun is up. Spell bolts start here.
 #[derive(Resource, Debug, Default, Clone, Copy)]
 pub struct MuzzlePoint(pub Option<Vec3>);
 
 /// The viewmodel camera.
 #[derive(Component, Debug)]
 pub struct ViewmodelCamera;
+
+/// A gun's muzzle flash, at its `MuzzleTip`. This module shows it for two
+/// frames per shot; `fx::spells` gives it its spell look (mesh, material, glow).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MuzzleFlash(pub WeaponKind);
 
 /// The `BootGate` key held until the gun and glove models are attached, dressed
 /// and registered for pipeline warm-up.
@@ -481,6 +486,7 @@ fn spawn_viewmodel(
         commands.spawn((
             Name::new(format!("Viewmodel {kind:?} flash")),
             VmPart::Flash(kind),
+            MuzzleFlash(kind),
             Mesh3d(flash.clone()),
             MeshMaterial3d(flash_mat.clone()),
             Transform::from_translation(gun_spec(kind).muzzle),
