@@ -8,7 +8,8 @@ flared, rolled cuff, over a thin dark sleeve that runs off screen. Two parts:
 
 Each glove is authored in its grip frame, and that frame is the part's pivot:
 place a glove by giving its node the gun's `GripR` / `GripL` attach transform
-(`art/blender/assets/guns.py` explains both frames). Both guns share the pistol
+(`art/blender/assets/guns.py` explains both frames; in Bevy, map the sidecar
+frame onto the glTF node with `viewmodel::model_to_node`). Both guns share the pistol
 grip and size their left-hand grip to `guns.GRIP_L_HALF`, so one pair of gloves
 fits both. Here the gloves sit where they hold the rifle, then the pair is lifted
 so its lowest point is on the ground (the pipeline's pivot rule).

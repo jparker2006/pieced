@@ -25,6 +25,7 @@ use pieced::{
         },
         model_to_node,
         models::{GLOVES_MODEL, GunSpec, PUMP, PUMP_RACK_TRAVEL, RIFLE, gun_model, gun_spec},
+        node_to_model,
     },
 };
 use std::{f32::consts::PI, time::Duration};
@@ -266,6 +267,9 @@ fn rifle_reload_pops_the_crystal_out_and_slides_a_fresh_one_in() {
     assert_eq!(chamber_transform(rest, half, 0.0), rest);
 }
 
+// The glove holds a crystal from below, so the crystal shows above it.
+const _: () = assert!(HAND_HOLD_OFFSET.y < -0.03);
+
 #[test]
 fn the_left_glove_carries_the_fresh_crystal_in() {
     for spec in specs() {
@@ -277,10 +281,6 @@ fn the_left_glove_carries_the_fresh_crystal_in() {
         assert!(
             end.translation.distance(at + HAND_HOLD_OFFSET) < 1e-5,
             "holds the crystal"
-        );
-        assert!(
-            HAND_HOLD_OFFSET.y < -0.03,
-            "from below, so the crystal shows"
         );
         // Its forearm reaches back toward you on your side, not up into the sky.
         let arm = end.rotation * spec.grip_l.rotation.inverse() * GLOVE_L_FOREARM;
@@ -488,41 +488,45 @@ fn gloves_land_on_each_guns_grips_and_parts_on_their_sockets() {
     update_until(&mut app, "the models to spawn", |app| {
         app.world().resource::<Spawned>().0.len() >= 4
     });
-    for &(kind, gloves, gun) in &roots {
-        let spec = gun_spec(kind);
-        // Rest poses: every animated part's node, mapped back, is where the
-        // sidecar says (the crystal on its socket).
-        let crystal = find(&mut app, gun, "Crystal");
-        let rest = *app.world().get::<Transform>(crystal).unwrap();
-        let rest_model = model_to_node(rest); // the half turn is its own inverse
+    // The gloves model is authored holding the rifle (then lifted onto the
+    // ground on its own), so putting its gloves on the rifle's grips must give
+    // back exactly the authored nodes, up to that lift (a pure Y shift). This
+    // pins how a model-space frame maps onto a glTF part node.
+    let (_, rifle_gloves, _) = roots[0];
+    let mut lift = None;
+    for (name, grip) in [("GloveR", RIFLE.grip_r), ("GloveL", RIFLE.grip_l)] {
+        let glove = find(&mut app, rifle_gloves, name);
+        let authored = *app.world().get::<Transform>(glove).unwrap();
+        let placed = model_to_node(grip);
         assert!(
-            rest_model.translation.distance(spec.socket) < 1e-3,
+            placed.rotation.angle_between(authored.rotation) < 1e-3,
+            "{name}: placed turned {} rad from the authored node",
+            placed.rotation.angle_between(authored.rotation)
+        );
+        let shift = authored.translation - placed.translation;
+        assert!(shift.xz().length() < 1e-3, "{name}: shifted {shift}");
+        let dy = *lift.get_or_insert(shift.y);
+        assert!(
+            (shift.y - dy).abs() < 1e-3,
+            "{name}: both gloves share one lift"
+        );
+    }
+    for &(kind, _, gun) in &roots {
+        let spec = gun_spec(kind);
+        // Every animated part's rest node, mapped to model space, is where the
+        // sidecar says (the crystal on its socket, unturned).
+        let crystal = find(&mut app, gun, "Crystal");
+        let rest = node_to_model(*app.world().get::<Transform>(crystal).unwrap());
+        assert!(
+            rest.translation.distance(spec.socket) < 1e-3,
             "{kind:?}: crystal node at {} vs socket {}",
-            rest_model.translation,
+            rest.translation,
             spec.socket
         );
-        // Put the gloves on the grips as the viewmodel does.
-        for (name, grip) in [("GloveR", spec.grip_r), ("GloveL", spec.grip_l)] {
-            let glove = find(&mut app, gloves, name);
-            *app.world_mut().get_mut::<Transform>(glove).unwrap() = model_to_node(grip);
-        }
-    }
-    app.update();
-    for &(kind, gloves, _) in &roots {
-        let spec = gun_spec(kind);
-        for (name, grip) in [("GloveR", spec.grip_r), ("GloveL", spec.grip_l)] {
-            let glove = find(&mut app, gloves, name);
-            let world = app.world().get::<GlobalTransform>(glove).unwrap();
-            let (_, rotation, translation) = world.to_scale_rotation_translation();
-            assert!(
-                translation.distance(grip.translation) < 1e-4,
-                "{kind:?} {name}: {translation} vs grip {}",
-                grip.translation
-            );
-            assert!(
-                rotation.angle_between(grip.rotation) < 1e-3,
-                "{kind:?} {name}: turned like its grip"
-            );
-        }
+        assert!(rest.rotation.angle_between(Quat::IDENTITY) < 1e-3);
+        let back = model_to_node(rest);
+        let node = *app.world().get::<Transform>(crystal).unwrap();
+        assert!(back.translation.distance(node.translation) < 1e-5);
+        assert!(back.rotation.angle_between(node.rotation) < 1e-5);
     }
 }

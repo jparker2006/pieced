@@ -571,16 +571,23 @@ fn attach_models(
     }
 }
 
-/// Maps a model-space transform to a glTF part node's local transform: the
-/// node's glTF parent is the asset's root node (at the origin), under the model
-/// root's forward-fix node, a half turn that is its own inverse.
+/// Maps a frame in model space (a sidecar attach point, or a part's pose) to
+/// a glTF part node's local transform.
+///
+/// The node's glTF parent is the asset's root node (at the origin), under the
+/// model root's forward-fix node, a half turn `F` about +Y. A node frame `N`
+/// sits at `F·N` in model space, but its mesh is stored in glTF axes, which
+/// are the model axes turned by `F` too, so the frame the sidecar describes is
+/// `F·N·F`. The half turn is its own inverse, so both directions are the same
+/// conjugation.
 pub fn model_to_node(t: Transform) -> Transform {
-    Transform::from_rotation(MODEL_FORWARD_FIX) * t
+    let fix = Transform::from_rotation(MODEL_FORWARD_FIX);
+    fix * t * fix
 }
 
-/// The inverse of [`model_to_node`] (the same half turn).
-fn node_to_model(t: Transform) -> Transform {
-    Transform::from_rotation(MODEL_FORWARD_FIX) * t
+/// The inverse of [`model_to_node`] (the same conjugation).
+pub fn node_to_model(t: Transform) -> Transform {
+    model_to_node(t)
 }
 
 /// After the look has dressed a viewmodel model: finds its animated parts,
