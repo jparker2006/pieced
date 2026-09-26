@@ -123,6 +123,15 @@ The goal is complete only when gates **S1–S9** are all **PASS**, each with rec
 
 Keep working on everything else while waiting on Jake.
 
+## Where to launch
+
+Launch from a **new Claude Code session opened in `outputs/pieced`**, for three reasons:
+- the `pieced-builder` agent type and `isolation: "worktree"` then work directly;
+- the Blender MCP tools load;
+- the session starts with a clean context.
+
+If a session elsewhere must run it, the orchestrator creates worktrees with `git -C <pieced> worktree add` and dispatches general-purpose Opus subagents that follow `.claude/agents/pieced-builder.md`, as in Milestone 1.
+
 ## Launcher (paste after `/goal`, well under 4,000 characters)
 
 > Read `docs/M2-GOAL.md` and `docs/M2-SPEC.md` in the Pieced repo (`outputs/pieced`) and execute the brief end to end as orchestrator, using `pieced-builder` subagents in parallel worktrees, merging and pushing to `main` after every green step. Never run full-screen, timing or Blender-window work unless Jake has said "go". Done only when `docs/evidence/M2-report.md` on pushed `main` shows gates S1–S9 all PASS with evidence (S2 on battery with Low Power Mode on; S1 scores and S8 verdict given by Jake in chat). Stop and ask Jake for the conditions listed in the brief.
