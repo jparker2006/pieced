@@ -94,16 +94,15 @@ HAT_BASE = Vector((0.0, 0.0, 1.72))
 TORSO_ORIGIN = Vector((0.0, 0.0, 0.62))
 
 # Helmet: rings are shrunk to stay this far inside the head sphere's centre.
-HELMET_FIT = HEAD_RADIUS + 0.038
+HELMET_FIT = HEAD_RADIUS + 0.046
 HAT_FIT = (HEAD_RADIUS + 0.012, HEAD_RADIUS + 0.043)  # hat soft-clamp start and limit
 SLIT = (1.588, 1.69)  # visor slit, bottom and top
 SLIT_DEPTH = 0.035
 SLOTS = (1.522, 1.572)  # breathing slots, bottom and top
 SLOT_DEPTH = 0.018
-PLATE = (0.2, 0.172, 0.088)  # the face plate's ring: half width, half depth, corner radius
+PLATE = (0.225, 0.19, 0.11)  # the face plate's ring: half width, half depth, corner radius
 EYE_X = 0.056
 EYE_Z = 1.639
-EYE_FLOOR = -PLATE[1] + SLIT_DEPTH  # the slit's back wall (y)
 
 
 def mirror(v, s):
@@ -183,6 +182,11 @@ def fit_in_sphere(z, a, b, c, centre_z, radius):
     limit = math.sqrt(max(radius * radius - dz * dz, 1e-6))
     k = min(1.0, limit / rrect_reach(a, b, c))
     return a * k, b * k, c * k
+
+
+# The slit's back wall (y) at the eyes' height: the face plate there is shrunk
+# into the head sphere like every helmet ring, a hair behind the recess.
+EYE_FLOOR = -fit_in_sphere(EYE_Z, *PLATE, HEAD_CENTER, HELMET_FIT)[1] + SLIT_DEPTH + 0.002
 
 
 def ring(bm, pts, z, dx=0.0, dy=0.0, wave=None, lift=None):
@@ -349,7 +353,9 @@ _SLOT_EDGES = (0.022, 0.046, 0.075, 0.099)
 
 
 def build_helmet():
-    """A bucket helmet filling the head sphere: flat face plate, visor slit, slots."""
+    """A big round bucket helmet filling the head sphere (and its tolerance): a flat
+    face plate with the visor slit and slots, well-rounded corners, a bulging
+    belly and a domed top tucked under the hat's brim."""
     b = Builder()
     bm = b.bm
     ax = PLATE[0] - PLATE[2]
@@ -357,19 +363,20 @@ def build_helmet():
     # (z, a, b, c) as drawn; each ring is then shrunk into the head sphere, which
     # tapers the bottom and domes the top.
     profile = [
-        (1.446, 0.14, 0.12, 0.065),
-        (1.465, 0.17, 0.148, 0.075),
-        (1.49, 0.19, 0.165, 0.085),
-        (1.508, *PLATE),
+        (1.446, 0.15, 0.13, 0.09),
+        (1.462, 0.18, 0.158, 0.1),
+        (1.482, 0.204, 0.176, 0.106),
+        (1.505, *PLATE),
         (SLOTS[0], *PLATE),
         (SLOTS[1], *PLATE),
         (SLIT[0], *PLATE),
         (SLIT[1], *PLATE),
         (1.703, *PLATE),
-        (1.714, 0.19, 0.163, 0.09),
-        (1.726, 0.165, 0.14, 0.088),
-        (1.735, 0.125, 0.105, 0.075),
-        (1.74, 0.08, 0.07, 0.05),
+        # The top stays under the hat's brim (which starts 0.229 m out).
+        (1.713, 0.2, 0.172, 0.11),
+        (1.724, 0.18, 0.155, 0.1),
+        (1.733, 0.14, 0.12, 0.085),
+        (1.74, 0.09, 0.078, 0.06),
     ]
     rings = []
     for z, a, d, c in profile:
@@ -628,29 +635,32 @@ def build_cape():
 
 
 def build_arm(s):
-    """Pauldron, sleeve, vambrace and an oversized gauntlet fist, hanging from the shoulder."""
+    """A big pauldron, a thick sleeve and vambrace and an oversized cartoon
+    gauntlet fist, hanging from the shoulder. The fist and cuff reach as far out
+    as the capsule's 5 cm tolerance allows (the width the targets' big gloves
+    need has to come from there)."""
     b = Builder()
     bm = b.bm
 
     def m(x, y, z):
         return Vector((s * x, y, z))
 
-    b.tag(blob(bm, m(0.212, 0.0, 1.228), (0.095, 0.105, 0.08), exponent=2.2, segments=12,
-               rings=7, floor=1.17), STEEL)
-    b.tag(tube(bm, [(m(0.22, 0.0, 1.19), 0.044), (m(0.26, 0.012, 1.04), 0.043),
-                    (m(0.272, 0.014, 0.978), 0.045)], segments=8), DARK)
-    b.tag(tube(bm, [(m(0.271, 0.012, 0.995), 0.05), (m(0.276, -0.014, 0.9), 0.055),
-                    (m(0.277, -0.032, 0.86), 0.06)], segments=10), STEEL)
+    b.tag(blob(bm, m(0.215, 0.0, 1.225), (0.112, 0.122, 0.09), exponent=2.2, segments=12,
+               rings=7, floor=1.16), STEEL)
+    b.tag(tube(bm, [(m(0.225, 0.0, 1.19), 0.07), (m(0.256, 0.01, 1.04), 0.066),
+                    (m(0.264, 0.012, 0.978), 0.068)], segments=8), DARK)
+    b.tag(tube(bm, [(m(0.264, 0.01, 0.998), 0.066), (m(0.266, -0.014, 0.9), 0.072),
+                    (m(0.266, -0.03, 0.862), 0.077)], segments=10), STEEL)
     # A flared cuff where the gauntlet starts.
-    b.tag(tube(bm, [(m(0.277, -0.034, 0.87), 0.06), (m(0.277, -0.04, 0.842), 0.083),
-                    (m(0.277, -0.044, 0.818), 0.089)], segments=12), STEEL)
-    # The fist: a chunky rounded box, knuckles forward, thumb on the inside.
-    b.tag(blob(bm, m(0.273, -0.05, 0.725), (0.078, 0.086, 0.097), exponent=2.7,
+    b.tag(tube(bm, [(m(0.266, -0.032, 0.872), 0.077), (m(0.266, -0.038, 0.846), 0.095),
+                    (m(0.266, -0.042, 0.822), 0.1)], segments=12), STEEL)
+    # The fist: a big chunky rounded box, knuckles forward, thumb on the inside.
+    b.tag(blob(bm, m(0.264, -0.052, 0.712), (0.1, 0.106, 0.118), exponent=2.7,
                segments=14, rings=8), STEEL)
     for k in range(4):
-        b.tag(blob(bm, m(0.228 + 0.03 * k, -0.123, 0.745 - 0.006 * abs(k - 1.5)),
-                   (0.018, 0.026, 0.032), segments=6, rings=4), STEEL)
-    b.tag(blob(bm, m(0.203, -0.1, 0.768), (0.022, 0.036, 0.024), segments=8, rings=5,
+        b.tag(blob(bm, m(0.214 + 0.033 * k, -0.146, 0.735 - 0.007 * abs(k - 1.5)),
+                   (0.022, 0.03, 0.037), segments=6, rings=4), STEEL)
+    b.tag(blob(bm, m(0.184, -0.112, 0.762), (0.028, 0.044, 0.03), segments=8, rings=5,
                rot=Matrix.Rotation(math.radians(20.0 * s), 3, "Z")), STEEL)
     return b
 
