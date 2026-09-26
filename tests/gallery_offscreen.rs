@@ -36,6 +36,7 @@ use pieced::{
     app::{BootPlugin, SimPlugins},
     arena::visuals::ArenaVisualsPlugin,
     building::BuildingVisualsPlugin,
+    far::FarViewPlugin,
     fx::FxPlugin,
     hud::HudPlugin,
     look::LookPlugin,
@@ -93,6 +94,8 @@ fn gallery_app() -> App {
         LookPlugin,
         ModelsPlugin,
         ArenaVisualsPlugin,
+        // After ArenaVisualsPlugin: it owns the galaxy's FarHaze.
+        FarViewPlugin,
         BuildingVisualsPlugin,
         ViewmodelPlugin,
         FxPlugin,
