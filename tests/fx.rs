@@ -1,6 +1,7 @@
 //! Slice E — pure logic behind the viewmodel and effects: recoil springs, camera
 //! shake, hitstop, effect pools, debris physics, tracer streaks and the
-//! viewmodel's poses. (The rendered look is verified by the `fx_check` scenario.)
+//! weapon switch. The gun models' poses are in `tests/viewmodel.rs`. (The
+//! rendered look is verified by the `fx_check` scenario.)
 
 use bevy::prelude::*;
 use pieced::{
@@ -9,13 +10,7 @@ use pieced::{
         FeedbackTuning,
         sim::{Hitstop, Particle, SHAKE_MAX_DEG, Shake, SlotPool, Spring, tracer_segment},
     },
-    viewmodel::{
-        PUMP_KICK, RIFLE_KICK,
-        anim::{
-            RACK_BACK, ads_translation, euler, pump_rack, pump_shell, rifle_reload, switch_phase,
-        },
-        models::{self, PUMP, PUMP_LOADING_PORT, RIFLE},
-    },
+    viewmodel::{PUMP_KICK, RIFLE_KICK, anim::switch_phase},
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -203,48 +198,6 @@ fn tracers_leave_the_muzzle_reach_the_hit_and_fade_within_90ms() {
 }
 
 #[test]
-fn ads_puts_each_sight_on_the_screen_center() {
-    for spec in [RIFLE, PUMP] {
-        let rig =
-            Transform::from_translation(ads_translation(&spec)).with_rotation(euler(Vec3::ZERO));
-        let sight = rig.transform_point(spec.sight);
-        assert!(sight.x.abs() < 1e-5 && sight.y.abs() < 1e-5, "{sight:?}");
-        assert!((sight.z + spec.ads_distance).abs() < 1e-5);
-        // The hip pose keeps the gun low and to the right.
-        assert!(spec.hip.x > 0.1 && spec.hip.y < -0.1);
-    }
-}
-
-#[test]
-fn rifle_reload_drops_and_reseats_the_magazine() {
-    let start = rifle_reload(0.0);
-    assert!(start.mag_visible && start.mag.pos == Vec3::ZERO);
-    assert!(
-        start.gun.pos.length() < 1e-4,
-        "no dip before the reload starts"
-    );
-    let dropping = rifle_reload(0.28);
-    assert!(dropping.mag_visible && dropping.mag.pos.y < -0.1);
-    assert!(dropping.gun.euler.z < -0.3, "tilts the magwell toward you");
-    assert!(!rifle_reload(0.4).mag_visible, "old magazine gone");
-    let inserting = rifle_reload(0.6);
-    assert!(inserting.mag_visible && inserting.mag.pos.y < -0.01);
-    let end = rifle_reload(1.0);
-    assert!(end.mag_visible && end.mag.pos.length() < 1e-5);
-    assert!(end.gun.pos.length() < 1e-3 && end.gun.euler.length() < 1e-3);
-}
-
-#[test]
-fn pump_racks_after_a_shot_and_is_done_before_the_next() {
-    assert_eq!(pump_rack(0.0), 0.0, "recoil first, then the rack");
-    assert!((pump_rack(RACK_BACK) - 1.0).abs() < 1e-3, "fully back");
-    assert_eq!(pump_rack(GunTuning::pump().fire_interval), 0.0);
-    let mid = pump_shell(0.55);
-    assert!(mid.visible && mid.pos.distance(PUMP_LOADING_PORT) < 1e-4);
-    assert!(!pump_shell(0.9).visible, "shell is in the tube");
-}
-
-#[test]
 fn switching_lowers_the_old_gun_then_raises_the_new_one() {
     assert_eq!(switch_phase(0.0), (true, 0.0));
     let (prev, low) = switch_phase(0.49);
@@ -252,20 +205,4 @@ fn switching_lowers_the_old_gun_then_raises_the_new_one() {
     let (prev, low) = switch_phase(0.51);
     assert!(!prev && low > 0.99);
     assert_eq!(switch_phase(1.0), (false, 0.0));
-}
-
-#[test]
-fn gun_models_stay_low_poly() {
-    let rifle = models::rifle();
-    let rifle_tris = rifle.body.triangles() + rifle.mag.triangles() + rifle.dot.triangles();
-    let pump = models::pump();
-    let pump_tris = pump.body.triangles() + pump.forend.triangles() + pump.shell.triangles();
-    assert!(rifle_tris < 2500, "rifle has {rifle_tris} triangles");
-    assert!(pump_tris < 2500, "pump has {pump_tris} triangles");
-    assert!(models::muzzle_flash().triangles() < 100);
-    // Chunky, but gun-sized: the rifle is about 1.1 m long, the pump about 1.25 m.
-    let (min, max) = rifle.body.bounds();
-    assert!((1.0..1.25).contains(&(max.z - min.z)));
-    let (min, max) = pump.body.bounds();
-    assert!((1.1..1.35).contains(&(max.z - min.z)));
 }

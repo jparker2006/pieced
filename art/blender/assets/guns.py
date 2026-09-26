@@ -401,7 +401,7 @@ def rivets(objs, points, radius=0.0055):
 # ---------------------------------------------------------------------------
 
 R_AXIS = 0.062           # chamber / barrel axis height
-R_SIGHT = 0.156          # sight line height
+R_SIGHT = 0.185          # sight line height (high, so ADS sees over the gun)
 R_CHAMBER_Y = -0.005     # chamber and crystal centre along the gun
 R_REAR_SIGHT_Y = 0.120
 R_FRONT_SIGHT_Y = -0.392
@@ -448,7 +448,9 @@ def rifle_body(objs):
     rivets(objs, [((s * 0.0465, -0.392, ax + dz), (s, 0.0, 0.0))
                   for s in (1.0, -1.0) for dz in (0.026, -0.030)])
     fy = R_FRONT_SIGHT_Y
-    objs.append(rbox((0.0, fy, 0.130), (0.013, 0.016, 0.014), "gun_iron", bevel=0.003))
+    post_top = R_SIGHT - 0.020
+    objs.append(rbox((0.0, fy, (0.124 + post_top) / 2), (0.013, 0.016, post_top - 0.124),
+                     "gun_iron", bevel=0.003))
     objs.append(arc_band((0.0, fy, R_SIGHT), (0.0, -1.0, 0.0), 0.0135, 0.0235, 0.015,
                          math.radians(125.0), math.radians(415.0), "gun_iron", seg=14))
 
@@ -540,7 +542,7 @@ def build_rifle(root):
 # ---------------------------------------------------------------------------
 
 P_AXIS = 0.066           # crystal and barrel axis height
-P_SIGHT = 0.150          # sight line height
+P_SIGHT = 0.178          # sight line height
 P_CRYSTAL_Y = -0.012     # crystal centre (between the collars)
 P_REAR_COLLAR = (0.068, 0.110)
 P_FRONT_COLLAR = (-0.132, -0.092)
@@ -591,7 +593,8 @@ def pump_body(objs):
     objs.append(loft_y([(fy - 0.017, 0.041, 0.041, 0.062, 3.2),
                         (fy + 0.017, 0.041, 0.041, 0.062, 3.2)], "brass", seg=20, bevel=0.006))
     rivets(objs, [((s * 0.0415, fy, 0.040), (s, 0.0, 0.0)) for s in (1.0, -1.0)])
-    objs.append(rbox((0.0, fy, 0.121), (0.012, 0.016, 0.040), "gun_iron", bevel=0.003))
+    objs.append(rbox((0.0, fy, (0.100 + P_SIGHT) / 2), (0.012, 0.016, P_SIGHT - 0.100),
+                     "gun_iron", bevel=0.003))
     objs.append(ball((0.0, fy, P_SIGHT), 0.0095, "brass", seg=10, rings=6))
 
 
