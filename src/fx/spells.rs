@@ -82,6 +82,17 @@ pub const GLOW_CEILING: u32 = 2000;
 pub const DIZZY_TIME: f32 = 1.0;
 /// Entries kept in each [`SpellTiming`] log.
 pub const TIMING_LOG: usize = 512;
+/// The rifle bolt's head: at least this big (m), and this wide an angle (rad)
+/// wherever it is, so it reads as T03's big glowing starburst.
+pub const RIFLE_HEAD_SIZE: f32 = 0.1;
+pub const RIFLE_HEAD_ANGLE: f32 = 0.15;
+/// The head's and the ribbon's glow (the spell material's intensity).
+const RIFLE_HEAD_GLOW: f32 = 2.4;
+const RIFLE_RIBBON_GLOW: f32 = 2.0;
+/// Sparkles strewn along a rifle bolt's path (from the glow pool).
+pub const RIFLE_TRAIL_SPARKLES: usize = 12;
+/// The rifle's burst where a shot leaves the gun, per metre from the eye.
+const RIFLE_MUZZLE_BURST: f32 = 0.3;
 
 // ---------------------------------------------------------------------------
 // Public markers and evidence
@@ -849,8 +860,10 @@ impl Emitter<'_> {
         timing: Option<usize>,
     ) -> bool {
         let roll = self.roll();
+        // The head lands on frame 2 whatever the life; the ribbon lingers
+        // (and its tail races after the head) for the rest of it.
         let life = match style {
-            BoltStyle::Rifle => 0.13,
+            BoltStyle::Rifle => 0.2,
             BoltStyle::Pellet { .. } => 0.1,
         };
         self.pools.bolts.put(
@@ -878,13 +891,22 @@ impl Emitter<'_> {
     /// over the world) doesn't hide it; the pump's is the big fan flash (T04).
     fn muzzle_burst(&mut self, muzzle: Vec3, dir: Vec3, weapon: WeaponKind) {
         let (mesh, ahead, size, color) = match weapon {
-            WeaponKind::Rifle => (self.assets.burst_blue[0].clone(), 0.12, 0.17, HALO_BLUE),
+            WeaponKind::Rifle => (
+                self.assets.burst_blue[0].clone(),
+                0.12,
+                RIFLE_MUZZLE_BURST,
+                HALO_BLUE,
+            ),
             WeaponKind::Pump => (self.assets.burst_pellet.clone(), 0.3, 0.3, HALO_VIOLET),
         };
         let at = muzzle + dir.normalize_or(Vec3::NEG_Z) * ahead;
         let d = self.dist(at).max(0.3);
-        self.pop(at, mesh, size * d, 0.09, 1.3, 0.0, 6.0);
-        self.flash(at, color, 0.13 * d, 1.2, 0.07, 0.0);
+        let (glow, halo) = match weapon {
+            WeaponKind::Rifle => (1.8, 0.24),
+            WeaponKind::Pump => (1.3, 0.13),
+        };
+        self.pop(at, mesh, size * d, 0.1, glow, 0.0, 6.0);
+        self.flash(at, color, halo * d, 1.2, 0.08, 0.0);
     }
 
     /// Depth of `p` along the view.
@@ -908,20 +930,22 @@ impl Emitter<'_> {
             self.assets.sparkle_white.clone(),
             self.assets.sparkle_blue.clone(),
         ];
-        for i in 0..5 {
-            // Spread evenly across the screen, not down the (foreshortened) path.
-            let across = self.rng.range(0.12, 0.92);
+        for i in 0..RIFLE_TRAIL_SPARKLES {
+            // Spread evenly across the screen, not down the (foreshortened)
+            // path: one in each slice of the flight, jittered within it.
+            let slice = (i as f32 + self.rng.range(0.0, 1.0)) / RIFLE_TRAIL_SPARKLES as f32;
+            let across = 0.08 + 0.86 * slice;
             let u = screen_to_path(across, z0, z1);
             let around = Quat::from_axis_angle(dir, self.rng.range(0.0, std::f32::consts::TAU));
             let at = start + path * u;
             let d = self.dist(at);
-            let jitter = around * side * self.rng.range(0.4, 1.2) * apparent_size(0.02, d, 0.012);
+            let jitter = around * side * self.rng.range(0.4, 1.4) * apparent_size(0.03, d, 0.016);
             let roll = self.roll();
             let mut s = Spark::new(at + jitter, &meshes[i % 2]);
             s.p.vel = around * side * 0.25 * d.min(4.0);
             s.p.drag = 3.0;
             s.p.life = self.rng.range(0.16, 0.32);
-            s.p.size = Vec3::splat(apparent_size(0.02, d, 0.02) * self.rng.range(0.8, 1.3));
+            s.p.size = Vec3::splat(apparent_size(0.03, d, 0.03) * self.rng.range(0.7, 1.4));
             s.p.birth_scale = 0.3;
             s.p.shrink_start = 0.45;
             s.face = Face::Billboard {
@@ -937,7 +961,7 @@ impl Emitter<'_> {
             } else {
                 1.5 / 60.0
             };
-            s.intensity = 1.3;
+            s.intensity = 1.8;
             self.glow(s);
         }
     }
@@ -1959,9 +1983,9 @@ fn simulate_spells(
                 }
                 *tf = match bolt.style {
                     BoltStyle::Rifle => {
-                        // About 4° across wherever it is; smaller as it lands
+                        // About 8° across wherever it is; smaller as it lands
                         // in the impact.
-                        let size = apparent_size(0.05, d_head, 0.075)
+                        let size = apparent_size(RIFLE_HEAD_SIZE, d_head, RIFLE_HEAD_ANGLE)
                             * if progress >= 1.0 { 0.6 } else { 1.0 };
                         Transform {
                             translation: head,
@@ -1982,10 +2006,14 @@ fn simulate_spells(
                     }
                 };
                 let mut last = u32::MAX;
-                set_tag(&mut tag, Color::WHITE, 1.6, &mut last);
+                let glow = match bolt.style {
+                    BoltStyle::Rifle => RIFLE_HEAD_GLOW,
+                    BoltStyle::Pellet { .. } => 1.6,
+                };
+                set_tag(&mut tag, Color::WHITE, glow, &mut last);
                 if let Some(mut halo) = halo {
                     let (size, intensity) = match bolt.style {
-                        BoltStyle::Rifle => (1.7, 1.4),
+                        BoltStyle::Rifle => (1.9, 2.2),
                         BoltStyle::Pellet { .. } => (4.0, 0.9),
                     };
                     let want = Halo::new(halo_color, size, intensity);
@@ -2026,9 +2054,9 @@ fn simulate_spells(
                 if mesh.0 != *ribbon_mesh {
                     mesh.0 = ribbon_mesh.clone();
                 }
-                let base = match bolt.style {
-                    BoltStyle::Rifle => 0.09,
-                    BoltStyle::Pellet { .. } => 0.035,
+                let (base, glow) = match bolt.style {
+                    BoltStyle::Rifle => (0.15, RIFLE_RIBBON_GLOW),
+                    BoltStyle::Pellet { .. } => (0.035, 1.5),
                 };
                 let width = apparent_size(base * 0.15, d_head, base * 0.06) * (1.0 - 0.7 * t);
                 let mid = tail + dir * (span * 0.5);
@@ -2038,7 +2066,7 @@ fn simulate_spells(
                     scale: Vec3::new(width, 1.0, span),
                 };
                 let mut last = u32::MAX;
-                set_tag(&mut tag, Color::WHITE, 1.5 * (1.0 - t * t), &mut last);
+                set_tag(&mut tag, Color::WHITE, glow * (1.0 - t * t), &mut last);
                 vis.set_if_neq(Visibility::Visible);
             } else {
                 vis.set_if_neq(Visibility::Hidden);
