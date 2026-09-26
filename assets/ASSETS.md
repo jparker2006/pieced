@@ -46,6 +46,18 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 | `shaders/sky.wgsl` | hand-written, used by `src/arena/visuals/sky.rs` | Milestone 1 sky dome |
 | `shaders/target_rim.wgsl` | hand-written, used by `src/arena/visuals/target.rs` | Milestone 1 dummy rim light |
 
+## Fonts (`assets/fonts/`)
+
+The only third-party files: two openly licensed cartoon display fonts from
+`github.com/google/fonts`, downloaded with Jake's OK (D23). The HUD keeps one of them.
+
+| File | Made by | Notes |
+|---|---|---|
+| `fonts/LuckiestGuy-Regular.ttf` | `assets/fonts/LuckiestGuy-LICENSE.txt` | Luckiest Guy by Astigmatic, Apache 2.0 (`apache/luckiestguy`) |
+| `fonts/LuckiestGuy-LICENSE.txt` | `assets/fonts/LuckiestGuy-LICENSE.txt` | Its license |
+| `fonts/LilitaOne-Regular.ttf` | `assets/fonts/LilitaOne-OFL.txt` | Lilita One by Juan Montoreano, SIL OFL 1.1, Reserved Font Name "Lilita" (`ofl/lilitaone`) |
+| `fonts/LilitaOne-OFL.txt` | `assets/fonts/LilitaOne-OFL.txt` | Its license |
+
 ## This index
 
 | File | Made by | Notes |
@@ -71,5 +83,5 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 
 Add a row in the matching table: the path relative to `assets/` in backticks,
 then the script that makes it (or, for a third-party file, its license file,
-e.g. `assets/fonts/OFL.txt`) in backticks. The only third-party file allowed in
-Milestone 2 is the HUD font and its license (docs/M2-SPEC.md, Asset pipeline).
+e.g. `assets/fonts/OFL.txt`) in backticks. The only third-party files allowed in
+Milestone 2 are the HUD fonts and their licenses (docs/M2-SPEC.md, Asset pipeline).
