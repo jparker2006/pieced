@@ -589,3 +589,528 @@ fn knight_silhouette_fills_the_hitboxes() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Procedural animation and eyes (the pure core, fixed 60 Hz frames)
+// ---------------------------------------------------------------------------
+
+use pieced::knight::{
+    BLINK_EVERY, BLINK_TIME, EyeState, KO_TIME, KnightAnim, KnightEvent, KnightInput, KnightPose,
+    WIDE_TIME,
+};
+
+const DT: f32 = 1.0 / 60.0;
+
+fn frames(seconds: f32) -> usize {
+    (seconds / DT).round() as usize
+}
+
+fn run(anim: &mut KnightAnim, input: KnightInput, seconds: f32) -> Vec<KnightPose> {
+    (0..frames(seconds))
+        .map(|_| anim.step(DT, &input))
+        .collect()
+}
+
+fn still() -> KnightInput {
+    KnightInput::default()
+}
+
+fn moving(velocity: Vec3) -> KnightInput {
+    KnightInput {
+        velocity,
+        ..default()
+    }
+}
+
+/// Where a point 0.5 m below a pivot goes under a rotation (a boot, a fist, the hem).
+fn hang(q: Quat) -> Vec3 {
+    q * Vec3::new(0.0, -0.5, 0.0)
+}
+
+fn range(values: impl Iterator<Item = f32>) -> (f32, f32) {
+    values.fold((f32::MAX, f32::MIN), |(lo, hi), v| (lo.min(v), hi.max(v)))
+}
+
+/// Frames at which a state starts, and how long each run of it lasts (frames).
+fn runs_of(poses: &[KnightPose], state: EyeState) -> Vec<(usize, usize)> {
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    for (i, p) in poses.iter().enumerate() {
+        if p.eyes == state {
+            match out.last_mut() {
+                Some((start, len)) if *start + *len == i => *len += 1,
+                _ => out.push((i, 1)),
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn idle_knight_bobs_and_blinks_every_two_to_five_seconds() {
+    let mut anim = KnightAnim::new(11);
+    let poses = run(&mut anim, still(), 60.0);
+    let (lo, hi) = range(poses.iter().map(|p| p.torso_offset.y));
+    assert!(
+        (0.015..0.06).contains(&(hi - lo)),
+        "idle bob {:.3} m",
+        hi - lo
+    );
+    assert!(
+        poses
+            .iter()
+            .all(|p| hang(p.legs[0]).z.abs() < 0.01 && p.visible)
+    );
+    let blinks = runs_of(&poses, EyeState::Blink);
+    assert!(blinks.len() >= 11, "{} blinks in a minute", blinks.len());
+    assert!(blinks[0].0 as f32 * DT <= BLINK_EVERY.1 + DT);
+    for pair in blinks.windows(2) {
+        let gap = (pair[1].0 - pair[0].0) as f32 * DT;
+        assert!(
+            (BLINK_EVERY.0 - DT..=BLINK_EVERY.1 + DT).contains(&gap),
+            "blinks {gap:.2} s apart"
+        );
+    }
+    for (_, len) in &blinks {
+        assert!(
+            (*len as f32 * DT - BLINK_TIME).abs() <= DT * 1.5,
+            "a blink of {len} frames"
+        );
+    }
+    // The rest of the time the eyes are open.
+    let blinking: usize = blinks.iter().map(|b| b.1).sum();
+    assert_eq!(
+        runs_of(&poses, EyeState::Open)
+            .iter()
+            .map(|r| r.1)
+            .sum::<usize>()
+            + blinking,
+        poses.len()
+    );
+}
+
+#[test]
+fn running_swings_boots_pumps_gauntlets_bobs_and_trails_the_cape() {
+    let mut anim = KnightAnim::new(3);
+    run(&mut anim, moving(Vec3::new(0.0, 0.0, -5.5)), 0.5);
+    let poses = run(&mut anim, moving(Vec3::new(0.0, 0.0, -5.5)), 2.0);
+    let left: Vec<f32> = poses.iter().map(|p| hang(p.legs[0]).z).collect();
+    let right: Vec<f32> = poses.iter().map(|p| hang(p.legs[1]).z).collect();
+    let (lo, hi) = range(left.iter().copied());
+    assert!(lo < -0.2 && hi > 0.2, "boot swing {lo:.2}..{hi:.2} m");
+    for ((l, r), p) in left.iter().zip(&right).zip(&poses) {
+        assert!((l + r).abs() < 0.02, "boots swing in opposite phase");
+        // Each gauntlet pumps against the boot on its side.
+        let fist = hang(p.arms[0]).z;
+        assert!(
+            fist * l <= 1e-4,
+            "left fist {fist:.2} with left boot {l:.2}"
+        );
+    }
+    // About 3.2 strides a second: 2 zero crossings per stride.
+    let crossings = left
+        .windows(2)
+        .filter(|w| w[0].signum() != w[1].signum())
+        .count();
+    assert!(
+        (10..=16).contains(&crossings),
+        "{crossings} crossings in 2 s"
+    );
+    let (lo, hi) = range(poses.iter().map(|p| p.torso_offset.y));
+    assert!(hi - lo > 0.05, "run bob {:.3} m", hi - lo);
+    let lean = poses[0].torso * Vec3::Y;
+    assert!(lean.z < -0.08, "leans into the run: {lean}");
+    let hem = poses.iter().map(|p| hang(p.cape).z).sum::<f32>() / poses.len() as f32;
+    assert!(hem > 0.1, "the cape trails behind: {hem:.2}");
+}
+
+#[test]
+fn strafing_side_steps_without_crossing_the_boots() {
+    // To his right (+X), the dummy's usual move.
+    let mut anim = KnightAnim::new(5);
+    run(&mut anim, moving(Vec3::new(5.5, 0.0, 0.0)), 0.5);
+    let poses = run(&mut anim, moving(Vec3::new(5.5, 0.0, 0.0)), 2.0);
+    // The left boot hangs at -X: outwards is -x, inwards (towards the right boot) +x.
+    let (out_l, in_l) = range(poses.iter().map(|p| hang(p.legs[0]).x));
+    let (in_r, out_r) = range(poses.iter().map(|p| hang(p.legs[1]).x));
+    assert!(
+        out_l < -0.2 && out_r > 0.2,
+        "side steps {out_l:.2} / {out_r:.2}"
+    );
+    assert!(
+        in_l < 0.1 && in_r > -0.1,
+        "boots cross: {in_l:.2} / {in_r:.2}"
+    );
+    assert!(
+        poses.iter().all(|p| hang(p.legs[0]).z.abs() < 0.02),
+        "no forward swing"
+    );
+    // The cape swings out to the trailing side.
+    let hem = poses.iter().map(|p| hang(p.cape).x).sum::<f32>() / poses.len() as f32;
+    assert!(hem < -0.05, "the cape trails left: {hem:.2}");
+}
+
+#[test]
+fn jump_stretches_the_air_pose_splits_and_landing_squashes() {
+    let mut anim = KnightAnim::new(2);
+    run(&mut anim, still(), 1.0);
+    anim.event(KnightEvent::Jump);
+    let up = KnightInput {
+        grounded: false,
+        ..default()
+    };
+    let rising = run(&mut anim, up, 0.1);
+    let tallest = rising.iter().map(|p| p.scale.y).fold(0.0, f32::max);
+    assert!(tallest > 1.06, "take-off stretch {tallest:.3}");
+    assert!(rising.iter().any(|p| p.scale.x < 0.98));
+    let air = run(&mut anim, up, 0.4);
+    let last = air.last().unwrap();
+    assert!(
+        hang(last.legs[0]).z < -0.1 && hang(last.legs[1]).z > 0.05,
+        "boots split"
+    );
+    assert!(
+        hang(last.arms[0]).x < -0.2 && hang(last.arms[1]).x > 0.2,
+        "arms flail out"
+    );
+    anim.event(KnightEvent::Land { speed: 9.0 });
+    let landing = run(&mut anim, still(), 0.12);
+    let flattest = landing.iter().map(|p| p.scale.y).fold(f32::MAX, f32::min);
+    assert!(flattest < 0.93, "landing squash {flattest:.3}");
+    let settled = run(&mut anim, still(), 1.5);
+    let last = settled.last().unwrap();
+    assert!((last.scale.x - 1.0).abs() < 0.02, "{}", last.scale);
+    assert!(hang(last.legs[0]).z.abs() < 0.01, "back on his feet");
+}
+
+#[test]
+fn hits_rock_him_away_from_the_shot_and_widen_his_eyes() {
+    let mut anim = KnightAnim::new(9);
+    run(&mut anim, still(), 1.0);
+    // A shot from the front pushes him back (+Z).
+    anim.event(KnightEvent::Hit {
+        push: Vec3::Z,
+        headshot: false,
+    });
+    let poses = run(&mut anim, still(), 2.5);
+    let tops: Vec<f32> = poses.iter().map(|p| (p.tilt * Vec3::Y).z).collect();
+    let (lo, hi) = range(tops[..frames(0.6)].iter().copied());
+    assert!(hi > 0.08, "rocks back: {hi:.3}");
+    assert!(lo < -0.01, "and springs past upright: {lo:.3}");
+    assert!(tops.last().unwrap().abs() < 0.005, "settles");
+    let wide = runs_of(&poses, EyeState::Wide);
+    assert_eq!(wide.len(), 1);
+    assert_eq!(wide[0].0, 0, "wide on the hit frame");
+    assert!((wide[0].1 as f32 * DT - WIDE_TIME).abs() <= DT * 1.5);
+    assert!(
+        poses.iter().all(|p| p.hat_offset.y == 0.0),
+        "body shots leave the hat"
+    );
+    // From his right (pushing left, -X), he rocks left.
+    let mut anim = KnightAnim::new(9);
+    anim.event(KnightEvent::Hit {
+        push: Vec3::NEG_X,
+        headshot: false,
+    });
+    let poses = run(&mut anim, still(), 0.3);
+    let side = poses
+        .iter()
+        .map(|p| (p.tilt * Vec3::Y).x)
+        .fold(0.0, f32::min);
+    assert!(side < -0.08, "rocks left: {side:.3}");
+}
+
+#[test]
+fn headshots_bounce_the_hat() {
+    let mut anim = KnightAnim::new(4);
+    run(&mut anim, still(), 1.0);
+    anim.event(KnightEvent::Hit {
+        push: Vec3::Z,
+        headshot: true,
+    });
+    let poses = run(&mut anim, still(), 1.2);
+    let peak = poses[..frames(0.25)]
+        .iter()
+        .map(|p| p.hat_offset.y)
+        .fold(0.0, f32::max);
+    assert!(peak > 0.08, "hat pops {peak:.3} m");
+    assert!(
+        poses[frames(1.0)..].iter().all(|p| p.hat_offset.y < 1e-3),
+        "and lands"
+    );
+    assert!(poses.iter().all(|p| p.hat_visible));
+    assert_eq!(poses[0].eyes, EyeState::Wide);
+}
+
+#[test]
+fn elimination_shows_x_eyes_then_hides_and_respawn_pops_back_in() {
+    let mut anim = KnightAnim::new(8);
+    run(&mut anim, still(), 1.0);
+    let down = KnightInput {
+        downed: true,
+        ..default()
+    };
+    let poses = run(&mut anim, down, 2.0);
+    assert!(
+        poses
+            .iter()
+            .all(|p| p.eyes == EyeState::X && !p.hat_visible)
+    );
+    let shown = poses.iter().take_while(|p| p.visible).count();
+    assert!(
+        (shown as f32 * DT - KO_TIME).abs() <= DT * 1.5,
+        "KO beat of {shown} frames"
+    );
+    assert!(poses[shown..].iter().all(|p| !p.visible));
+    // Hits while down change nothing.
+    anim.event(KnightEvent::Hit {
+        push: Vec3::Z,
+        headshot: true,
+    });
+    assert_eq!(anim.step(DT, &down).eyes, EyeState::X);
+
+    let back = run(&mut anim, still(), 1.2);
+    assert!(back.iter().all(|p| p.visible && p.hat_visible));
+    assert!(
+        back[0].scale.y < 0.3,
+        "pops in from small: {}",
+        back[0].scale
+    );
+    let peak = back.iter().map(|p| p.scale.y).fold(0.0, f32::max);
+    assert!(peak > 1.1, "overshoots: {peak:.3}");
+    let last = back.last().unwrap();
+    assert!(
+        (last.scale - Vec3::ONE).abs().max_element() < 0.02,
+        "settles: {}",
+        last.scale
+    );
+    assert!(back.iter().all(|p| p.eyes != EyeState::X));
+}
+
+#[test]
+fn animation_is_deterministic_per_seed() {
+    let script = |seed| {
+        let mut anim = KnightAnim::new(seed);
+        let mut poses = run(&mut anim, still(), 3.0);
+        anim.event(KnightEvent::Jump);
+        poses.extend(run(&mut anim, moving(Vec3::new(3.0, 0.0, -2.0)), 3.0));
+        poses
+    };
+    assert_eq!(script(1), script(1));
+    assert_ne!(
+        runs_of(&script(1), EyeState::Blink),
+        runs_of(&script(2), EyeState::Blink)
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The figure in the ECS: the real glb, loaded headless, worn by a character
+// ---------------------------------------------------------------------------
+
+mod figure {
+    use super::*;
+    use bevy::{
+        gltf::GltfPlugin, mesh::MeshPlugin, state::app::StatesPlugin, time::TimeUpdateStrategy,
+        world_serialization::WorldSerializationPlugin,
+    };
+    use pieced::{
+        app::BootGate,
+        arena::visuals::{TargetFigure, TargetFigurePlugin},
+        combat::Downed,
+        knight::{KO_TIME, KnightRig, RespawnSparkle},
+        look::{ModelDressed, ToonMaterial, warmup::WarmupState},
+        models::{ModelParts, ModelSpawned, ModelsPlugin},
+        movement::Motor,
+        shared::{AppState, Character, DamageDealt, DamageTarget, Health, LookAngles},
+    };
+    use std::time::Duration;
+
+    /// Stands in for `look`, which dresses models (it needs a renderer).
+    fn dress(mut spawned: MessageReader<ModelSpawned>, mut dressed: MessageWriter<ModelDressed>) {
+        for m in spawned.read() {
+            dressed.write(ModelDressed {
+                root: m.root,
+                name: m.name.clone(),
+            });
+        }
+    }
+
+    fn app() -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            TransformPlugin,
+            MeshPlugin,
+            GltfPlugin::default(),
+            WorldSerializationPlugin,
+            StatesPlugin,
+            ModelsPlugin,
+            TargetFigurePlugin,
+        ))
+        .init_state::<AppState>()
+        .init_asset::<ToonMaterial>()
+        .init_resource::<BootGate>()
+        .init_resource::<WarmupState>()
+        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f32(
+            DT,
+        )))
+        .add_systems(Update, dress);
+        app.finish();
+        app.cleanup();
+        app
+    }
+
+    fn frames_of(app: &mut App, seconds: f32) {
+        for _ in 0..super::frames(seconds) {
+            app.update();
+        }
+    }
+
+    fn part(app: &mut App, root: Entity, name: &str) -> Entity {
+        let name = name.to_string();
+        app.world_mut()
+            .run_system_once(move |parts: ModelParts| parts.find(root, &name))
+            .unwrap()
+            .unwrap_or_else(|| panic!("no part"))
+    }
+
+    fn shown(app: &App, e: Entity) -> bool {
+        app.world().get::<Visibility>(e) != Some(&Visibility::Hidden)
+    }
+
+    use bevy::ecs::system::RunSystemOnce;
+
+    #[test]
+    fn a_character_wears_the_rigged_knight_and_it_moves() {
+        let mut app = app();
+        let owner = app
+            .world_mut()
+            .spawn((
+                Character,
+                Transform::from_xyz(2.0, 0.0, -5.0),
+                // No movement here: stand him on the ground by hand.
+                {
+                    let mut motor = Motor::default();
+                    motor.grounded = true;
+                    motor
+                },
+                LookAngles::default(),
+                Health::default(),
+            ))
+            .id();
+        let mut rig = None;
+        for _ in 0..3000 {
+            app.update();
+            let world = app.world_mut();
+            rig = world
+                .query::<(&TargetFigure, &KnightRig)>()
+                .iter(world)
+                .find(|(f, _)| f.owner == owner)
+                .map(|(_, r)| r.clone());
+            if rig.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        let rig = rig.expect("the figure's knight was rigged");
+        app.update();
+        assert!(
+            !app.world()
+                .resource::<BootGate>()
+                .held()
+                .any(|k| k == pieced::arena::visuals::KNIGHT_GATE),
+            "Boot is let go once the knight is rigged"
+        );
+        let figure = {
+            let world = app.world_mut();
+            world
+                .query_filtered::<Entity, With<TargetFigure>>()
+                .single(world)
+                .unwrap()
+        };
+        frames_of(&mut app, 0.1);
+        let model = rig.model;
+        let eye = |s: &str| part_named(&rig, s);
+        fn part_named(rig: &KnightRig, s: &str) -> Entity {
+            let states = ["Eye", "EyeBlink", "EyeWide", "EyeX"];
+            let (state, side) = s.split_at(s.len() - 1);
+            let k = states.iter().position(|p| *p == state).unwrap();
+            rig.eyes[k][usize::from(side == "R")]
+        }
+        assert!(shown(&app, eye("EyeL")) && shown(&app, eye("EyeR")));
+        for hidden in ["EyeWideL", "EyeBlinkR", "EyeXL", "EyeXR"] {
+            assert!(!shown(&app, eye(hidden)), "{hidden} starts hidden");
+        }
+        // The figure stands on its owner's feet.
+        let feet = app.world().get::<Transform>(figure).unwrap().translation;
+        assert!((feet - Vec3::new(2.0, 0.0, -5.0)).length() < 1e-4);
+
+        // Running forward swings the boots in opposite directions.
+        let leg_l = part(&mut app, model, "PivotLegL");
+        let leg_r = part(&mut app, model, "PivotLegR");
+        app.world_mut().get_mut::<Motor>(owner).unwrap().velocity = Vec3::new(0.0, 0.0, -5.5);
+        let mut widest = 0.0f32;
+        for _ in 0..super::frames(0.6) {
+            app.update();
+            let l = app.world().get::<Transform>(leg_l).unwrap().rotation;
+            let r = app.world().get::<Transform>(leg_r).unwrap().rotation;
+            widest = widest.max(l.angle_between(r));
+        }
+        assert!(widest > 0.6, "boots {widest:.2} rad apart");
+        app.world_mut().get_mut::<Motor>(owner).unwrap().velocity = Vec3::ZERO;
+        frames_of(&mut app, 1.0);
+
+        // A headshot: the hat pops up and the eyes go wide.
+        let hat = part(&mut app, model, "PivotHat");
+        let rest = app.world().get::<Transform>(hat).unwrap().translation.y;
+        app.world_mut().write_message(DamageDealt {
+            source: None,
+            target: owner,
+            target_kind: DamageTarget::Character,
+            amount: 50.0,
+            to_shield: 50.0,
+            headshot: true,
+            shield_broke: false,
+            killed: false,
+            point: Vec3::new(2.0, 1.7, -4.8),
+            normal: Vec3::Z,
+            tick: 1,
+        });
+        let mut highest = rest;
+        let mut wide = false;
+        for _ in 0..10 {
+            app.update();
+            highest = highest.max(app.world().get::<Transform>(hat).unwrap().translation.y);
+            wide |= shown(&app, eye("EyeWideL")) && !shown(&app, eye("EyeL"));
+        }
+        assert!(highest > rest + 0.05, "hat {rest:.3} -> {highest:.3}");
+        assert!(wide, "wide eyes after the hit");
+
+        // Eliminated: X eyes and no hat, then the figure hides...
+        let hat_part = part(&mut app, model, "Hat");
+        app.world_mut().entity_mut(owner).insert(Downed { tick: 2 });
+        app.update();
+        assert!(shown(&app, eye("EyeXL")) && !shown(&app, eye("EyeL")));
+        assert!(!shown(&app, hat_part));
+        assert!(shown(&app, figure));
+        frames_of(&mut app, KO_TIME + 0.1);
+        assert!(!shown(&app, figure), "hidden after the KO beat");
+
+        // ...and pops back in on respawn.
+        app.world_mut().entity_mut(owner).remove::<Downed>();
+        app.update();
+        assert!(shown(&app, figure) && shown(&app, hat_part));
+        let scale = app.world().get::<Transform>(model).unwrap().scale;
+        assert!(scale.y < 0.5, "pops in from small: {scale}");
+        let sparkles = |app: &mut App| {
+            let world = app.world_mut();
+            world.query::<&RespawnSparkle>().iter(world).count()
+        };
+        app.update();
+        assert_eq!(sparkles(&mut app), 1, "a respawn sparkle");
+        frames_of(&mut app, 1.2);
+        assert_eq!(sparkles(&mut app), 0, "the sparkle fades out");
+        let scale = app.world().get::<Transform>(model).unwrap().scale;
+        assert!((scale - Vec3::ONE).abs().max_element() < 0.03, "{scale}");
+    }
+}

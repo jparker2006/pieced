@@ -5,8 +5,9 @@
 //! Since Milestone 2 everything near is drawn with [`ToonMaterial`] (cliffs,
 //! near trees and the figure also get ink [`Outline`]s), everything far with
 //! [`FarMaterial`], and there are no shadow maps or fog: the figure gets a
-//! [`BlobShadow`] and distance haze lives in the far material. This is still
-//! the Milestone 1 scenery; the Phase 2 slices replace the art itself.
+//! blob shadow and distance haze lives in the far material. This is still
+//! the Milestone 1 scenery; the Phase 2 slices replace the art itself. The
+//! figure is the knight, in [`target`].
 //!
 //! Cost model (fanless M4, Low Power Mode): all static scenery is merged into a
 //! dozen meshes sharing five materials; only the cliffs and near trees add an
@@ -19,15 +20,18 @@ mod target;
 
 pub use scenery::{EDGE_CLEARANCE, FLOOR_CLUTTER_MAX_HEIGHT, sun_direction};
 pub use sky::SkyMaterial;
+pub use target::{
+    FIGURE_SHADOW_RADIUS, KNIGHT_GATE, TargetFigure, TargetFigurePlugin, animate_knights,
+    figure_hidden, pose_target_figures,
+};
 
 use crate::{
     look::{
-        BlobShadow, FarHaze, FarMaterial, LookSettings, Outline, ToonLighting, ToonMaterial,
-        preset_look, with_outline_normals,
+        FarHaze, FarMaterial, LookSettings, Outline, ToonLighting, ToonMaterial, preset_look,
+        with_outline_normals,
     },
     palette,
     render::MainCamera,
-    shared::{AppState, Character, EyeHeight, Health, LookAngles, Player, PreviousFeet},
     tuning::Tuning,
 };
 use bevy::{
@@ -61,40 +65,26 @@ impl Plugin for ArenaVisualsPlugin {
             .add_systems(Update, (apply_quality_preset, follow_toon_lighting))
             .add_systems(
                 PostUpdate,
-                (
-                    pose_target_figures.before(TransformSystems::Propagate),
-                    crate::scenario::gallery::apply_camera_override
-                        .after(TransformSystems::Propagate)
-                        .before(VisibilitySystems::UpdateFrusta)
-                        .before(SimulationLightSystems::UpdateDirectionalLightCascades),
-                ),
+                crate::scenario::gallery::apply_camera_override
+                    .after(TransformSystems::Propagate)
+                    .before(VisibilitySystems::UpdateFrusta)
+                    .before(SimulationLightSystems::UpdateDirectionalLightCascades),
             )
-            .add_observer(dress_main_camera)
-            .add_observer(spawn_target_figure);
+            // Non-player characters are drawn as the knight.
+            .add_plugins(TargetFigurePlugin)
+            .add_observer(dress_main_camera);
     }
 
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
-        let (figure, dome) = {
-            let mut meshes = world.resource_mut::<Assets<Mesh>>();
-            (
-                meshes.add(with_outline_normals(target::figure().into_mesh())),
-                meshes.add(sky::dome(sky::SKY_RADIUS, 32, 16).into_mesh()),
-            )
-        };
-        let target = world
-            .resource_mut::<Assets<ToonMaterial>>()
-            .add(target::target_material());
+        let dome = world
+            .resource_mut::<Assets<Mesh>>()
+            .add(sky::dome(sky::SKY_RADIUS, 32, 16).into_mesh());
         let lighting = world.resource::<ToonLighting>().clone();
         let sky = world
             .resource_mut::<Assets<SkyMaterial>>()
             .add(sky_material(&lighting));
-        world.insert_resource(LookAssets {
-            figure,
-            target,
-            dome,
-            sky,
-        });
+        world.insert_resource(LookAssets { dome, sky });
     }
 }
 
@@ -136,11 +126,9 @@ fn sky_material(lighting: &ToonLighting) -> SkyMaterial {
     }
 }
 
-/// Handles shared by every figure and the sky.
+/// The sky's handles.
 #[derive(Resource, Debug, Clone)]
 struct LookAssets {
-    figure: Handle<Mesh>,
-    target: Handle<ToonMaterial>,
     dome: Handle<Mesh>,
     sky: Handle<SkyMaterial>,
 }
@@ -340,90 +328,6 @@ fn spawn_scenery(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Target figures
-// ---------------------------------------------------------------------------
-
-/// The visible figure of a non-player character. A top-level entity that follows
-/// its owner with render interpolation, faces its look direction and hides while
-/// the owner is down.
-#[derive(Component, Debug)]
-pub struct TargetFigure {
-    pub owner: Entity,
-}
-
-/// Blob shadow under a standing figure (a little wider than the body capsule).
-pub const FIGURE_SHADOW_RADIUS: f32 = 0.45;
-
-fn spawn_target_figure(
-    add: On<Add, Character>,
-    players: Query<(), With<Player>>,
-    owners: Query<&Transform>,
-    assets: Res<LookAssets>,
-    mut commands: Commands,
-) {
-    // The player is invisible in first person.
-    if players.contains(add.entity) {
-        return;
-    }
-    let at = owners.get(add.entity).copied().unwrap_or_default();
-    commands.spawn((
-        Name::new("Target figure"),
-        TargetFigure { owner: add.entity },
-        Mesh3d(assets.figure.clone()),
-        MeshMaterial3d(assets.target.clone()),
-        Outline::default(),
-        BlobShadow::new(FIGURE_SHADOW_RADIUS),
-        Transform::from_translation(at.translation),
-    ));
-}
-
-/// Whether a character's figure should be hidden: dead, or downed awaiting respawn.
-pub fn figure_hidden(health: Option<&Health>, downed: bool) -> bool {
-    downed || health.is_some_and(Health::is_dead)
-}
-
-pub fn pose_target_figures(
-    mut commands: Commands,
-    fixed: Res<Time<Fixed>>,
-    state: Res<State<AppState>>,
-    owners: Query<
-        (
-            &Transform,
-            Option<&PreviousFeet>,
-            Option<&LookAngles>,
-            Option<&EyeHeight>,
-            Option<&Health>,
-            Has<crate::combat::Downed>,
-        ),
-        (With<Character>, Without<TargetFigure>),
-    >,
-    mut figures: Query<(Entity, &TargetFigure, &mut Transform, &mut Visibility)>,
-) {
-    let alpha = if *state.get() == AppState::Playing {
-        fixed.overstep_fraction().clamp(0.0, 1.0)
-    } else {
-        1.0
-    };
-    for (entity, figure, mut transform, mut visibility) in &mut figures {
-        let Ok((owner, previous, look, eye, health, downed)) = owners.get(figure.owner) else {
-            commands.entity(entity).despawn();
-            continue;
-        };
-        let feet = previous.map_or(owner.translation, |p| p.0.lerp(owner.translation, alpha));
-        let yaw = look.map_or(0.0, |l| l.yaw);
-        let crouch = eye.map_or(1.0, |e| (e.0 / EyeHeight::default().0).clamp(0.6, 1.0));
-        transform.translation = feet;
-        transform.rotation = Quat::from_rotation_y(yaw);
-        transform.scale = Vec3::new(1.0, crouch, 1.0);
-        visibility.set_if_neq(if figure_hidden(health, downed) {
-            Visibility::Hidden
-        } else {
-            Visibility::Inherited
-        });
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -459,16 +363,6 @@ mod tests {
             .single(world)
             .unwrap();
         assert_eq!(shown, Visibility::Inherited);
-    }
-
-    #[test]
-    fn figure_hides_when_owner_is_down() {
-        let mut health = Health::default();
-        assert!(!figure_hidden(Some(&health), false));
-        assert!(figure_hidden(Some(&health), true));
-        health.apply(1000.0);
-        assert!(figure_hidden(Some(&health), false));
-        assert!(!figure_hidden(None, false));
     }
 
     #[test]
