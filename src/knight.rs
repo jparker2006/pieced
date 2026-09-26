@@ -22,6 +22,8 @@
 //! respawn. The core is pure and seeded, so it is tested headless
 //! (`tests/knight.rs`); the systems only gather input and write transforms.
 //! The animation runs on `Time` (virtual): pausing virtual time freezes the pose.
+//! The gallery's [`GalleryFreeze`] also freezes it (clock, eyes, springs and the
+//! respawn sparkle) without pausing the game: see [`freeze_knights`].
 //!
 //! Directions in [`KnightInput`] and [`KnightPose`] are in the knight's model
 //! space: +Y up, -Z forward, +X to his right. [`apply_knight_poses`] converts to
@@ -31,6 +33,7 @@ use crate::{
     look::{Halo, ModelDressed, Outline, ToonMaterial, warmup::Warmup},
     models::{MODEL_FORWARD_FIX, ModelParts},
     rng::Rng,
+    shared::{FreezableTime, GalleryFreeze},
 };
 use bevy::{ecs::query::QueryFilter, prelude::*};
 use std::f32::consts::{PI, TAU};
@@ -252,6 +255,8 @@ pub struct KnightAnim {
     wide_left: f32,
     downed: bool,
     ko_time: f32,
+    /// Held by the gallery ([`GalleryFreeze`]): steps advance no time.
+    frozen: bool,
     rng: Rng,
 }
 
@@ -277,8 +282,21 @@ impl KnightAnim {
             wide_left: 0.0,
             downed: false,
             ko_time: 0.0,
+            frozen: false,
             rng,
         }
+    }
+
+    /// Holds the animation clock: while frozen, [`KnightAnim::step`] advances no
+    /// time, so the pose, eyes (blink, wide) and springs stay exactly as they
+    /// are. Events and elimination still register and play out once thawed.
+    /// Driven by [`freeze_knights`] from the gallery's [`GalleryFreeze`].
+    pub fn set_frozen(&mut self, frozen: bool) {
+        self.frozen = frozen;
+    }
+
+    pub fn is_frozen(&self) -> bool {
+        self.frozen
     }
 
     /// Eliminated and not yet back (as of the last [`KnightAnim::step`]).
@@ -312,9 +330,10 @@ impl KnightAnim {
         }
     }
 
-    /// Advances `dt` seconds with this frame's `input` and returns the pose.
+    /// Advances `dt` seconds with this frame's `input` and returns the pose
+    /// (no time at all while frozen: see [`KnightAnim::set_frozen`]).
     pub fn step(&mut self, dt: f32, input: &KnightInput) -> KnightPose {
-        let dt = dt.clamp(0.0, 0.1);
+        let dt = if self.frozen { 0.0 } else { dt.clamp(0.0, 0.1) };
         if input.downed && !self.downed {
             self.downed = true;
             self.ko_time = 0.0;
@@ -701,8 +720,21 @@ pub fn sparkle_halo(t: f32) -> Halo {
     )
 }
 
+/// Freezes every knight's animation clock while the gallery's [`GalleryFreeze`]
+/// is set, and thaws it after. Runs in `Update`, before the knights animate in
+/// `PostUpdate`, so the freeze holds from the frame it is set. Registered by
+/// `scenario::gallery::GalleryPlugin`.
+pub fn freeze_knights(freeze: Option<Res<GalleryFreeze>>, mut knights: Query<&mut KnightAnim>) {
+    let frozen = freeze.is_some();
+    for mut anim in &mut knights {
+        if anim.is_frozen() != frozen {
+            anim.set_frozen(frozen);
+        }
+    }
+}
+
 pub fn fade_sparkles(
-    time: Res<Time>,
+    time: FreezableTime,
     mut sparkles: Query<(Entity, &mut RespawnSparkle, &mut Halo)>,
     mut commands: Commands,
 ) {
