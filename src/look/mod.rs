@@ -28,6 +28,9 @@
 //!   density) with distance. For the station, ships, far islands, the planet.
 //!   `FarMaterial::new(color).with_haze(0..1).with_emissive(c, k)`. Never
 //!   outlined.
+//! - [`GroundMaterial`]: the island's grass, toon-lit like [`ToonMaterial`]
+//!   (vertex colours multiply `base_color`), with the faint glowing build grid
+//!   drawn in world space by its shader (`ground.wgsl`). Never outlined.
 //!
 //! ## Outlines
 //!
@@ -78,6 +81,7 @@
 
 mod blob;
 mod far;
+mod ground;
 mod halo;
 mod model_look;
 mod outline;
@@ -89,6 +93,7 @@ pub use blob::{
     BlobAssets, BlobDecal, BlobDecalLink, BlobGround, BlobMaterial, BlobShadow, blob_footprint,
 };
 pub use far::{FarHaze, FarHazeBlock, FarMaterial};
+pub use ground::{GroundMaterial, grid_line_distance, grid_line_intensity};
 pub use halo::{
     HALO_MAX_INTENSITY, Halo, HaloAssets, HaloLink, HaloMaterial, HaloSprite, halo_image,
     pack_halo, unpack_halo,
@@ -199,6 +204,7 @@ impl Plugin for LookPlugin {
             ),
         );
         blob::add_blob_systems(app);
+        ground::add_ground(app);
     }
 }
 

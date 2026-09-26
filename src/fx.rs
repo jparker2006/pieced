@@ -12,7 +12,7 @@
 pub mod sim;
 
 use crate::{
-    building::{Piece, ramp_surface_height},
+    building::{Piece, ramp_surface_height, visuals::PieceDebris},
     palette,
     render::{CameraFollowSet, MainCamera},
     shared::{
@@ -706,9 +706,18 @@ impl Emitter<'_> {
         }
     }
 
-    /// The signature moment: a destroyed piece shatters into chunky planks that
-    /// tumble, bounce and shrink away, with splinters and dust.
-    fn piece_debris(&mut self, piece: Option<Piece>, kind: PieceKind, center: Vec3, eye: Vec3) {
+    /// The signature moment: a destroyed piece bursts into chunky bricks (walls)
+    /// or plank splinters (floors and ramps) that tumble, bounce and shrink
+    /// away, with crumbs and a dust poof. Uses the Blender debris models when
+    /// the building visuals have them, plain wood chunks otherwise.
+    fn piece_debris(
+        &mut self,
+        piece: Option<Piece>,
+        kind: PieceKind,
+        center: Vec3,
+        eye: Vec3,
+        models: Option<&PieceDebris>,
+    ) {
         let frame = piece
             .map(|p| p.slot().transform())
             .unwrap_or_else(|| Transform::from_translation(center));
@@ -735,6 +744,17 @@ impl Emitter<'_> {
         samples.push((self.rng.range(-0.5, 0.5), self.rng.range(-0.5, 0.5)));
         samples.push((self.rng.range(-0.5, 0.5), self.rng.range(-0.5, 0.5)));
         let jitter = 0.25;
+        // The debris model for this piece: bricks from walls, splinters from planks.
+        let model = models.map(|m| {
+            let mesh = if kind == PieceKind::Wall {
+                m.brick.clone()
+            } else {
+                m.splinter.clone()
+            };
+            (mesh, Paint::Solid(m.material.clone()))
+        });
+        // Resting half-height of a model chunk at scale 1.
+        let model_radius = if kind == PieceKind::Wall { 0.13 } else { 0.05 };
         for (u, v) in samples {
             let u = u + self.rng.range(-jitter, jitter);
             let v = v + self.rng.range(-jitter, jitter);
@@ -747,15 +767,40 @@ impl Emitter<'_> {
                 }
             };
             let pos = frame.transform_point(local);
-            let size = Vec3::new(
-                self.rng.range(0.5, 0.95),
-                self.rng.range(0.2, 0.32),
-                self.rng.range(0.09, 0.14),
-            );
             let tilt = Quat::from_scaled_axis(self.rng.dir() * self.rng.range(0.0, 0.35));
             let vel = away * self.rng.range(1.5, 4.0)
                 + (pos - center).normalize_or_zero() * self.rng.range(1.0, 2.5)
                 + Vec3::Y * self.rng.range(2.0, 5.0);
+            let (size, radius, mesh, paint) = match &model {
+                Some((mesh, paint)) => {
+                    let k = self.rng.range(0.85, 1.35);
+                    (
+                        Vec3::splat(k),
+                        model_radius * k,
+                        mesh.clone(),
+                        paint.clone(),
+                    )
+                }
+                None => {
+                    let size = Vec3::new(
+                        self.rng.range(0.5, 0.95),
+                        self.rng.range(0.2, 0.32),
+                        self.rng.range(0.09, 0.14),
+                    );
+                    let mesh = if self.rng.f() < 0.3 {
+                        self.assets.wedge.clone()
+                    } else {
+                        self.assets.chunk.clone()
+                    };
+                    let k = [0, 0, 1, 2, 3][self.rng.pick(5)];
+                    (
+                        size,
+                        size.z * 0.5,
+                        mesh,
+                        Paint::Solid(self.assets.wood[k].clone()),
+                    )
+                }
+            };
             let p = Particle {
                 pos,
                 vel,
@@ -764,21 +809,15 @@ impl Emitter<'_> {
                 gravity: 20.0,
                 drag: 0.2,
                 bounce: Some(0.35),
-                radius: size.z * 0.5,
+                radius,
                 size,
                 life: self.rng.range(1.05, 1.35),
                 shrink_start: 0.72,
                 ..default()
             };
-            let mesh = if self.rng.f() < 0.3 {
-                self.assets.wedge.clone()
-            } else {
-                self.assets.chunk.clone()
-            };
-            let k = [0, 0, 1, 2, 3][self.rng.pick(5)];
-            let paint = Paint::Solid(self.assets.wood[k].clone());
             self.chunk(p, mesh, paint);
         }
+        // Crumbs: small bits of brick or splinters flung further.
         for _ in 0..16 {
             let local = match kind {
                 PieceKind::Wall => {
@@ -788,11 +827,31 @@ impl Emitter<'_> {
             };
             let pos = frame.transform_point(local);
             let dir = (self.rng.dir() + away * 0.6 + Vec3::Y * 0.5).normalize_or(Vec3::Y);
-            let size = Vec3::new(
-                self.rng.range(0.04, 0.08),
-                self.rng.range(0.025, 0.04),
-                self.rng.range(0.12, 0.22),
-            );
+            let (size, radius, mesh, paint) = match &model {
+                Some((mesh, paint)) => {
+                    let k = self.rng.range(0.3, 0.5);
+                    (
+                        Vec3::splat(k),
+                        model_radius * k,
+                        mesh.clone(),
+                        paint.clone(),
+                    )
+                }
+                None => {
+                    let size = Vec3::new(
+                        self.rng.range(0.04, 0.08),
+                        self.rng.range(0.025, 0.04),
+                        self.rng.range(0.12, 0.22),
+                    );
+                    let k = self.rng.pick(4);
+                    (
+                        size,
+                        size.y * 0.5,
+                        self.assets.chunk.clone(),
+                        Paint::Solid(self.assets.wood[k].clone()),
+                    )
+                }
+            };
             let p = Particle {
                 pos,
                 vel: dir * self.rng.range(3.0, 7.0),
@@ -800,34 +859,32 @@ impl Emitter<'_> {
                 spin: self.rng.dir() * self.rng.range(8.0, 20.0),
                 gravity: 18.0,
                 bounce: Some(0.3),
-                radius: size.y * 0.5,
+                radius,
                 size,
                 life: self.rng.range(0.6, 1.0),
                 shrink_start: 0.6,
                 ..default()
             };
-            let k = self.rng.pick(4);
-            let (mesh, paint) = (
-                self.assets.chunk.clone(),
-                Paint::Solid(self.assets.wood[k].clone()),
-            );
             self.particle(p, mesh, paint);
         }
-        for _ in 0..3 {
+        // The dust poof: a ring of big soft puffs rolling out from the piece.
+        for k in 0..5 {
             let local = match kind {
                 PieceKind::Wall => {
-                    Vec3::new(self.rng.range(-1.4, 1.4), self.rng.range(-1.0, 1.0), 0.0)
+                    Vec3::new(self.rng.range(-1.5, 1.5), self.rng.range(-1.2, 0.6), 0.0)
                 }
-                _ => Vec3::new(self.rng.range(-1.4, 1.4), 0.2, self.rng.range(-1.4, 1.4)),
+                _ => Vec3::new(self.rng.range(-1.5, 1.5), 0.2, self.rng.range(-1.5, 1.5)),
             };
+            let pos = frame.transform_point(local);
+            let out = (pos - center).with_y(0.0).normalize_or(away);
             let p = Particle {
-                pos: frame.transform_point(local),
-                vel: Vec3::Y * 0.4 + self.rng.dir() * 0.4,
-                size: Vec3::splat(0.26),
-                birth_scale: 0.5,
-                grow: 2.4,
+                pos,
+                vel: out * self.rng.range(0.8, 1.6) + Vec3::Y * (0.3 + 0.1 * k as f32),
+                size: Vec3::splat(self.rng.range(0.3, 0.42)),
+                birth_scale: 0.4,
+                grow: 2.6,
                 drag: 2.5,
-                life: 0.55,
+                life: self.rng.range(0.55, 0.75),
                 shrink_start: 1.0,
                 ..default()
             };
@@ -923,6 +980,7 @@ fn emit_fx(
     pools: Option<ResMut<FxPools>>,
     mut state: ResMut<FxState>,
     mut removed: ResMut<RemovedPieces>,
+    debris: Option<Res<PieceDebris>>,
     muzzle: Res<MuzzlePoint>,
     mut virtual_time: ResMut<Time<Virtual>>,
     mut shots: MessageReader<ShotFired>,
@@ -1002,7 +1060,7 @@ fn emit_fx(
     for change in changes.read() {
         if change.change == PieceChange::Destroyed {
             let piece = removed.0.get(&change.entity).map(|(p, _)| *p);
-            fx.piece_debris(piece, change.kind, change.center, eye);
+            fx.piece_debris(piece, change.kind, change.center, eye, debris.as_deref());
         }
     }
 

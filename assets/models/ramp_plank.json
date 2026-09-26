@@ -1,0 +1,60 @@
+{
+  "name": "ramp_plank",
+  "kind": "ramp",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 332,
+  "triangle_budget": 400,
+  "bounds": {
+    "min": [
+      -2.0,
+      -0.056,
+      -1.9995
+    ],
+    "max": [
+      2.0,
+      2.9864,
+      2.0022
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "ramp_plank",
+      "bounds": {
+        "min": [
+          -2.0,
+          -0.056,
+          -1.9995
+        ],
+        "max": [
+          2.0,
+          2.9864,
+          2.0022
+        ]
+      },
+      "triangles": 332,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "trunk"
+      ]
+    }
+  },
+  "attach": {
+    "Top": {
+      "parent": "ramp_plank",
+      "position": [
+        0.0,
+        3.0,
+        -2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

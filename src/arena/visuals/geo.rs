@@ -90,6 +90,14 @@ impl Geo {
         self.colors.extend_from_slice(&other.colors);
     }
 
+    /// Axis-aligned bounds of every vertex.
+    #[cfg(test)]
+    pub fn bounds(&self) -> Option<(Vec3, Vec3)> {
+        let mut it = self.positions.iter().map(|p| Vec3::from_array(*p));
+        let first = it.next()?;
+        Some(it.fold((first, first), |(lo, hi), p| (lo.min(p), hi.max(p))))
+    }
+
     pub fn vertices(&self) -> impl Iterator<Item = Vec3> + '_ {
         self.positions.iter().map(|p| Vec3::from_array(*p))
     }
@@ -136,6 +144,7 @@ impl Geo {
     }
 }
 
+#[cfg(test)]
 /// A horizontal ring of `sides` points (counter-clockwise from above, first point
 /// toward -Z rotated by `phase`), at height `y`, with per-point radius from `radius`.
 pub fn ring(

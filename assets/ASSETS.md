@@ -44,6 +44,28 @@ from `art/palette.json`, sampled from the target images by
 | `models/stump_a.json` | `art/blender/assets/props.py` | Sidecar |
 | `models/tree_a.glb` | `art/blender/assets/props.py` | Puffy island-margin tree, about 5.7 m |
 | `models/tree_a.json` | `art/blender/assets/props.py` | Sidecar |
+| `models/brick_chunk.glb` | `art/blender/assets/pieces.py` | Wall debris: a broken brick with a mortar crumb, about 0.3 m |
+| `models/brick_chunk.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/floor_plank.glb` | `art/blender/assets/pieces.py` | Plank floor piece, 4 x 4 m: five warped planks, big nail heads, two beams (292 tris) |
+| `models/floor_plank.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/floor_plank_crack1.glb` | `art/blender/assets/pieces.py` | Plank floor at 66% HP: cracks (302 tris) |
+| `models/floor_plank_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/floor_plank_crack2.glb` | `art/blender/assets/pieces.py` | Plank floor at 33% HP: a split plank, popped nails, bigger cracks (292 tris) |
+| `models/floor_plank_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/plank_splinter.glb` | `art/blender/assets/pieces.py` | Floor and ramp debris: a snapped plank end with a nail, about 0.7 m |
+| `models/plank_splinter.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/ramp_plank.glb` | `art/blender/assets/pieces.py` | Plank ramp piece, 4 m run, 3 m rise: six warped planks on stringers (332 tris) |
+| `models/ramp_plank.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/ramp_plank_crack1.glb` | `art/blender/assets/pieces.py` | Plank ramp at 66% HP: cracks (342 tris) |
+| `models/ramp_plank_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/ramp_plank_crack2.glb` | `art/blender/assets/pieces.py` | Plank ramp at 33% HP: a split plank, bigger cracks (349 tris) |
+| `models/ramp_plank_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/wall_brick.glb` | `art/blender/assets/pieces.py` | Brick wall piece, 4 x 3 m: 8 courses of chunky through-bricks on a mortar core, bumpy brick edges (528 tris) |
+| `models/wall_brick.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/wall_brick_crack1.glb` | `art/blender/assets/pieces.py` | Brick wall at 66% HP: cartoon cracks (564 tris) |
+| `models/wall_brick_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/wall_brick_crack2.glb` | `art/blender/assets/pieces.py` | Brick wall at 33% HP: bigger cracks, missing bricks, a bite out of the top corner (584 tris) |
+| `models/wall_brick_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
 | `models/far_island_a.glb` | `art/blender/assets/far.py` | Far island: grass top, three trees, waterfall |
 | `models/far_island_a.json` | `art/blender/assets/far.py` | Sidecar |
 | `models/far_island_b.glb` | `art/blender/assets/far.py` | Far island with a gothic chapel tower and a waterfall |
@@ -68,6 +90,8 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 | `shaders/far.wgsl` | hand-written, used by `src/look/far.rs` | Unlit far layer with distance haze |
 | `shaders/halo.wgsl` | hand-written, used by `src/look/halo.rs` | Additive camera-facing glow billboards |
 | `shaders/blob.wgsl` | hand-written, used by `src/look/blob.rs` | Soft blob shadows under characters and props |
+| `shaders/ground.wgsl` | hand-written, used by `src/look/ground.rs` | The island's toon-lit grass with the glowing build grid in world space |
+| `shaders/barrier.wgsl` | hand-written, used by `src/arena/visuals/barrier.rs` | The island's shimmering rune barrier on the arena edge (translucent, fades in near the player) |
 | `shaders/waterfall.wgsl` | hand-written, used by `src/far/waterfall.rs` | Additive scrolling waterfall streaks for the far models |
 
 ## Fonts (`assets/fonts/`)

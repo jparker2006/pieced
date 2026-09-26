@@ -4,6 +4,10 @@
     "file": "axis_probe.glb"
   },
   {
+    "name": "brick_chunk",
+    "file": "brick_chunk.glb"
+  },
+  {
     "name": "far_island_a",
     "file": "far_island_a.glb"
   },
@@ -14,6 +18,18 @@
   {
     "name": "far_island_c",
     "file": "far_island_c.glb"
+  },
+  {
+    "name": "floor_plank",
+    "file": "floor_plank.glb"
+  },
+  {
+    "name": "floor_plank_crack1",
+    "file": "floor_plank_crack1.glb"
+  },
+  {
+    "name": "floor_plank_crack2",
+    "file": "floor_plank_crack2.glb"
   },
   {
     "name": "gloves",
@@ -28,8 +44,24 @@
     "file": "planet.glb"
   },
   {
+    "name": "plank_splinter",
+    "file": "plank_splinter.glb"
+  },
+  {
     "name": "pump",
     "file": "pump.glb"
+  },
+  {
+    "name": "ramp_plank",
+    "file": "ramp_plank.glb"
+  },
+  {
+    "name": "ramp_plank_crack1",
+    "file": "ramp_plank_crack1.glb"
+  },
+  {
+    "name": "ramp_plank_crack2",
+    "file": "ramp_plank_crack2.glb"
   },
   {
     "name": "rifle",
@@ -58,5 +90,17 @@
   {
     "name": "tree_a",
     "file": "tree_a.glb"
+  },
+  {
+    "name": "wall_brick",
+    "file": "wall_brick.glb"
+  },
+  {
+    "name": "wall_brick_crack1",
+    "file": "wall_brick_crack1.glb"
+  },
+  {
+    "name": "wall_brick_crack2",
+    "file": "wall_brick_crack2.glb"
   }
 ]

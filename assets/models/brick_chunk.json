@@ -1,0 +1,43 @@
+{
+  "name": "brick_chunk",
+  "kind": "wall",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 24,
+  "triangle_budget": 600,
+  "bounds": {
+    "min": [
+      -0.24,
+      -0.13,
+      -0.12
+    ],
+    "max": [
+      0.2,
+      0.17,
+      0.12
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "brick_chunk",
+      "bounds": {
+        "min": [
+          -0.24,
+          -0.13,
+          -0.12
+        ],
+        "max": [
+          0.2,
+          0.17,
+          0.12
+        ]
+      },
+      "triangles": 24,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    }
+  },
+  "attach": {}
+}
