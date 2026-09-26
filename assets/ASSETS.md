@@ -28,6 +28,8 @@ from `art/palette.json`, sampled from the target images by
 | `models/manifest.json` | `art/blender/build.py` | Every model the game loads (`[{name, file}]`) |
 | `models/axis_probe.glb` | `art/blender/assets/probe.py` | Orientation test fixture: `Forward` empty 1 m in front |
 | `models/axis_probe.json` | `art/blender/assets/probe.py` | Sidecar |
+| `models/knight.glb` | `art/blender/assets/knight.py` | The knight-wizard enemy, 1.86 m, fitted to the dummy's hitboxes; named parts, joint pivots and eye states |
+| `models/knight.json` | `art/blender/assets/knight.py` | Sidecar |
 | `models/rock_a.glb` | `art/blender/assets/props.py` | Arena rock, 1.25 m, crouch cover (D29) |
 | `models/rock_a.json` | `art/blender/assets/props.py` | Sidecar |
 | `models/rock_b.glb` | `art/blender/assets/props.py` | Arena rock with a buddy rock, 1.05 m (D29) |
