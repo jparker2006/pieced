@@ -217,19 +217,36 @@ pub(crate) fn place_warmup_items(
 #[derive(Component, Debug)]
 pub struct LoadingOverlay;
 
-pub(crate) fn spawn_loading_overlay(mut commands: Commands) {
-    commands.spawn((
+/// Width of the PIECED logo on the loading overlay (px).
+const OVERLAY_LOGO_WIDTH: f32 = 480.0;
+
+pub(crate) fn spawn_loading_overlay(mut commands: Commands, art: Option<Res<crate::hud::UiArt>>) {
+    let mut overlay = commands.spawn((
         Name::new("Loading overlay"),
         LoadingOverlay,
         Node {
             position_type: PositionType::Absolute,
             width: percent(100),
             height: percent(100),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
             ..default()
         },
         BackgroundColor(Color::srgb(0.1, 0.07, 0.2)),
         GlobalZIndex(1000),
     ));
+    // The PIECED logo, when the HUD's art is loaded (slice F).
+    if let Some(art) = art {
+        let size = art.logo_size.max(UVec2::ONE).as_vec2();
+        overlay.with_child((
+            ImageNode::new(art.logo.clone()),
+            Node {
+                width: px(OVERLAY_LOGO_WIDTH),
+                height: px(OVERLAY_LOGO_WIDTH * size.y / size.x),
+                ..default()
+            },
+        ));
+    }
 }
 
 pub(crate) fn remove_loading_overlay(
