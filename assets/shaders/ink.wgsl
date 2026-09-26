@@ -55,7 +55,10 @@ fn derived_ink(c: vec3<f32>) -> vec3<f32> {
 fn vertex(v: Vertex) -> VertexOutput {
     let world_from_local = get_world_from_local(v.instance_index);
     let world = mesh_position_local_to_world(world_from_local, vec4<f32>(v.position, 1.0));
-    let n = normalize(mesh_normal_local_to_world(v.outline_normal, v.instance_index));
+    // The outline normal's length is its miter (see smooth_outline_normals):
+    // width × miter pushes every face meeting at this corner out by `width`.
+    let miter = clamp(length(v.outline_normal), 1.0, 2.0);
+    let n = mesh_normal_local_to_world(v.outline_normal, v.instance_index);
 
     var clip = position_world_to_clip(world.xyz);
     let n_clip = view.clip_from_world * vec4<f32>(n, 0.0);
@@ -66,7 +69,7 @@ fn vertex(v: Vertex) -> VertexOutput {
 
     let dist = distance(world.xyz, view.world_position);
     let fade = 1.0 - smoothstep(ink.params.y, ink.params.z, dist);
-    let width_px = ink.params.x * (view.viewport.w / ink.params.w) * fade;
+    let width_px = ink.params.x * miter * (view.viewport.w / ink.params.w) * fade;
     if len > 1e-6 {
         let offset_ndc = dir / len * width_px * 2.0 / view.viewport.zw;
         clip = vec4<f32>(clip.xy + offset_ndc * clip.w, clip.zw);

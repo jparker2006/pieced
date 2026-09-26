@@ -10,11 +10,23 @@
 //! - **Mod**: `bevy_mod_outline` 0.13 with `OutlineMode::ExtrudeReal`, using the
 //!   same outline-normal attribute. For measurement only (`--knobs outline=mod`).
 //!
+//! Why the hull is the default (from the crate source and offscreen renders of
+//! both, `tests/look_offscreen.rs`): bevy_mod_outline draws after tonemapping in
+//! its own passes with its own depth, so geometry without a stencil (the
+//! ground, effects, the ghost) doesn't hide outlines; on the arena, outlines of
+//! cliff-apron rubble showed through the ground. Its plugin adds a full-screen
+//! MSAA write-back blit on every MSAA camera, outlines or not (both of ours);
+//! it reads meshes on the CPU (render-world-only meshes panic); it fades per
+//! entity, which can't fade a merged scenery mesh; and it ignores the miter, so
+//! box edges draw thinner.
+//!
 //! Width is [`DEFAULT_WIDTH_PX`] at [`REFERENCE_HEIGHT_PX`] and scales with the
 //! render target's height, so it stays constant on screen at any render scale.
-//! It fades to zero between [`FADE_START`] and [`FADE_END`] meters (per vertex in
-//! the hull shader; per entity for `Mod`), and hull draws beyond the fade are
-//! culled on the CPU with an abrupt [`VisibilityRange`].
+//! On the hull, each vertex extrudes by width × its outline normal's miter, so
+//! hard low-poly edges draw as thick as smooth curves. It fades to zero between
+//! [`FADE_START`] and [`FADE_END`] meters (per vertex in the hull shader; per
+//! entity for `Mod`), and hull draws beyond the fade are culled on the CPU with
+//! an abrupt [`VisibilityRange`].
 
 use super::{
     settings::{LookSettings, OutlineBackend},
@@ -22,6 +34,7 @@ use super::{
 };
 use crate::render::{MainCamera, VIEWMODEL_LAYER, WorldTarget};
 use bevy::{
+    asset::RenderAssetUsages,
     camera::visibility::{RenderLayers, VisibilityRange},
     light::NotShadowCaster,
     mesh::{Indices, MeshVertexBufferLayoutRef, VertexAttributeValues},
@@ -125,13 +138,24 @@ pub fn ink_color(base: Color) -> Color {
 
 /// Positions closer than this (meters) count as the same point.
 const WELD: f32 = 1e-4;
+/// Longest miter an outline normal may carry (see [`smooth_outline_normals`]).
+pub const MAX_MITER: f32 = 2.0;
 
 /// Outline normals averaged by vertex *position*: every vertex at the same
-/// point gets the same normal, the angle-weighted mean of the face normals
+/// point gets the same direction, the angle-weighted mean of the face normals
 /// around that point. Unlike `Mesh::compute_smooth_normals`, this welds split
 /// vertices (hard edges, flat shading), so an extruded hull stays closed at
-/// every corner. `normals` (optional) only orients faces whose winding is
-/// ambiguous; `indices` is `None` for non-indexed triangle lists.
+/// every corner.
+///
+/// The vector's *length* is the miter: 1 / the smallest cosine between that
+/// direction and the faces meeting there (at most [`MAX_MITER`]). Extruding by
+/// width × length pushes every adjacent face out by the same width, so a hard
+/// 90° edge draws as thick a line as a smooth curve (√2 on a box edge, √3 on a
+/// box corner, 1 on smooth surfaces). The hull shader uses it; bevy_mod_outline
+/// ignores the length.
+///
+/// `normals` (optional) only orients faces whose winding is ambiguous;
+/// `indices` is `None` for non-indexed triangle lists.
 pub fn smooth_outline_normals(
     positions: &[[f32; 3]],
     normals: Option<&[[f32; 3]]>,
@@ -144,30 +168,49 @@ pub fn smooth_outline_normals(
     let tri_count = indices.map_or(positions.len(), <[u32]>::len) / 3;
     let corner =
         |t: usize, k: usize| -> usize { indices.map_or(t * 3 + k, |ix| ix[t * 3 + k] as usize) };
+    // Every valid triangle's corners and oriented unit face normal.
+    let faces: Vec<([usize; 3], Vec3)> = (0..tri_count)
+        .filter_map(|t| {
+            let ids = [corner(t, 0), corner(t, 1), corner(t, 2)];
+            if ids.iter().any(|&i| i >= positions.len()) {
+                return None;
+            }
+            let p = ids.map(|i| Vec3::from_array(positions[i]));
+            let face = (p[1] - p[0]).cross(p[2] - p[0]);
+            if face.length_squared() < 1e-14 {
+                return None;
+            }
+            let mut face = face.normalize();
+            if let Some(normals) = normals {
+                let hint: Vec3 = ids.iter().map(|&i| Vec3::from_array(normals[i])).sum();
+                if hint.dot(face) < 0.0 {
+                    face = -face;
+                }
+            }
+            Some((ids, face))
+        })
+        .collect();
     let mut sums: HashMap<(i64, i64, i64), Vec3> = HashMap::default();
-    for t in 0..tri_count {
-        let ids = [corner(t, 0), corner(t, 1), corner(t, 2)];
-        if ids.iter().any(|&i| i >= positions.len()) {
-            continue;
-        }
+    for (ids, face) in &faces {
         let p = ids.map(|i| Vec3::from_array(positions[i]));
-        let mut face = (p[1] - p[0]).cross(p[2] - p[0]);
-        if face.length_squared() < 1e-14 {
-            continue;
-        }
-        face = face.normalize();
-        if let Some(normals) = normals {
-            let hint: Vec3 = ids.iter().map(|&i| Vec3::from_array(normals[i])).sum();
-            if hint.dot(face) < 0.0 {
-                face = -face;
+        for k in 0..3 {
+            let angle = (p[(k + 1) % 3] - p[k]).angle_between(p[(k + 2) % 3] - p[k]);
+            if angle.is_finite() {
+                *sums.entry(key(positions[ids[k]])).or_default() += *face * angle;
             }
         }
-        for k in 0..3 {
-            let a = p[(k + 1) % 3] - p[k];
-            let b = p[(k + 2) % 3] - p[k];
-            let angle = a.angle_between(b);
-            if angle.is_finite() {
-                *sums.entry(key(positions[ids[k]])).or_default() += face * angle;
+    }
+    let directions: HashMap<(i64, i64, i64), Vec3> = sums
+        .into_iter()
+        .filter_map(|(k, sum)| sum.try_normalize().map(|n| (k, n)))
+        .collect();
+    let mut min_cos: HashMap<(i64, i64, i64), f32> = HashMap::default();
+    for (ids, face) in &faces {
+        for &i in ids {
+            let k = key(positions[i]);
+            if let Some(n) = directions.get(&k) {
+                let c = min_cos.entry(k).or_insert(1.0);
+                *c = c.min(n.dot(*face));
             }
         }
     }
@@ -175,19 +218,28 @@ pub fn smooth_outline_normals(
         .iter()
         .enumerate()
         .map(|(i, p)| {
-            let fallback = normals.map_or(Vec3::Y, |n| Vec3::from_array(n[i]));
-            sums.get(&key(*p))
-                .copied()
-                .unwrap_or(Vec3::ZERO)
-                .normalize_or(fallback)
-                .to_array()
+            let k = key(*p);
+            match directions.get(&k) {
+                Some(n) => {
+                    let cos = min_cos.get(&k).copied().unwrap_or(1.0);
+                    let miter = (1.0 / cos.max(1.0 / MAX_MITER)).clamp(1.0, MAX_MITER);
+                    (*n * miter).to_array()
+                }
+                None => normals
+                    .map_or(Vec3::Y, |n| Vec3::from_array(n[i]))
+                    .normalize_or(Vec3::Y)
+                    .to_array(),
+            }
         })
         .collect()
 }
 
-/// Adds [`ATTRIBUTE_OUTLINE_NORMAL`] to a triangle-list mesh (call it before
-/// adding the mesh to `Assets<Mesh>`; our meshes are render-world only after
-/// that). Meshes without positions or with other topologies are returned as-is.
+/// Adds [`ATTRIBUTE_OUTLINE_NORMAL`] to a triangle-list mesh. Call it before
+/// adding the mesh to `Assets<Mesh>` (our builders make render-world-only
+/// meshes, whose data is gone after upload). The mesh also keeps its main-world
+/// copy: `bevy_mod_outline` reads it on the CPU every frame (and panics on a
+/// render-world-only mesh); for our outlined meshes that is a few MB in all.
+/// Meshes without positions or with other topologies are returned as-is.
 pub fn with_outline_normals(mut mesh: Mesh) -> Mesh {
     if mesh.primitive_topology() != bevy::mesh::PrimitiveTopology::TriangleList {
         return mesh;
@@ -207,6 +259,7 @@ pub fn with_outline_normals(mut mesh: Mesh) -> Mesh {
     });
     let outline = smooth_outline_normals(positions, normals, indices.as_deref());
     mesh.insert_attribute(ATTRIBUTE_OUTLINE_NORMAL, outline);
+    mesh.asset_usage |= RenderAssetUsages::MAIN_WORLD;
     mesh
 }
 
@@ -638,8 +691,14 @@ mod tests {
             let key = p.map(|v| v as i32);
             let expected = Vec3::from_array(*p).normalize();
             assert!(
-                n.distance(expected) < 1e-5,
+                n.normalize().distance(expected) < 1e-5,
                 "corner {p:?}: {n} instead of {expected}"
+            );
+            // Three perpendicular faces meet there: a √3 miter.
+            assert!(
+                (n.length() - 3f32.sqrt()).abs() < 1e-4,
+                "miter {}",
+                n.length()
             );
             if let Some(previous) = corners.insert(key, n) {
                 assert_eq!(previous, n, "split vertices at {p:?} disagree");
@@ -663,10 +722,16 @@ mod tests {
             }
         }
         let outline = smooth_outline_normals(&soup_p, Some(&soup_n), None);
+        let indexed = smooth_outline_normals(&positions, Some(&normals), Some(&indices));
         for (p, n) in soup_p.iter().zip(&outline) {
-            let expected = Vec3::from_array(*p).normalize();
-            assert!(Vec3::from_array(*n).distance(expected) < 1e-5);
+            let expected = Vec3::from_array(*p).normalize() * 3f32.sqrt();
+            assert!(Vec3::from_array(*n).distance(expected) < 1e-4);
         }
+        assert!(
+            indexed
+                .iter()
+                .all(|n| (Vec3::from_array(*n).length() - 3f32.sqrt()).abs() < 1e-4)
+        );
     }
 
     #[test]
@@ -679,7 +744,41 @@ mod tests {
         let outline = smooth_outline_normals(&positions, Some(&normals), Some(&indices));
         for (p, n) in positions.iter().zip(&outline) {
             let expected = Vec3::new(p[0].signum(), p[1].signum(), p[2].signum()).normalize();
-            assert!(Vec3::from_array(*n).distance(expected) < 1e-4);
+            assert!(Vec3::from_array(*n).normalize().distance(expected) < 1e-4);
+        }
+    }
+
+    #[test]
+    fn miter_keeps_line_width_even_on_hard_edges() {
+        // A long flat slab seen edge-on: along the long edges only two faces
+        // meet (a 90° edge), so the miter is √2; on a smooth sphere it is ~1.
+        let (positions, normals, indices) = flat_cube();
+        let stretched: Vec<[f32; 3]> = positions.iter().map(|p| [p[0] * 4.0, p[1], p[2]]).collect();
+        let outline = smooth_outline_normals(&stretched, Some(&normals), Some(&indices));
+        assert!(outline.iter().all(|n| {
+            let len = Vec3::from_array(*n).length();
+            (1.0..=MAX_MITER).contains(&len)
+        }));
+        let mut sphere = Sphere::new(1.0).mesh().ico(3).unwrap();
+        sphere.remove_attribute(Mesh::ATTRIBUTE_UV_0);
+        let sphere = with_outline_normals(sphere);
+        let Some(VertexAttributeValues::Float32x3(round)) =
+            sphere.attribute(ATTRIBUTE_OUTLINE_NORMAL)
+        else {
+            panic!("no outline normals");
+        };
+        assert!(round.iter().all(|n| Vec3::from_array(*n).length() < 1.05));
+        // A thin wedge can't produce a spike longer than the cap.
+        let wedge = [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [1.0, 0.05, 0.0],
+        ];
+        for n in smooth_outline_normals(&wedge, None, None) {
+            assert!(Vec3::from_array(n).length() <= MAX_MITER + 1e-5);
         }
     }
 
@@ -700,6 +799,8 @@ mod tests {
             panic!("no outline normals");
         };
         assert_eq!(outline.len(), 24);
+        // bevy_mod_outline needs the CPU copy.
+        assert!(mesh.asset_usage.contains(RenderAssetUsages::MAIN_WORLD));
         // The regular (flat) normals are untouched.
         let Some(VertexAttributeValues::Float32x3(flat)) = mesh.attribute(Mesh::ATTRIBUTE_NORMAL)
         else {

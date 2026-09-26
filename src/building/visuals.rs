@@ -51,7 +51,7 @@ const STAGE_TINT: [f32; 3] = [1.0, 0.84, 0.68];
 /// north/south walls at a corner (no z-fighting when crack stages differ).
 const EW_WALL_LIFT: f32 = 0.004;
 /// Emissive strength of the ghost preview (× its own color).
-const GHOST_GLOW: f32 = 0.7;
+const GHOST_GLOW: f32 = 0.4;
 
 #[derive(Resource)]
 struct PieceAssets {

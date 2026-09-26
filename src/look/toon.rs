@@ -63,7 +63,7 @@ impl Default for ToonLighting {
         Self {
             key_direction: light_direction(115.0, 45.0),
             key_color: Color::srgb(1.0, 0.98, 0.94),
-            shadow_tint: Color::srgb(0.68, 0.62, 0.86),
+            shadow_tint: Color::srgb(0.72, 0.66, 0.86),
             fill_direction: light_direction(300.0, 35.0),
             fill_color: Color::srgb(0.2, 0.42, 0.45),
             rim_color: Color::srgb(1.0, 0.93, 0.8),
