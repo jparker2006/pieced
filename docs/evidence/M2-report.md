@@ -40,3 +40,25 @@ Every number here names its run folder, the commit, and the power and Low Power 
 
   181 tests pass. Colors ship as vertex colors (the spec was updated). Art-review notes for Phase 4: the rock is a little boxy and its shadow too saturated blue; the foliage shadow is teal where the targets show a darker green.
 - 2026-09-25: Phase 2 **guns** and **knight** builders dispatched (models first; their in-game integration waits for the look slice).
+- 2026-09-25: **look foundations merged** (`0bc8a27`):
+  - the toon material (vertex colors, violet shadow band, rim), with `Tonemapping::None`;
+  - inverted-hull ink outlines, the default. `bevy_mod_outline` sits behind `outline=mod`, because offscreen it drew outlines through the ground, couldn't fade merged scenery and adds an MSAA blit;
+  - the far material, halos, blob shadows;
+  - shadow maps and fog removed;
+  - shader warm-up behind a loading overlay, with Boot ending about 1.3 s after start in a debug build with a warm cache.
+
+  The orchestrator added model dressing (`eb2f6cf`): Blender models get toon, far or viewmodel materials on spawn. 227 tests pass. Risk: the first launch after new shaders took about 12 s while Metal's shader cache was cold. S3 measures warm launches.
+- 2026-09-25: Phase 2 **island** (pieces, D29 props, island, barrier, grid) and **sky** (galaxy, station, ships, far islands, planet) builders dispatched. Guns and knight were told to continue into in-game integration.
+- 2026-09-26: the disk hit 2.3 GB free. Stale split-debuginfo `.o` files (18.7 GB) and old caches were cleared, leaving 15 GB free. The dev profile now has `debug = false` (`6cddddd`).
+- 2026-09-26: **paused at the usage limit.** The Phase 2 builders were stopped mid-work. Their progress is on disk, uncommitted or partly committed, in `.claude/worktrees/`:
+  - `m2-guns`: models done, integration in progress;
+  - `m2-knight`: model done, integration in progress;
+  - `m2-island`: pieces and props in progress;
+  - `m2-sky`: galaxy, station, ships and islands working. Composition fixes are pending: show the whole station from spawn, a readable ringed planet, bigger and more far islands, solid waterfalls.
+
+  **To resume:**
+  1. In each worktree, `git merge main`, finish, then run the gates and commit.
+  2. Merge in this order: sky, island, knight, guns.
+  3. Then Phase 3 (spells, HUD, gallery) and Phase 4.
+
+  The Phase 0 baseline still needs a "go" window.
