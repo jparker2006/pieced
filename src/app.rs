@@ -10,7 +10,9 @@ use crate::{
     fx::FxPlugin,
     hud::HudPlugin,
     input::{InputAdapterPlugin, InputProbe, InputProbePlugin},
+    look::LookPlugin,
     menu::MenuPlugin,
+    models::ModelsPlugin,
     movement::MovementPlugin,
     native::NativeWindowPlugin,
     player::PlayerPlugin,
@@ -36,7 +38,7 @@ use bevy::{
     time::TimeUpdateStrategy,
     window::{MonitorSelection, WindowLevel, WindowMode, WindowResolution},
 };
-use std::num::NonZero;
+use std::{collections::BTreeSet, num::NonZero};
 
 /// States, messages, shared resources and fixed-step ordering.
 pub struct CorePlugin;
@@ -96,6 +98,8 @@ impl PluginGroup for ClientPlugins {
             .add(InputAdapterPlugin)
             .add(InputProbePlugin)
             .add(RenderSetupPlugin)
+            .add(LookPlugin)
+            .add(ModelsPlugin)
             .add(ArenaVisualsPlugin)
             .add(BuildingVisualsPlugin)
             .add(ViewmodelPlugin)
@@ -109,17 +113,48 @@ impl PluginGroup for ClientPlugins {
     }
 }
 
-/// Moves from `Boot` to `Playing` once the first frame has run.
+/// Moves from `Boot` to `Playing` once the first frame has run and every
+/// [`BootGate`] hold has been released.
 pub struct BootPlugin;
 
 impl Plugin for BootPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, boot.run_if(in_state(AppState::Boot)));
+        app.init_resource::<BootGate>()
+            .add_systems(Update, boot.run_if(in_state(AppState::Boot)));
     }
 }
 
-fn boot(mut next: ResMut<NextState<AppState>>) {
-    next.set(AppState::Playing);
+/// Work that must finish before play starts (model loading, pipeline warm-up).
+/// An owner calls [`BootGate::hold`] in `Startup` and [`BootGate::release`] once
+/// its work is done; `Boot` hands over to `Playing` when nothing is held.
+#[derive(Resource, Debug, Default)]
+pub struct BootGate {
+    held: BTreeSet<&'static str>,
+}
+
+impl BootGate {
+    pub fn hold(&mut self, key: &'static str) {
+        self.held.insert(key);
+    }
+
+    pub fn release(&mut self, key: &'static str) {
+        self.held.remove(key);
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.held.is_empty()
+    }
+
+    /// What is still being waited on, for launch telemetry and logs.
+    pub fn held(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.held.iter().copied()
+    }
+}
+
+fn boot(gate: Res<BootGate>, mut next: ResMut<NextState<AppState>>) {
+    if gate.is_open() {
+        next.set(AppState::Playing);
+    }
 }
 
 /// A windowless app with the full simulation, stepped one fixed tick per `update()`.
@@ -238,4 +273,22 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
         app.insert_resource(run);
     }
     Ok(app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BootGate;
+
+    #[test]
+    fn boot_gate_opens_only_when_every_hold_is_released() {
+        let mut gate = BootGate::default();
+        assert!(gate.is_open());
+        gate.hold("models");
+        gate.hold("warmup");
+        gate.release("models");
+        assert!(!gate.is_open());
+        assert_eq!(gate.held().collect::<Vec<_>>(), ["warmup"]);
+        gate.release("warmup");
+        assert!(gate.is_open());
+    }
 }
