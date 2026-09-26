@@ -30,6 +30,12 @@ from `art/palette.json`, sampled from the target images by
 | `models/axis_probe.json` | `art/blender/assets/probe.py` | Sidecar |
 | `models/knight.glb` | `art/blender/assets/knight.py` | The knight-wizard enemy, 1.86 m, fitted to the dummy's hitboxes; named parts, joint pivots and eye states |
 | `models/knight.json` | `art/blender/assets/knight.py` | Sidecar |
+| `models/gloves.glb` | `art/blender/assets/gloves.py` | White four-finger cartoon gloves (`GloveR`, `GloveL`) with dark sleeves; each pivots on its grip frame |
+| `models/gloves.json` | `art/blender/assets/gloves.py` | Sidecar |
+| `models/pump.glb` | `art/blender/assets/guns.py` | Pump viewmodel: bell muzzle, sliding `PumpGrip`, violet `Crystal` in spinning gold `Rings`, `Shard` shell |
+| `models/pump.json` | `art/blender/assets/guns.py` | Sidecar: `MuzzleTip`, `CrystalSocket`, `GripR`, `GripL` (on `PumpGrip`), `Sight`, `SightFront` |
+| `models/rifle.glb` | `art/blender/assets/guns.py` | Rifle viewmodel: brass, dark wood, glass `Chamber` with a blue `Crystal`, energy-cell `Mag` |
+| `models/rifle.json` | `art/blender/assets/guns.py` | Sidecar: `MuzzleTip`, `CrystalSocket`, `GripR`, `GripL`, `Sight`, `SightFront` |
 | `models/rock_a.glb` | `art/blender/assets/props.py` | Arena rock, 1.25 m, crouch cover (D29) |
 | `models/rock_a.json` | `art/blender/assets/props.py` | Sidecar |
 | `models/rock_b.glb` | `art/blender/assets/props.py` | Arena rock with a buddy rock, 1.05 m (D29) |

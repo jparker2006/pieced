@@ -68,7 +68,10 @@ macro_rules! embedded_models {
 /// asset (the `models` tests fail until this list and the manifest agree).
 pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "axis_probe",
+    "gloves",
     "knight",
+    "pump",
+    "rifle",
     "rock_a",
     "rock_b",
     "stump_a",
