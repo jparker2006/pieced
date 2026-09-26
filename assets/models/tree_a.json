@@ -1,0 +1,61 @@
+{
+  "name": "tree_a",
+  "kind": "tree",
+  "source": "art/blender/assets/props.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 1462,
+  "triangle_budget": 1500,
+  "bounds": {
+    "min": [
+      -2.0367,
+      0.0,
+      -1.711
+    ],
+    "max": [
+      1.7787,
+      5.6532,
+      1.8822
+    ]
+  },
+  "parts": {
+    "Canopy": {
+      "parent": "tree_a",
+      "bounds": {
+        "min": [
+          -2.0367,
+          2.9842,
+          -1.711
+        ],
+        "max": [
+          1.7787,
+          5.6532,
+          1.8822
+        ]
+      },
+      "triangles": 1166,
+      "colors": [
+        "foliage"
+      ]
+    },
+    "Trunk": {
+      "parent": "tree_a",
+      "bounds": {
+        "min": [
+          -1.0972,
+          0.0,
+          -0.6635
+        ],
+        "max": [
+          0.8929,
+          3.7317,
+          0.6621
+        ]
+      },
+      "triangles": 296,
+      "colors": [
+        "trunk"
+      ]
+    }
+  },
+  "attach": {}
+}
