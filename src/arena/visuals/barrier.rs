@@ -23,13 +23,13 @@ pub const REVEAL_FULL: f32 = 1.6;
 /// ...and gone beyond this one.
 pub const REVEAL_END: f32 = 4.5;
 
-/// The curtain's look. Additive; see `barrier.wgsl`.
+/// The curtain's look (alpha-blended; see `barrier.wgsl`).
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct BarrierMaterial {
-    /// rgb: curtain colour (linear); w: curtain strength.
+    /// rgb: line, rune and glow colour (linear); w: the sheet's opacity.
     #[uniform(0)]
     pub color: Vec4,
-    /// rgb: rune colour (linear); w: rune strength.
+    /// rgb: the sheet's colour (linear); w: rune strength.
     #[uniform(0)]
     pub rune_color: Vec4,
     /// x: fully shown within (m), y: gone beyond (m), z: height (m), w: speed.
@@ -48,10 +48,10 @@ fn linear(color: Color, w: f32) -> Vec4 {
 impl Default for BarrierMaterial {
     fn default() -> Self {
         Self {
-            color: linear(cartoon::BARRIER_CYAN, 0.32),
+            color: linear(cartoon::BARRIER_CYAN, 0.26),
             rune_color: linear(cartoon::GHOST_BLUE, 0.9),
             reveal: Vec4::new(REVEAL_FULL, REVEAL_END, BARRIER_HEIGHT, 1.0),
-            touch: Vec4::new(1.1, 0.55, 1.1, 0.0),
+            touch: Vec4::new(0.9, 0.4, 0.8, 0.0),
         }
     }
 }
@@ -62,7 +62,7 @@ impl Material for BarrierMaterial {
     }
 
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Add
+        AlphaMode::Blend
     }
 
     fn enable_prepass() -> bool {
@@ -100,12 +100,7 @@ impl BarrierSide {
 pub fn side_mesh() -> Mesh {
     let (h, top, bottom) = (ARENA_HALF, BARRIER_HEIGHT, -0.3);
     let z = -ARENA_HALF;
-    let positions = vec![
-        [-h, bottom, z],
-        [h, bottom, z],
-        [h, top, z],
-        [-h, top, z],
-    ];
+    let positions = vec![[-h, bottom, z], [h, bottom, z], [h, top, z], [-h, top, z]];
     let normals = vec![[0.0, 0.0, 1.0]; 4];
     Mesh::new(
         PrimitiveTopology::TriangleList,
@@ -137,7 +132,9 @@ pub(super) fn spawn_barrier(
             BarrierSide { outward },
             Mesh3d(mesh.clone()),
             MeshMaterial3d(material.clone()),
-            Transform::from_rotation(Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2 * k as f32)),
+            Transform::from_rotation(Quat::from_rotation_y(
+                -std::f32::consts::FRAC_PI_2 * k as f32,
+            )),
             Visibility::Hidden,
         ));
     }

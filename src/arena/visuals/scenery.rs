@@ -108,7 +108,10 @@ pub fn outline() -> Vec<EdgeSample> {
         let corner = start + along * (2.0 * h);
         for s in 0..=ARC_STEPS {
             let t = s as f32 / ARC_STEPS as f32;
-            out.push(sample(corner, Quat::from_rotation_y(-FRAC_PI_2 * t) * normal));
+            out.push(sample(
+                corner,
+                Quat::from_rotation_y(-FRAC_PI_2 * t) * normal,
+            ));
         }
     }
     out
@@ -123,26 +126,23 @@ fn sample(base: Vec3, normal: Vec3) -> EdgeSample {
     }
 }
 
-/// How far inside the island's rim a ground point is (m; negative beyond it).
+/// How far inside the island's rim a ground point is (m; negative beyond it):
+/// the signed distance to the rim polygon through the outline's edge points.
 pub fn inside_rim(outline: &[EdgeSample], p: Vec2) -> f32 {
-    let d = edge_distance(p.x, p.y);
-    if d <= 0.0 {
-        return BASE_MARGIN; // on the arena: well inside
+    let n = outline.len();
+    let mut inside = false;
+    let mut nearest = f32::MAX;
+    for i in 0..n {
+        let a = outline[i].edge().xz();
+        let b = outline[(i + 1) % n].edge().xz();
+        if (a.y > p.y) != (b.y > p.y) && p.x < a.x + (p.y - a.y) / (b.y - a.y) * (b.x - a.x) {
+            inside = !inside;
+        }
+        let ab = b - a;
+        let t = ((p - a).dot(ab) / ab.length_squared().max(1e-9)).clamp(0.0, 1.0);
+        nearest = nearest.min(p.distance(a + ab * t));
     }
-    // The outline sample whose outward ray passes closest to the point.
-    let q = Vec2::new(
-        p.x.clamp(-ARENA_HALF, ARENA_HALF),
-        p.y.clamp(-ARENA_HALF, ARENA_HALF),
-    );
-    let dir = (p - q).normalize_or_zero();
-    let best = outline
-        .iter()
-        .min_by(|a, b| {
-            let score = |s: &EdgeSample| s.base.xz().distance(q) - 2.0 * s.normal.xz().dot(dir);
-            score(a).total_cmp(&score(b))
-        })
-        .expect("an outline");
-    best.margin - d
+    if inside { nearest } else { -nearest }
 }
 
 /// A model standing on the island's margin.
@@ -169,6 +169,8 @@ pub struct Island {
     pub dense_tufts: Vec<Geo>,
     pub flowers: Geo,
     pub pebbles: Geo,
+    /// Round cartoon bushes on the margin (outlined).
+    pub bushes: Geo,
     /// Trees, big rocks and stumps on the margin.
     pub decor: Vec<Decor>,
 }
@@ -177,12 +179,16 @@ impl Island {
     pub fn generate() -> Self {
         let mut rng = Rng::new(0x15_1A_4D);
         let outline = outline();
+        let decor = decor(&outline, &mut rng.fork(3));
+        let mut tufts = tufts(&outline, 2000, 0.45, &mut rng.fork(4));
+        base_clumps(&mut tufts, &outline, &decor, &mut rng.fork(8));
         Island {
             ground: ground(&outline, &mut rng.fork(1)),
             skirt: skirt(&outline, &mut rng.fork(2)),
-            decor: decor(&outline, &mut rng.fork(3)),
-            tufts: tufts(&outline, 1400, 0.4, &mut rng.fork(4)),
-            dense_tufts: tufts(&outline, 1800, 0.25, &mut rng.fork(5)),
+            bushes: bushes(&outline, &decor, &mut rng.fork(9)),
+            decor,
+            tufts,
+            dense_tufts: tufts_dense(&outline, &mut rng.fork(5)),
             flowers: flowers(&outline, &mut rng.fork(6)),
             pebbles: pebbles(&outline, &mut rng.fork(7)),
         }
@@ -190,10 +196,16 @@ impl Island {
 
     /// Triangles drawn on the Battery preset (models aside).
     pub fn triangles(&self) -> usize {
-        [&self.ground, &self.skirt, &self.flowers, &self.pebbles]
-            .iter()
-            .map(|g| g.tri_count())
-            .sum::<usize>()
+        [
+            &self.ground,
+            &self.skirt,
+            &self.flowers,
+            &self.pebbles,
+            &self.bushes,
+        ]
+        .iter()
+        .map(|g| g.tri_count())
+        .sum::<usize>()
             + self.tufts.iter().map(Geo::tri_count).sum::<usize>()
     }
 }
@@ -206,11 +218,11 @@ impl Island {
 /// and a darker lip toward the rim (`to_rim` metres away).
 fn grass_color(p: Vec2, to_rim: f32) -> Rgba {
     let grass = lin(cartoon::GRASS);
-    let dark = mix(grass, lin(cartoon::TUFT), 0.55);
+    let dark = mix(grass, lin(cartoon::GRASS_SHADOW), 0.3);
     let patches = fbm2(p.x * 0.07 + 3.0, p.y * 0.07 - 5.0, 41);
-    let mut c = mix(grass, shade(dark, 0.94), smoothstep(0.5, 0.78, patches) * 0.75);
+    let mut c = mix(grass, dark, smoothstep(0.48, 0.76, patches) * 0.8);
     let streaks = fbm2(p.x * 0.16 - 7.0, p.y * 0.05 + 2.0, 42);
-    c = mix(c, shade(grass, 1.07), smoothstep(0.62, 0.85, streaks) * 0.6);
+    c = mix(c, shade(grass, 1.08), smoothstep(0.6, 0.85, streaks) * 0.6);
     let lip = 1.0 - smoothstep(0.0, 1.6, to_rim);
     shade(c, 1.0 - 0.1 * lip)
 }
@@ -385,7 +397,7 @@ const DECOR: [DecorKind; 5] = [
         count: 24,
         scale: (0.85, 1.25),
         foot: TREE_CANOPY,
-        shadow: 1.6,
+        shadow: 1.8,
         spacing: 5.5,
     },
     DecorKind {
@@ -393,7 +405,7 @@ const DECOR: [DecorKind; 5] = [
         count: 5,
         scale: (1.5, 2.2),
         foot: 0.95,
-        shadow: 0.9,
+        shadow: 1.35,
         spacing: 3.5,
     },
     DecorKind {
@@ -401,7 +413,7 @@ const DECOR: [DecorKind; 5] = [
         count: 5,
         scale: (1.4, 2.0),
         foot: 1.07,
-        shadow: 0.85,
+        shadow: 1.45,
         spacing: 3.5,
     },
     DecorKind {
@@ -409,7 +421,7 @@ const DECOR: [DecorKind; 5] = [
         count: 6,
         scale: (0.9, 1.3),
         foot: 0.64,
-        shadow: 0.6,
+        shadow: 0.9,
         spacing: 2.5,
     },
     DecorKind {
@@ -417,7 +429,7 @@ const DECOR: [DecorKind; 5] = [
         count: 8,
         scale: (0.7, 0.95),
         foot: TREE_CANOPY,
-        shadow: 1.5,
+        shadow: 1.7,
         spacing: 4.5,
     },
 ];
@@ -498,7 +510,7 @@ fn island_point(outline: &[EdgeSample], rng: &mut Rng, rim_gap: f32) -> Option<(
 fn tuft(geo: &mut Geo, at: Vec3, height: f32, rng: &mut Rng) {
     let blades = 3 + (rng.next_u64() % 3) as usize;
     let tip = lin(cartoon::TUFT);
-    let root = shade(tip, 0.72);
+    let root = mix(tip, lin(cartoon::GRASS_SHADOW), 0.7);
     let up = Vec3::Y;
     let spin = rng.range(0.0, TAU);
     for b in 0..blades {
@@ -537,8 +549,8 @@ fn tufts(outline: &[EdgeSample], count: usize, margin_share: f32, rng: &mut Rng)
         if rng.next_f32() > density {
             continue;
         }
-        let height = if on_floor {
-            rng.range(0.12, FLOOR_CLUTTER_MAX_HEIGHT - 0.02)
+        let height = if on_floor || edge_distance(p.x, p.y) < 0.7 {
+            rng.range(0.14, FLOOR_CLUTTER_MAX_HEIGHT - 0.01)
         } else {
             rng.range(0.2, 0.45)
         };
@@ -549,9 +561,113 @@ fn tufts(outline: &[EdgeSample], count: usize, margin_share: f32, rng: &mut Rng)
     chunks
 }
 
+fn tufts_dense(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
+    tufts(outline, 1800, 0.25, rng)
+}
+
+/// Clumps of grass around the foot of every solid prop and margin model, so
+/// they sit in the grass instead of on it (T05, T08).
+fn base_clumps(chunks: &mut [Geo], outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) {
+    let props = crate::arena::ARENA_PROPS
+        .iter()
+        .map(|p| (p.position, p.kind.footprint_radius(), true));
+    let margin = decor.iter().map(|d| {
+        let r = if d.model == "tree_a" {
+            TREE_TRUNK * d.transform.scale.x * 0.55
+        } else {
+            d.radius
+        };
+        (d.transform.translation, r, false)
+    });
+    for (at, radius, on_floor) in props.chain(margin) {
+        let n = 5 + (rng.next_u64() % 4) as usize;
+        for _ in 0..n {
+            let a = rng.range(0.0, TAU);
+            let r = radius * rng.range(0.85, 1.2);
+            let p = at + Vec3::new(a.cos() * r, 0.0, a.sin() * r);
+            let on_arena = edge_distance(p.x, p.z) <= 0.0;
+            if (on_arena && (p.x.abs() > ARENA_HALF - 0.25 || p.z.abs() > ARENA_HALF - 0.25))
+                || (!on_arena && inside_rim(outline, p.xz()) < 0.8)
+            {
+                continue;
+            }
+            let height = if on_floor || edge_distance(p.x, p.z) < 0.7 {
+                rng.range(0.16, FLOOR_CLUTTER_MAX_HEIGHT - 0.01)
+            } else {
+                rng.range(0.25, 0.5)
+            };
+            tuft(&mut chunks[quadrant(p.x, p.z)], p, height, rng);
+        }
+    }
+}
+
+/// A round cartoon bush: a few overlapping faceted puffs.
+fn bush(geo: &mut Geo, at: Vec3, size: f32, rng: &mut Rng) {
+    let leaf = lin(cartoon::FOLIAGE);
+    let puffs = 3 + (rng.next_u64() % 2) as usize;
+    for k in 0..puffs {
+        let r = size * if k == 0 { 1.0 } else { rng.range(0.6, 0.8) };
+        let offset = if k == 0 {
+            Vec3::ZERO
+        } else {
+            let a = rng.range(0.0, TAU);
+            Vec3::new(a.cos(), 0.0, a.sin()) * size * rng.range(0.55, 0.85)
+        };
+        let c = at + offset + Vec3::Y * r * 0.55;
+        let mut shape = rng.fork(k as u64 + 31);
+        let tone = rng.range(0.95, 1.06);
+        blob(
+            geo,
+            1,
+            |v| {
+                let v = Vec3::new(v.x, v.y.max(-0.55), v.z);
+                c + v * r * Vec3::new(1.0, 0.82, 1.0) * shape.range(0.93, 1.07)
+            },
+            |n| shade(leaf, tone * (0.97 + 0.08 * n.y.max(0.0))),
+        );
+    }
+}
+
+fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Geo {
+    let mut geo = Geo::default();
+    let mut placed: Vec<(Vec2, f32)> = decor
+        .iter()
+        .filter(|d| d.model != "tree_a")
+        .map(|d| (d.transform.translation.xz(), d.radius))
+        .collect();
+    let reach = ARENA_HALF + BASE_MARGIN + 5.0;
+    let mut made = 0;
+    let mut attempts = 0;
+    while made < 34 && attempts < 20_000 {
+        attempts += 1;
+        let p = Vec2::new(rng.range(-reach, reach), rng.range(-reach, reach));
+        let size = rng.range(0.6, 1.0);
+        let foot = size * 1.8;
+        if edge_distance(p.x, p.y) < foot + EDGE_CLEARANCE || inside_rim(outline, p) < foot + 0.3 {
+            continue;
+        }
+        // Bushes gather at tree bases and along the rim.
+        let near_tree = decor
+            .iter()
+            .filter(|d| d.model == "tree_a")
+            .any(|d| d.transform.translation.xz().distance(p) < 3.2 * d.transform.scale.x);
+        let near_rim = inside_rim(outline, p) < foot + 2.0;
+        if !(near_tree || near_rim) {
+            continue;
+        }
+        if placed.iter().any(|(q, r)| q.distance(p) < r + foot) {
+            continue;
+        }
+        placed.push((p, foot));
+        bush(&mut geo, Vec3::new(p.x, 0.0, p.y), size, rng);
+        made += 1;
+    }
+    geo
+}
+
 /// A little white daisy with a gold centre, facing up just above the grass.
 fn daisy(geo: &mut Geo, at: Vec3, size: f32, rng: &mut Rng) {
-    let white = lin(cartoon::EYE_WHITE);
+    let white = lin(cartoon::GLOVE_WHITE);
     let gold = lin(cartoon::STAR_GOLD);
     let up = Vec3::Y;
     let spin = rng.range(0.0, TAU);
@@ -587,7 +703,12 @@ fn flowers(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
             if (on_floor && off_floor) || (!on_floor && inside_rim(outline, q) < 0.4) {
                 continue;
             }
-            daisy(&mut geo, Vec3::new(q.x, 0.0, q.y), rng.range(0.055, 0.085), rng);
+            daisy(
+                &mut geo,
+                Vec3::new(q.x, 0.0, q.y),
+                rng.range(0.055, 0.085),
+                rng,
+            );
         }
     }
     geo
@@ -723,7 +844,10 @@ mod tests {
                     assert!(v.y <= FLOOR_CLUTTER_MAX_HEIGHT, "clutter too tall: {v}");
                 } else {
                     assert!(v.y <= 0.6, "margin clutter too tall: {v}");
-                    assert!(inside_rim(&outline, v.xz()) > 0.0, "clutter off the rim: {v}");
+                    assert!(
+                        inside_rim(&outline, v.xz()) > 0.0,
+                        "clutter off the rim: {v}"
+                    );
                 }
                 assert!(v.y >= -0.05);
             }
@@ -747,7 +871,30 @@ mod tests {
                 d.model,
                 d.radius
             );
-            assert!(inside_rim(&outline, p.xz()) > 0.5, "{} at {p} off the rim", d.model);
+            assert!(
+                inside_rim(&outline, p.xz()) > 0.5,
+                "{} at {p} off the rim",
+                d.model
+            );
+        }
+    }
+
+    #[test]
+    fn bushes_grow_on_the_margin_only() {
+        let island = generated();
+        let outline = outline();
+        assert!(island.bushes.tri_count() > 1000);
+        for v in island.bushes.vertices() {
+            assert!(
+                edge_distance(v.x, v.z) >= EDGE_CLEARANCE - 1e-3,
+                "a bush reaches the arena at {v}"
+            );
+            if v.y < 0.2 {
+                assert!(
+                    inside_rim(&outline, v.xz()) > -0.3,
+                    "a bush overhangs the rim at {v}"
+                );
+            }
         }
     }
 

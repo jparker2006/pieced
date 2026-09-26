@@ -49,7 +49,10 @@ fn dummy(sim: &mut Sim) -> Entity {
 }
 
 fn put(sim: &mut Sim, who: Entity, feet: Vec3, facing: Facing) {
-    sim.world_mut().get_mut::<Transform>(who).unwrap().translation = feet;
+    sim.world_mut()
+        .get_mut::<Transform>(who)
+        .unwrap()
+        .translation = feet;
     sim.set_look(who, facing.yaw(), 0.0);
     *sim.intent(who) = PlayerIntent::default();
     sim.ticks(10);
@@ -101,7 +104,10 @@ fn spawns_cover_and_the_dummys_strafe_zone_keep_clear_of_props() {
         for slot in initial_cover() {
             let (min, max) = slot.aabb(&tuning);
             let gap = gap_to_box(p, min, max);
-            assert!(gap >= PROP_CLEARANCE, "{p:?} is {gap:.2} m from cover {slot:?}");
+            assert!(
+                gap >= PROP_CLEARANCE,
+                "{p:?} is {gap:.2} m from cover {slot:?}"
+            );
         }
         // No part of it (nor its bounding circle) is where the dummy strafes.
         let r = p.kind.footprint_radius();
@@ -139,10 +145,18 @@ fn prop_colliders_match_their_models() {
         let hi = points.iter().copied().fold(Vec3::MIN, Vec3::max);
         let (mlo, mhi) = (side.bounds.min(), side.bounds.max());
         assert!(lo.y.abs() < 0.01, "{kind:?} stands on the ground");
-        assert!((hi.y - mhi.y).abs() < 0.02, "{kind:?} height {} vs {}", hi.y, mhi.y);
+        assert!(
+            (hi.y - mhi.y).abs() < 0.02,
+            "{kind:?} height {} vs {}",
+            hi.y,
+            mhi.y
+        );
         assert!((hi.y - kind.height()).abs() < 0.01);
         for (a, b) in [(lo.x, mlo.x), (lo.z, mlo.z), (hi.x, mhi.x), (hi.z, mhi.z)] {
-            assert!((a - b).abs() < 0.15, "{kind:?} footprint {lo}..{hi} vs model {mlo}..{mhi}");
+            assert!(
+                (a - b).abs() < 0.15,
+                "{kind:?} footprint {lo}..{hi} vs model {mlo}..{mhi}"
+            );
         }
     }
 }
@@ -196,14 +210,27 @@ fn the_player_can_jump_onto_a_stump() {
     let mut sim = Sim::new();
     let player = sim.player();
     // Walking into it, the stump blocks (it's taller than a step).
-    put(&mut sim, player, stump.position + Vec3::Z * 2.5, Facing::North);
+    put(
+        &mut sim,
+        player,
+        stump.position + Vec3::Z * 2.5,
+        Facing::North,
+    );
     sim.player_intent().move_axis = Vec2::Y;
     sim.ticks(60);
     let blocked = sim.feet(player);
-    assert!(blocked.y < 0.05 && blocked.z > stump.position.z + 0.5, "{blocked}");
+    assert!(
+        blocked.y < 0.05 && blocked.z > stump.position.z + 0.5,
+        "{blocked}"
+    );
     // A running jump lands on top: run at it, jump about 3.3 m out (where the
     // arc comes back down to the stump's height), stop once landed.
-    put(&mut sim, player, stump.position + Vec3::Z * 6.0, Facing::North);
+    put(
+        &mut sim,
+        player,
+        stump.position + Vec3::Z * 6.0,
+        Facing::North,
+    );
     sim.player_intent().move_axis = Vec2::Y;
     let mut jumped = false;
     for _ in 0..120 {
@@ -240,7 +267,11 @@ fn a_wall_places_through_a_rock() {
     // The rock sits on the grid line between two cells; stand in the cell east
     // of it and build a wall on that cell's west edge.
     let cell = GridCell::containing(rock.position + Vec3::X * 0.5);
-    assert_eq!(cell.min_corner().x, rock.position.x, "the rock is on a grid line");
+    assert_eq!(
+        cell.min_corner().x,
+        rock.position.x,
+        "the rock is on a grid line"
+    );
     put(&mut sim, player, cell.base_center(), Facing::West);
     sim.player_intent().select = Some(ActiveTool::Build(PieceKind::Wall));
     sim.ticks(20);
@@ -314,7 +345,11 @@ fn a_rock_blocks_a_rifle_shot() {
     let rock_entity = prop_entity(&mut sim, rock);
     let (shots, damage, target) = fire_at_dummy(&mut sim);
     let shot = shots.first().expect("the rifle fired");
-    assert_eq!(shot.traces[0].hit, Some(rock_entity), "the bolt hits the rock");
+    assert_eq!(
+        shot.traces[0].hit,
+        Some(rock_entity),
+        "the bolt hits the rock"
+    );
     assert!(
         damage.iter().all(|d| d.target != target),
         "nothing reaches the dummy behind the rock"
@@ -325,7 +360,10 @@ fn a_rock_blocks_a_rifle_shot() {
     let entity = prop_entity(&mut open, rock);
     open.world_mut().despawn(entity);
     let (_, damage, target) = fire_at_dummy(&mut open);
-    assert!(damage.iter().any(|d| d.target == target), "an open shot lands");
+    assert!(
+        damage.iter().any(|d| d.target == target),
+        "an open shot lands"
+    );
 }
 
 #[test]
@@ -345,7 +383,10 @@ fn over_five_seeded_minutes_the_dummy_never_stalls_on_a_prop() {
                 closest = closest.min(p.footprint_distance(feet.xz()) - RADIUS);
             }
         }
-        assert!(travelled > 300.0, "seed {seed}: the dummy strafed {travelled:.0} m");
+        assert!(
+            travelled > 300.0,
+            "seed {seed}: the dummy strafed {travelled:.0} m"
+        );
         assert!(
             closest > 0.5,
             "seed {seed}: the dummy came within {closest:.2} m of touching a prop"

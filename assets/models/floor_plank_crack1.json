@@ -13,7 +13,7 @@
     ],
     "max": [
       2.0,
-      0.1231,
+      0.1291,
       2.0
     ]
   },
@@ -28,7 +28,7 @@
         ],
         "max": [
           2.0,
-          0.1231,
+          0.1291,
           2.0
         ]
       },
@@ -37,7 +37,8 @@
         "nail_head",
         "plank",
         "stump_bark",
-        "stump_bark_line"
+        "stump_bark_line",
+        "trunk"
       ]
     }
   },

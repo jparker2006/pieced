@@ -53,33 +53,33 @@ impl Plugin for ArenaVisualsPlugin {
             MaterialPlugin::<SkyMaterial>::default(),
             island::IslandPlugin,
         ))
-            // Only StandardMaterial stragglers (effect debris) still read these.
-            .insert_resource(GlobalAmbientLight {
-                color: palette::BOUNCE,
-                brightness: AMBIENT_BRIGHTNESS,
-                affects_lightmapped_meshes: true,
-            })
-            // The far terrain melts into the Milestone 1 sky's horizon haze.
-            // (The sky slice sets its own haze with the galaxy.)
-            .insert_resource(FarHaze {
-                color: palette::FOG,
-                start: FAR_HAZE_START,
-                density: FAR_HAZE_DENSITY,
-            })
-            .add_systems(Startup, spawn_key_light)
-            .add_systems(Update, (apply_quality_preset, follow_toon_lighting))
-            .add_systems(
-                PostUpdate,
-                (
-                    pose_target_figures.before(TransformSystems::Propagate),
-                    crate::scenario::gallery::apply_camera_override
-                        .after(TransformSystems::Propagate)
-                        .before(VisibilitySystems::UpdateFrusta)
-                        .before(SimulationLightSystems::UpdateDirectionalLightCascades),
-                ),
-            )
-            .add_observer(dress_main_camera)
-            .add_observer(spawn_target_figure);
+        // Only StandardMaterial stragglers (effect debris) still read these.
+        .insert_resource(GlobalAmbientLight {
+            color: palette::BOUNCE,
+            brightness: AMBIENT_BRIGHTNESS,
+            affects_lightmapped_meshes: true,
+        })
+        // The far terrain melts into the Milestone 1 sky's horizon haze.
+        // (The sky slice sets its own haze with the galaxy.)
+        .insert_resource(FarHaze {
+            color: palette::FOG,
+            start: FAR_HAZE_START,
+            density: FAR_HAZE_DENSITY,
+        })
+        .add_systems(Startup, spawn_key_light)
+        .add_systems(Update, (apply_quality_preset, follow_toon_lighting))
+        .add_systems(
+            PostUpdate,
+            (
+                pose_target_figures.before(TransformSystems::Propagate),
+                crate::scenario::gallery::apply_camera_override
+                    .after(TransformSystems::Propagate)
+                    .before(VisibilitySystems::UpdateFrusta)
+                    .before(SimulationLightSystems::UpdateDirectionalLightCascades),
+            ),
+        )
+        .add_observer(dress_main_camera)
+        .add_observer(spawn_target_figure);
     }
 
     fn finish(&self, app: &mut App) {

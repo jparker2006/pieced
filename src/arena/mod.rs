@@ -132,11 +132,7 @@ impl PropKind {
     pub fn hulls(self) -> Vec<Vec<Vec3>> {
         match self {
             // Bounds x ±0.95, z ±0.75, 1.25 tall (rock_a.json).
-            PropKind::RockA => vec![rock_hull(
-                Vec3::ZERO,
-                Vec3::new(0.95, 1.25, 0.75),
-                2.5,
-            )],
+            PropKind::RockA => vec![rock_hull(Vec3::ZERO, Vec3::new(0.95, 1.25, 0.75), 2.5)],
             // The main rock (x ±0.725, z ±0.65, 1.05 tall) and its buddy
             // (0.7 × 0.62 m, 0.5 tall) at (-0.72, -0.42) (rock_b.json).
             PropKind::RockB => vec![
@@ -221,8 +217,9 @@ fn rock_hull(base: Vec3, half: Vec3, exponent: f32) -> Vec<Vec3> {
             let r = (1.0 - y * y).max(0.0).sqrt();
             let a = golden * i as f32;
             let d = Vec3::new(a.cos() * r, y, a.sin() * r);
-            let s = (d.x.abs().powf(exponent) + d.y.abs().powf(exponent) + d.z.abs().powf(exponent))
-                .powf(1.0 / exponent);
+            let s =
+                (d.x.abs().powf(exponent) + d.y.abs().powf(exponent) + d.z.abs().powf(exponent))
+                    .powf(1.0 / exponent);
             let p = d / s;
             p.with_y(p.y.max(floor))
         })

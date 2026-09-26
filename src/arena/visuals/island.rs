@@ -128,11 +128,13 @@ fn spawn_island(
         dense_tufts,
         flowers,
         pebbles: stones,
+        bushes,
         decor,
     } = island;
     let (c, m) = (&mut commands, &mut *meshes);
     spawn_part(c, m, "Island top", top, &ground, false);
     spawn_part(c, m, "Island cliffs", skirt, &cliffs, true);
+    spawn_part(c, m, "Bushes", bushes, &cliffs, true);
     spawn_part(c, m, "Flowers", flowers, &grass, false);
     spawn_part(c, m, "Pebbles", stones, &pebbles, false);
     for chunk in tufts {
@@ -153,10 +155,7 @@ fn spawn_island(
             },
         ));
     }
-    commands.insert_resource(IslandLayout(Island {
-        decor,
-        ..default()
-    }));
+    commands.insert_resource(IslandLayout(Island { decor, ..default() }));
 }
 
 /// Places the arena props and the margin's models once the library has
@@ -180,7 +179,7 @@ fn spawn_island_models(
             commands.entity(root).insert((
                 IslandModel::Prop,
                 Outline::default(),
-                BlobShadow::new(radius * 0.95),
+                BlobShadow::new(radius * 1.4),
             ));
         }
     }

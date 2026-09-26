@@ -72,7 +72,7 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 | `shaders/halo.wgsl` | hand-written, used by `src/look/halo.rs` | Additive camera-facing glow billboards |
 | `shaders/blob.wgsl` | hand-written, used by `src/look/blob.rs` | Soft blob shadows under characters and props |
 | `shaders/ground.wgsl` | hand-written, used by `src/look/ground.rs` | The island's toon-lit grass with the glowing build grid in world space |
-| `shaders/barrier.wgsl` | hand-written, used by `src/arena/visuals/barrier.rs` | The island's shimmering rune barrier on the arena edge (additive, fades in near the player) |
+| `shaders/barrier.wgsl` | hand-written, used by `src/arena/visuals/barrier.rs` | The island's shimmering rune barrier on the arena edge (translucent, fades in near the player) |
 
 ## Fonts (`assets/fonts/`)
 

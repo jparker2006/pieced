@@ -96,7 +96,7 @@ def crack(bm, at, n, pts, width, color=CRACK):
         add_poly(bm, quad, color, n)
 
 
-def nail(bm, centre, up, radius=0.075, height=0.024, sides=6, phase=0.0):
+def nail(bm, centre, up, radius=0.09, height=0.03, sides=6, phase=0.0):
     """A big cartoon nail head: a low faceted dome (a frustum) on a surface.
     `centre` sits on the surface; `up` is the surface normal."""
     up = Vector(up).normalized()
@@ -140,7 +140,7 @@ def lofted_bar(bm, sections, color):
         if f.normal.dot(f.calc_center_median() - middle) < 0:
             f.normal_flip()
     palette.tag(bm, sides + caps, color)
-    return rings
+    return rings, sides + caps
 
 
 def _nearest_axis_point(rings, p):
@@ -275,7 +275,7 @@ def wall_cracks(bm, cracks):
     for s in (-1.0, 1.0):
         n = (0.0, s, 0.0)
         for pts, width in cracks:
-            crack(bm, lambda p, s=s: (p[0], s * FACE, p[1]), n, pts, width)
+            crack(bm, lambda p, s=s: (p[0], s * FACE, p[1]), n, pts, width * 1.4)
 
 
 # Cracks, each within one brick: (points (x, z), width). Course c spans
@@ -363,7 +363,9 @@ def plank(bm, frame, length, width, thick, r, bow=0.03, twist=0.012, color="plan
             p = c + v * (sv * w) + n * (sn * thick) + n * (sv * roll)
             corners.append(p)
         sections.append(corners)
-    lofted_bar(bm, sections, color)
+    _, faces = lofted_bar(bm, sections, color)
+    # The sunlit top reads lighter than the plank's edges (targets R4-M1, T09).
+    palette.tag(bm, [f for f in faces if f.normal.dot(n) > 0.8], "trunk")
 
     def top(t, across=0.0):
         """A point on the plank's top face, `t` along it and `across` its width."""
@@ -377,7 +379,7 @@ def plank(bm, frame, length, width, thick, r, bow=0.03, twist=0.012, color="plan
     return top
 
 
-def plank_crack(bm, top, n, pts, w=0.035):
+def plank_crack(bm, top, n, pts, w=0.05):
     """A crack along a plank's top face: pts are (along, across) in metres."""
     crack(bm, lambda p: top(p[0], p[1]), n, pts, w)
 
@@ -497,11 +499,14 @@ TOP_EDGE = Vector((0.0, -HALF_W, LEVEL))  # the slope's high edge (centre)
 
 
 def ramp_frames():
-    pitch = (SLOPE_LEN + RAMP_GAP) / RAMP_PLANKS
+    # The planks start a little down from the high edge and stop a little short
+    # of the foot, so their tilted undersides stay inside the cell.
+    start, end = 0.07, SLOPE_LEN - 0.03
+    pitch = (end - start + RAMP_GAP) / RAMP_PLANKS
     width = pitch - RAMP_GAP
     frames = []
     for i in range(RAMP_PLANKS):
-        s = i * pitch + width / 2  # distance down the slope to the plank's centre line
+        s = start + i * pitch + width / 2  # distance down the slope to the centre line
         c = TOP_EDGE + DOWN * s + NORMAL * 0.012
         frames.append(((-HALF_W, c.y, c.z), (1, 0, 0), tuple(DOWN), tuple(NORMAL)))
     return frames, width
@@ -529,7 +534,7 @@ def ramp_stringer(bm, x):
 def ramp_underlay(bm):
     """A dark board along the slope under the planks: the gaps read dark and the
     ramp never looks see-through (its collider is a solid wedge)."""
-    hi = TOP_EDGE + DOWN * 0.03 - NORMAL * 0.09
+    hi = TOP_EDGE + DOWN * 0.14 - NORMAL * 0.09
     lo_s = SLOPE_LEN - 0.03
     lo = TOP_EDGE + DOWN * lo_s - NORMAL * 0.09
     if lo.z < 0.0:  # stop at the ground
@@ -557,7 +562,7 @@ def build_ramp(root, stage):
     planks = lay_planks(bm, frames, width, RAMP_THICK, r, split,
                         (((0.0, 1.5), (0.0, -0.035)), ((2.25, CELL), (0.07, 0.0))))
     skip = {(4, 0.28)} if stage >= 2 else set()
-    nail_planks(bm, planks, frames, (0.28, CELL - 0.28), skip, radius=0.07, sides=5)
+    nail_planks(bm, planks, frames, (0.28, CELL - 0.28), skip, radius=0.085, sides=5)
     if stage >= 1:
         cracks = [
             (1, [(0.9, -0.1), (1.2, 0.05), (1.45, -0.08), (1.75, 0.06)]),

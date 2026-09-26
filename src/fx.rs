@@ -774,7 +774,12 @@ impl Emitter<'_> {
             let (size, radius, mesh, paint) = match &model {
                 Some((mesh, paint)) => {
                     let k = self.rng.range(0.85, 1.35);
-                    (Vec3::splat(k), model_radius * k, mesh.clone(), paint.clone())
+                    (
+                        Vec3::splat(k),
+                        model_radius * k,
+                        mesh.clone(),
+                        paint.clone(),
+                    )
                 }
                 None => {
                     let size = Vec3::new(
@@ -788,7 +793,12 @@ impl Emitter<'_> {
                         self.assets.chunk.clone()
                     };
                     let k = [0, 0, 1, 2, 3][self.rng.pick(5)];
-                    (size, size.z * 0.5, mesh, Paint::Solid(self.assets.wood[k].clone()))
+                    (
+                        size,
+                        size.z * 0.5,
+                        mesh,
+                        Paint::Solid(self.assets.wood[k].clone()),
+                    )
                 }
             };
             let p = Particle {
@@ -820,7 +830,12 @@ impl Emitter<'_> {
             let (size, radius, mesh, paint) = match &model {
                 Some((mesh, paint)) => {
                     let k = self.rng.range(0.3, 0.5);
-                    (Vec3::splat(k), model_radius * k, mesh.clone(), paint.clone())
+                    (
+                        Vec3::splat(k),
+                        model_radius * k,
+                        mesh.clone(),
+                        paint.clone(),
+                    )
                 }
                 None => {
                     let size = Vec3::new(

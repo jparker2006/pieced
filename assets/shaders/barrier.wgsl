@@ -1,7 +1,8 @@
 // Pieced island barrier (src/arena/visuals/barrier.rs): a shimmering,
 // translucent rune curtain standing on the arena's edge (target T11). It is
 // invisible from afar, fades in within a few metres of the camera (the
-// player's eye) and brightens where the player touches it. Additive.
+// player's eye) and brightens where the player touches it. Alpha-blended, so
+// it tints bright and dark skies alike.
 // `barrier_reveal` in barrier.rs mirrors the fade on the CPU.
 
 #import bevy_pbr::{
@@ -58,41 +59,54 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let u = dot(p.xz, t);
     let v = p.y;
     let time = globals.time * barrier.reveal.w;
+    let px = max(fwidth(u), 1e-4);
 
-    // A curtain of soft vertical light bands drifting sideways and rippling.
-    let ripple = sin(v * 0.8 - time * 1.1) * 0.6;
-    let bands = 0.5 + 0.5 * sin(u * 2.3 + ripple + time * 0.6);
-    let fine = 0.5 + 0.5 * sin(u * 6.1 - time * 1.7 + v * 0.35);
-    let curtain = 0.25 + 0.55 * bands * bands + 0.2 * fine;
+    // A translucent sheet with soft vertical light bands drifting sideways.
+    let ripple = sin(v * 0.9 - time * 1.2) * 0.35;
+    let bands = 0.5 + 0.5 * sin(u * 1.9 + ripple * 2.0 + time * 0.5);
+    let sheet = 0.45 + 0.55 * bands * bands;
 
-    // Runes drifting slowly upward, each flickering on its own beat.
+    // Thin bright wavy flow lines running up the curtain.
+    let pitch = 1.7;
+    let wave = u + ripple + 0.25 * sin(v * 1.7 + time * 0.8 + floor(u / pitch) * 2.1);
+    let dl = abs(fract(wave / pitch) - 0.5) * pitch;
+    let flow = 1.0 - smoothstep(0.012, 0.012 + px * 1.5, dl);
+
+    // Small runes drifting slowly upward, each flickering on its own beat.
     let cell = barrier.touch.z;
-    let q = vec2<f32>(u / cell, (v - time * 0.25) / (cell * 1.3));
+    let q = vec2<f32>(u / cell, (v - time * 0.2) / (cell * 1.4));
     let id = floor(q);
-    let f = fract(q) - 0.5;
+    let f = (fract(q) - 0.5) * vec2<f32>(1.0, 1.4);
     let h = hash(id);
-    let px = max(fwidth(q.x), 1e-4);
-    let glyph = 1.0 - smoothstep(0.02, 0.02 + px * 1.5, rune(f, h));
-    let flicker = 0.55 + 0.45 * sin(time * 2.3 + h * 40.0);
-    let show = step(0.35, fract(h * 7.13));
+    let gpx = max(fwidth(q.x), 1e-4);
+    let glyph = 1.0 - smoothstep(0.035, 0.035 + gpx * 1.5, rune(f * 1.3, h));
+    let flicker = 0.5 + 0.5 * sin(time * 2.3 + h * 40.0);
+    let show = step(0.45, fract(h * 7.13));
     let runes = glyph * flicker * show;
 
-    // Bright at the foot, fading out toward the top.
+    // Brightest at the foot, fading out toward the top.
     let height = barrier.reveal.z;
-    let fade_up = 1.0 - smoothstep(height * 0.35, height, v);
-    let foot = exp(-max(v, 0.0) / 0.35) * 0.9;
+    let fade_up = 1.0 - smoothstep(height * 0.3, height, v);
+    let foot = exp(-max(v, 0.0) / 0.16) * 0.55;
 
-    // Where the player touches it: a bright ring of ripples around the
-    // nearest point.
+    // Where the player touches it: rippling rings around the nearest point.
     let reach = barrier.touch.x;
     let touch = exp(-(d * d) / (reach * reach)) * barrier.touch.y;
-    let rings = 0.6 + 0.4 * sin(d * 9.0 - time * 5.0);
+    let rings = 0.55 + 0.45 * sin(d * 11.0 - time * 5.0);
 
-    let strength = (barrier.color.w * curtain + foot) * fade_up + touch * rings;
-    var rgb = barrier.color.rgb * strength + barrier.rune_color.rgb * runes * barrier.rune_color.w * (fade_up + touch);
-    rgb = rgb * reveal;
+    // A faint blue sheet, bright cyan lines and runes, a glowing foot, and
+    // rippling light where it is touched.
+    let line = max(flow, runes * barrier.rune_color.w);
+    let lit = touch * rings;
+    let alpha = clamp(
+        (barrier.color.w * sheet + 0.6 * line + foot * 0.6) * fade_up + lit * 0.6,
+        0.0,
+        0.92,
+    ) * reveal;
+    var rgb = mix(barrier.rune_color.rgb, barrier.color.rgb * 1.25, clamp(line + foot + lit, 0.0, 1.0));
+    rgb = rgb + barrier.color.rgb * lit * 0.5;
 
-    var out = vec4<f32>(rgb, 0.0);
+    var out = vec4<f32>(rgb, alpha);
 #ifdef TONEMAP_IN_SHADER
     out = tone_mapping(out, view.color_grading);
 #endif

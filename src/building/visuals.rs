@@ -28,7 +28,9 @@ use crate::{
     look::{Outline, ToonMaterial, warmup::Warmup, with_outline_normals},
     models::{ModelLibrary, ModelsPlugin},
     palette::cartoon,
-    shared::{ActiveTool, CELL_SIZE, DamageDealt, DamageTarget, Facing, LEVEL_HEIGHT, PieceKind, Player},
+    shared::{
+        ActiveTool, CELL_SIZE, DamageDealt, DamageTarget, Facing, LEVEL_HEIGHT, PieceKind, Player,
+    },
     tuning::Tuning,
 };
 use bevy::{light::NotShadowCaster, prelude::*, world_serialization::WorldAsset};
@@ -226,7 +228,8 @@ fn load_piece_models(
         meshes: piece_meshes,
         material: toon.add(ToonMaterial::vertex_colored()),
     };
-    let chunk = |mesh: Option<Mesh>| mesh.unwrap_or_else(|| Cuboid::from_length(0.25).mesh().build());
+    let chunk =
+        |mesh: Option<Mesh>| mesh.unwrap_or_else(|| Cuboid::from_length(0.25).mesh().build());
     let brick = chunk(model(BRICK_DEBRIS, &meshes));
     let splinter = chunk(model(PLANK_DEBRIS, &meshes));
     let debris = PieceDebris {
@@ -422,7 +425,10 @@ mod tests {
     #[test]
     fn the_pop_squashes_springs_and_settles_in_0_12_s() {
         let start = pop_scale(0.0);
-        assert!(start.y < 0.7 && start.x > 1.1, "lands squashed flat: {start}");
+        assert!(
+            start.y < 0.7 && start.x > 1.1,
+            "lands squashed flat: {start}"
+        );
         // Springs up past full height partway through.
         let peak = (1..12)
             .map(|k| pop_scale(k as f32 * 0.01).y)
@@ -443,10 +449,7 @@ mod tests {
     fn the_ghost_is_blue_when_valid_and_red_when_not() {
         let valid = ghost_material(true);
         let invalid = ghost_material(false);
-        let (b, r) = (
-            valid.base_color.to_srgba(),
-            invalid.base_color.to_srgba(),
-        );
+        let (b, r) = (valid.base_color.to_srgba(), invalid.base_color.to_srgba());
         assert!(b.blue > b.red && b.blue > b.green, "valid is blue: {b:?}");
         assert!(r.red > r.blue && r.red > r.green, "invalid is red: {r:?}");
         for m in [&valid, &invalid] {

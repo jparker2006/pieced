@@ -273,7 +273,12 @@ pub(crate) fn ghost_wall_mesh(thickness: f32) -> MeshBuilder {
             let first = if c % 2 == 0 { pitch_x } else { pitch_x / 2.0 };
             let mut x = -HALF_W + first - MORTAR / 2.0;
             while x < HALF_W - 0.1 {
-                m.line(Vec3::new(x, lo, z), Vec3::new(x, hi, z), n, GHOST_LINE_ALPHA);
+                m.line(
+                    Vec3::new(x, lo, z),
+                    Vec3::new(x, hi, z),
+                    n,
+                    GHOST_LINE_ALPHA,
+                );
                 x += pitch_x;
             }
         }
@@ -323,7 +328,10 @@ pub(crate) fn ghost_ramp_mesh() -> MeshBuilder {
     let n = Vec3::new(0.0, CELL_SIZE, LEVEL_HEIGHT).normalize();
     for k in 1..6 {
         let t = k as f32 / 6.0;
-        let (a, b) = (corners[0].lerp(corners[4], t), corners[1].lerp(corners[5], t));
+        let (a, b) = (
+            corners[0].lerp(corners[4], t),
+            corners[1].lerp(corners[5], t),
+        );
         m.line(a, b, n, GHOST_LINE_ALPHA);
     }
     m
