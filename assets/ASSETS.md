@@ -94,16 +94,42 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 | `shaders/barrier.wgsl` | hand-written, used by `src/arena/visuals/barrier.rs` | The island's shimmering rune barrier on the arena edge (translucent, fades in near the player) |
 | `shaders/waterfall.wgsl` | hand-written, used by `src/far/waterfall.rs` | Additive scrolling waterfall streaks for the far models |
 
-## Fonts (`assets/fonts/`)
+## UI images (`assets/ui/`)
 
-The only third-party files: two openly licensed cartoon display fonts from
-`github.com/google/fonts`, downloaded with Jake's OK (D23). The HUD keeps one of them.
+The hotbar icons, the HUD's crystal and heart, and the PIECED logo, rendered
+headless from the real models by Blender scripts in `art/blender/assets/`
+(their `IMAGES` lists). `lib/raster.py` draws them in numpy on the CPU (flat
+toon bands, ink outlines, transparent background), so a rebuild is byte-identical
+and `scripts/build-art.sh --check` compares them too. `src/hud/art.rs` embeds
+them (`UI_IMAGES`; a test keeps it in step with this folder).
+
+```sh
+scripts/build-art.sh icon_rifle logo   # rebuild some (names from --list)
+```
 
 | File | Made by | Notes |
 |---|---|---|
-| `fonts/LuckiestGuy-Regular.ttf` | `assets/fonts/LuckiestGuy-LICENSE.txt` | Luckiest Guy by Astigmatic, Apache 2.0 (`apache/luckiestguy`) |
-| `fonts/LuckiestGuy-LICENSE.txt` | `assets/fonts/LuckiestGuy-LICENSE.txt` | Its license |
-| `fonts/LilitaOne-Regular.ttf` | `assets/fonts/LilitaOne-OFL.txt` | Lilita One by Juan Montoreano, SIL OFL 1.1, Reserved Font Name "Lilita" (`ofl/lilitaone`) |
+| `ui/icons/rifle.png` | `art/blender/assets/icons.py` | Hotbar: the rifle model, three-quarter, muzzle up-right, 128 px |
+| `ui/icons/pump.png` | `art/blender/assets/icons.py` | Hotbar: the pump model, 128 px |
+| `ui/icons/wall_brick.png` | `art/blender/assets/icons.py` | Hotbar: the brick wall model, 128 px |
+| `ui/icons/ramp_plank.png` | `art/blender/assets/icons.py` | Hotbar: the plank ramp model, 128 px |
+| `ui/icons/floor_plank.png` | `art/blender/assets/icons.py` | Hotbar: the plank floor model, 128 px |
+| `ui/icons/crystal_blue.png` | `art/blender/assets/icons.py` | Blue crystal: the shield bar, rifle ammo, menu buttons, 64 px |
+| `ui/icons/crystal_violet.png` | `art/blender/assets/icons.py` | Violet crystal: pump ammo, 64 px |
+| `ui/icons/heart.png` | `art/blender/assets/icons.py` | Green heart: the health bar, 64 px |
+| `ui/logo.png` | `art/blender/assets/logo.py` | The PIECED logo (pause menu, loading screen): brass letters in the HUD font with crystal inlays and the knight's hat on the I, 1200 x 520 |
+
+## Fonts (`assets/fonts/`)
+
+The only third-party files: one openly licensed cartoon display font from
+`github.com/google/fonts`, downloaded with Jake's OK (D23). Lilita One won the
+HUD mock-up against Luckiest Guy (its heavy, even letters match the targets'
+HUD numbers and T12's buttons), so Luckiest Guy was removed. `src/hud/art.rs`
+embeds it as Bevy's default font; `art/blender/assets/logo.py` sets the logo in it.
+
+| File | Made by | Notes |
+|---|---|---|
+| `fonts/LilitaOne-Regular.ttf` | `assets/fonts/LilitaOne-OFL.txt` | Lilita One by Juan Montoreano, SIL OFL 1.1, Reserved Font Name "Lilita" (`ofl/lilitaone`), unmodified |
 | `fonts/LilitaOne-OFL.txt` | `assets/fonts/LilitaOne-OFL.txt` | Its license |
 
 ## This index
@@ -132,4 +158,4 @@ The only third-party files: two openly licensed cartoon display fonts from
 Add a row in the matching table: the path relative to `assets/` in backticks,
 then the script that makes it (or, for a third-party file, its license file,
 e.g. `assets/fonts/OFL.txt`) in backticks. The only third-party files allowed in
-Milestone 2 are the HUD fonts and their licenses (docs/M2-SPEC.md, Asset pipeline).
+Milestone 2 are the HUD font and its license (docs/M2-SPEC.md, Asset pipeline).

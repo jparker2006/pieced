@@ -1,6 +1,10 @@
 //! Slice F — crosshair, bars, ammo, hotbar, hitmarkers, damage numbers, piece HP,
 //! combat readout and the performance overlay.
 //!
+//! Milestone 2 restyles it as a cartoon (docs/M2-SPEC.md → HUD and menu) in the
+//! same layout: ink-bordered frames, crystal and heart icons, hotbar icons
+//! rendered from the real models, and the cartoon font ([`art`]).
+//!
 //! The HUD is native-resolution Bevy UI drawn by the UI camera over the offscreen
 //! world image. Hit feedback reads [`DamageDealt`](crate::shared::DamageDealt) in
 //! `Update`, right after the fixed step that produced it, so the hitmarker, the
@@ -8,10 +12,14 @@
 //! The pure rules (spread → pixels, projection, number styling, bar trails) live
 //! here as functions so they're testable without a window.
 
+pub mod art;
 mod layout;
 mod systems;
 
+pub use art::UiArt;
 pub(crate) use layout::style;
+pub use layout::{DamageNumber, INK_LAYERS, NUMBER_POOL, NumberGlyph, anchors};
+pub use systems::ammo_crystal_look;
 
 use crate::{
     palette,
@@ -101,14 +109,15 @@ pub fn project_to_screen(
     ))
 }
 
-/// How a damage number is styled.
+/// How a damage number is styled: its fill color and size, in the cartoon
+/// font with an ink outline ([`NumberKind::ink`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NumberKind {
     /// Health damage: white.
     Body,
-    /// Any headshot: yellow and larger.
+    /// Any headshot: gold and larger.
     Headshot,
-    /// Damage that hit shield: blue.
+    /// Damage that hit shield: cyan.
     Shield,
     /// Damage to a building piece: smaller and muted.
     Structure,
@@ -136,10 +145,20 @@ impl NumberKind {
     /// Font size (px).
     pub fn size(self) -> f32 {
         match self {
-            Self::Body | Self::Shield => 27.0,
-            Self::Headshot => 33.0,
-            Self::Structure => 19.0,
+            Self::Body | Self::Shield => 32.0,
+            Self::Headshot => 40.0,
+            Self::Structure => 21.0,
         }
+    }
+
+    /// The ink outline's color: the same dark ink as every HUD frame.
+    pub fn ink(self) -> Color {
+        style::INK
+    }
+
+    /// The ink outline's width (px), in proportion to the size.
+    pub fn outline(self) -> f32 {
+        (self.size() * 0.085).max(1.5)
     }
 }
 
@@ -154,7 +173,10 @@ pub struct NumberMotion {
     /// Upward offset (px).
     pub rise: f32,
     pub alpha: f32,
+    /// The pop: large on the hit frame, 1 after 0.07 s.
     pub scale: f32,
+    /// The cartoon squash on top of the pop ([`squash_pop`]).
+    pub squash: Vec2,
 }
 
 pub fn number_motion(age: f32, lifetime: f32, rise: f32) -> NumberMotion {
@@ -167,7 +189,23 @@ pub fn number_motion(age: f32, lifetime: f32, rise: f32) -> NumberMotion {
         rise: rise * eased,
         alpha: if t < 0.6 { 1.0 } else { 1.0 - (t - 0.6) / 0.4 },
         scale: 1.35 - 0.35 * pop,
+        squash: squash_pop(age),
     }
+}
+
+/// How long a damage number's squash lasts (s).
+pub const SQUASH_SECONDS: f32 = 0.16;
+
+/// A quick cartoon squash-and-stretch (x, y scale): wide and flat on the hit
+/// frame, tall a moment later, settled at 1 after [`SQUASH_SECONDS`]. Area is
+/// roughly kept, like a rubber ball.
+pub fn squash_pop(age: f32) -> Vec2 {
+    if !(0.0..SQUASH_SECONDS).contains(&age) {
+        return Vec2::ONE;
+    }
+    let t = age / SQUASH_SECONDS;
+    let wobble = 0.3 * (1.0 - t).powi(2) * (t * 3.0 * std::f32::consts::PI).cos();
+    Vec2::new(1.0 + wobble, 1.0 - wobble)
 }
 
 /// Which hitmarker to show. A kill outranks a headshot, which outranks a hit.
@@ -260,6 +298,7 @@ pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
+        art::install(app);
         app.init_resource::<FrameStartTick>()
             .init_resource::<HitFeedbackStats>()
             .add_systems(First, record_frame_start_tick);

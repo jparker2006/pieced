@@ -1,9 +1,9 @@
-"""Builds Pieced's models headless. Entry point for scripts/build-art.sh.
+"""Builds Pieced's models and UI images headless. Entry point for scripts/build-art.sh.
 
     blender -b --factory-startup --python-exit-code 1 -P art/blender/build.py -- \
-        [asset ...] [--out DIR] [--previews DIR] [--no-previews] [--list]
+        [asset ...] [--out DIR] [--ui-out DIR] [--previews DIR] [--no-previews] [--list]
 
-With no asset names, builds every asset. For each one it starts a clean scene,
+With no asset names, builds every asset and every UI image. For each model it starts a clean scene,
 runs the family module's build function (art/blender/assets/*.py), bakes the
 palette tags into COLOR_0, checks the triangle budget, and writes:
 
@@ -13,6 +13,9 @@ palette tags into COLOR_0, checks the triangle budget, and writes:
 
 and always rewrites <out>/manifest.json listing every registered asset.
 The same scripts always produce byte-identical .glb and .json files.
+
+UI images (a family module's `IMAGES`: hotbar icons, the logo) render to
+<ui-out>/<path> (default: assets/ui), byte-identical too (lib/raster.py).
 """
 
 import importlib
@@ -30,24 +33,28 @@ from lib import export, preview, scene  # noqa: E402
 import assets as families  # noqa: E402
 
 
-def registered():
+def registered(kind="ASSETS"):
+    """Registered models (`ASSETS`) or UI images (`IMAGES`) by name."""
     out = {}
     for mod in sorted(m.name for m in pkgutil.iter_modules(families.__path__)):
         module = importlib.import_module(f"assets.{mod}")
-        for asset in getattr(module, "ASSETS", []):
+        for asset in getattr(module, kind, []):
             if asset.name in out:
-                raise ValueError(f"asset {asset.name!r} registered twice")
+                raise ValueError(f"{kind} entry {asset.name!r} registered twice")
             out[asset.name] = (asset, f"art/blender/assets/{mod}.py")
     return dict(sorted(out.items()))
 
 
 def parse_args(argv):
     opts = {"names": [], "out": os.path.join(REPO, "assets", "models"),
+            "ui_out": os.path.join(REPO, "assets", "ui"),
             "previews": os.path.join(REPO, "art", "previews"), "no_previews": False, "list": False}
     it = iter(argv)
     for a in it:
         if a == "--out":
             opts["out"] = os.path.abspath(next(it))
+        elif a == "--ui-out":
+            opts["ui_out"] = os.path.abspath(next(it))
         elif a == "--previews":
             opts["previews"] = os.path.abspath(next(it))
         elif a == "--no-previews":
@@ -82,23 +89,44 @@ def build_one(asset, source, opts):
           f"({time.time() - t0:.1f} s)")
 
 
+def build_image(image, source, opts):
+    t0 = time.time()
+    scene.reset()
+    path = os.path.join(opts["ui_out"], image.path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    image.render(path)
+    print(f"ART built {image.name}: ui/{image.path}, {os.path.getsize(path)} bytes "
+          f"({source}, {time.time() - t0:.1f} s)")
+
+
 def main():
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     opts = parse_args(argv)
     known = registered()
+    images = registered("IMAGES")
+    clash = set(known) & set(images)
+    if clash:
+        raise ValueError(f"names used by both a model and a UI image: {sorted(clash)}")
     if opts["list"]:
         for name, (asset, source) in known.items():
             print(f"ART asset {name} ({asset.kind}, {source}): {asset.about}")
+        for name, (image, source) in images.items():
+            print(f"ART asset {name} (ui image ui/{image.path}, {source}): {image.about}")
         return
-    names = opts["names"] or list(known)
-    unknown = [n for n in names if n not in known]
+    names = opts["names"] or list(known) + list(images)
+    unknown = [n for n in names if n not in known and n not in images]
     if unknown:
-        raise SystemExit(f"unknown asset(s): {', '.join(unknown)}; known: {', '.join(known)}")
+        raise SystemExit(f"unknown asset(s): {', '.join(unknown)}; "
+                         f"known: {', '.join(list(known) + list(images))}")
     failures = []
     for name in names:
-        asset, source = known[name]
         try:
-            build_one(asset, source, opts)
+            if name in known:
+                asset, source = known[name]
+                build_one(asset, source, opts)
+            else:
+                image, source = images[name]
+                build_image(image, source, opts)
         except Exception:
             traceback.print_exc()
             failures.append(name)

@@ -1,11 +1,18 @@
 //! HUD update systems: status (bars, ammo, hotbar, piece HP, readout, perf),
 //! the crosshair, hit feedback, and damage-number placement.
+//!
+//! Screen sizes come from the UI camera's viewport (the window in the game, the
+//! capture image offscreen). The hitmarker and damage numbers animate on
+//! [`FreezableTime`], so a gallery freeze holds them still; they still appear
+//! on the frame the hit registers.
 
 use super::{
-    FrameStartTick, HitFeedbackStats, MarkerKind, NumberKind, TrailBar, damage_label,
-    layout::{DamageNumber, El, NUMBER_BOX, TICK_LEN},
+    FrameStartTick, HitFeedbackStats, MarkerKind, NumberKind, TrailBar,
+    art::UiArt,
+    damage_label,
+    layout::{DamageNumber, El, INK_LAYERS, INK_OFFSETS, NUMBER_BOX, NumberGlyph, TICK_LEN},
     number_motion, project_to_screen, spread_to_pixels,
-    style::{ACCENT, DANGER, TEXT, dim},
+    style::{ACCENT, DANGER, INK, RIM, SLOT, TEXT, dim},
 };
 use crate::{
     building::AimedPiece,
@@ -13,11 +20,15 @@ use crate::{
     menu::MenuState,
     palette,
     render::{CameraFollowSet, CurrentFov, MainCamera},
-    shared::{ActiveTool, Ads, DamageDealt, DamageTarget, Health, PieceKind, Player, WeaponKind},
+    shared::{
+        ActiveTool, Ads, DamageDealt, DamageTarget, FreezableTime, Health, PieceKind, Player,
+        WeaponKind,
+    },
     telemetry::FrameStats,
     tuning::Tuning,
+    viewmodel::CrystalGlow,
 };
-use bevy::{prelude::*, ui::UiSystems, window::PrimaryWindow};
+use bevy::{prelude::*, text::FontSize, ui::UiSystems, window::PrimaryWindow};
 
 pub(super) fn build(app: &mut App) {
     app.init_resource::<Hitmarker>()
@@ -96,6 +107,23 @@ fn piece_name(kind: PieceKind) -> &'static str {
     }
 }
 
+/// The HUD's size in logical pixels: the UI camera's viewport (the window, or
+/// the image it draws into offscreen), else the primary window.
+fn screen_size(
+    ui: &Query<&Camera, With<IsDefaultUiCamera>>,
+    window: &Query<&Window, With<PrimaryWindow>>,
+) -> Option<Vec2> {
+    ui.iter()
+        .find_map(Camera::logical_viewport_size)
+        .or_else(|| {
+            window
+                .iter()
+                .next()
+                .map(|w| Vec2::new(w.width(), w.height()))
+        })
+        .filter(|s| s.x > 1.0 && s.y > 1.0)
+}
+
 // ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
@@ -123,7 +151,20 @@ type StatusParts<'a> = (
     Option<&'a mut BorderColor>,
     Option<&'a mut Visibility>,
     Option<&'a mut UiTransform>,
+    Option<&'a mut ImageNode>,
 );
+
+/// The ammo crystal's tint and scale for a glow (0.25 empty .. 1 full, above 1
+/// while a fresh crystal charges): it dims as the magazine empties and swells
+/// in the reload flash, like the crystal on the gun.
+pub fn ammo_crystal_look(glow: f32) -> (f32, f32) {
+    let brightness = 0.4 + 0.6 * glow.clamp(0.0, 1.0);
+    let scale = 1.0 + 0.5 * (glow - 1.0).clamp(0.0, 0.6);
+    (
+        (brightness * 100.0).round() / 100.0,
+        (scale * 100.0).round() / 100.0,
+    )
+}
 
 fn update_status(
     time: Res<Time<Real>>,
@@ -131,6 +172,8 @@ fn update_status(
     stats: Res<CombatStats>,
     frame: Option<Res<FrameStats>>,
     menu: Option<Res<MenuState>>,
+    glow: Option<Res<CrystalGlow>>,
+    art: Option<Res<UiArt>>,
     player: Option<
         Single<(&Health, &ActiveTool, Option<&Loadout>, Option<&AimedPiece>), With<Player>>,
     >,
@@ -204,6 +247,17 @@ fn update_status(
         (ActiveTool::Weapon(_), None) => ("", String::new(), String::new(), TEXT, None),
     };
     let active_slot = slot_of(*tool);
+    let crystal = match *tool {
+        ActiveTool::Weapon(kind) => {
+            let image = art.as_ref().map(|a| match kind {
+                WeaponKind::Rifle => a.crystal_blue.clone(),
+                WeaponKind::Pump => a.crystal_violet.clone(),
+            });
+            let look = ammo_crystal_look(glow.as_ref().map_or(1.0, |g| g.of(kind)));
+            Some((image, look))
+        }
+        ActiveTool::Build(_) => None,
+    };
 
     // Readout.
     let readout = [
@@ -252,9 +306,10 @@ fn update_status(
     let perf = memory.perf.clone();
     let menu_up = menu.is_some_and(|m| m.menu_visible());
 
-    for (el, node, text, color, bg, border, vis, transform) in &mut parts {
+    for (el, node, text, color, bg, border, vis, transform, image) in &mut parts {
         match *el {
-            El::Crosshair | El::Numbers => {
+            El::Root | El::Crosshair | El::Numbers => {
+                // The pause menu stands alone over the world (T12).
                 if let Some(mut v) = vis {
                     set_visible(&mut v, !menu_up);
                 }
@@ -297,7 +352,29 @@ fn update_status(
                     set_text(&mut t, label);
                 }
                 if let Some(mut c) = color {
-                    set_color(&mut c, if build { ACCENT } else { dim(0.75) });
+                    set_color(&mut c, if build { ACCENT } else { dim(0.9) });
+                }
+            }
+            El::AmmoCrystal => {
+                if let Some(mut v) = vis {
+                    set_visible(&mut v, crystal.is_some());
+                }
+                if let Some((wanted, (brightness, scale))) = &crystal {
+                    if let (Some(mut img), Some(wanted)) = (image, wanted.as_ref()) {
+                        if img.image != *wanted {
+                            img.image = wanted.clone();
+                        }
+                        let tint = Color::srgb(*brightness, *brightness, *brightness);
+                        if img.color != tint {
+                            img.color = tint;
+                        }
+                    }
+                    if let Some(mut t) = transform {
+                        let s = Vec2::splat(*scale);
+                        if t.scale != s {
+                            t.scale = s;
+                        }
+                    }
                 }
             }
             El::AmmoValue => {
@@ -326,7 +403,7 @@ fn update_status(
             El::Slot(i) => {
                 let on = i == active_slot;
                 if let Some(mut b) = border {
-                    let c = if on { ACCENT } else { Color::NONE };
+                    let c = if on { ACCENT } else { RIM };
                     if b.top != c {
                         *b = BorderColor::all(c);
                     }
@@ -335,9 +412,9 @@ fn update_status(
                     set_bg(
                         &mut b,
                         if on {
-                            Color::srgba(0.12, 0.11, 0.1, 0.62)
+                            Color::srgba(0.16, 0.27, 0.26, 0.92)
                         } else {
-                            Color::srgba(0.03, 0.04, 0.06, 0.42)
+                            SLOT
                         },
                     );
                 }
@@ -350,18 +427,15 @@ fn update_status(
                 }
             }
             El::SlotIcon(i) => {
-                if let Some(mut b) = bg {
-                    let c = match (i == active_slot, i >= 2) {
-                        (true, true) => palette::WOOD_LIGHT,
-                        (true, false) => TEXT,
-                        (false, _) => dim(0.5),
+                if let Some(mut img) = image {
+                    let c = if i == active_slot {
+                        Color::WHITE
+                    } else {
+                        Color::srgba(0.8, 0.8, 0.84, 0.92)
                     };
-                    set_bg(&mut b, c);
-                }
-            }
-            El::SlotName(i) => {
-                if let Some(mut c) = color {
-                    set_color(&mut c, if i == active_slot { TEXT } else { dim(0.55) });
+                    if img.color != c {
+                        img.color = c;
+                    }
                 }
             }
             El::BuildBadge => {
@@ -380,7 +454,7 @@ fn update_status(
                     if let Some(mut b) = bg {
                         let c = match info.crack_stage {
                             0 => ACCENT,
-                            1 => Color::srgb(1.0, 0.66, 0.3),
+                            1 => Color::srgb(1.0, 0.6, 0.25),
                             _ => DANGER,
                         };
                         set_bg(&mut b, c);
@@ -442,16 +516,17 @@ fn update_status(
 fn update_crosshair(
     tuning: Res<Tuning>,
     fov: Res<CurrentFov>,
-    window: Option<Single<&Window, With<PrimaryWindow>>>,
+    ui: Query<&Camera, With<IsDefaultUiCamera>>,
+    window: Query<&Window, With<PrimaryWindow>>,
     player: Option<Single<(&ActiveTool, &Ads, Option<&Loadout>), With<Player>>>,
     mut parts: Query<(&El, &mut Node, &mut Visibility, Option<&mut UiTransform>)>,
 ) {
-    let (Some(window), Some(player)) = (window, player) else {
+    let (Some(screen), Some(player)) = (screen_size(&ui, &window), player) else {
         return;
     };
     let (tool, ads, loadout) = player.into_inner();
     let hud = &tuning.hud;
-    let height = window.height();
+    let height = screen.y;
     let scale = hud.crosshair_scale.clamp(0.5, 3.0);
     let px_of = |deg: f32| spread_to_pixels(deg, fov.0, height);
 
@@ -547,22 +622,74 @@ struct Hitmarker {
     age: f32,
 }
 
+/// The layers of one pooled number's glyphs, for restyling on a hit.
+type GlyphParts<'a> = (
+    &'a NumberGlyph,
+    &'a mut Text,
+    &'a mut TextFont,
+    &'a mut TextColor,
+    &'a mut TextShadow,
+    &'a mut UiTransform,
+);
+
+/// Restyles a pooled number's glyph layers for `kind` and `label`: the face in
+/// the kind's color with an ink drop, the ink copies round it.
+fn style_glyphs(
+    children: &Children,
+    glyphs: &mut Query<GlyphParts, Without<DamageNumber>>,
+    kind: NumberKind,
+    label: &str,
+) {
+    let w = kind.outline();
+    for child in children.iter() {
+        let Ok((layer, mut text, mut font, mut color, mut shadow, mut transform)) =
+            glyphs.get_mut(child)
+        else {
+            continue;
+        };
+        if text.0 != label {
+            text.0 = label.to_string();
+        }
+        let size = FontSize::Px(kind.size());
+        if !matches!(font.font_size, FontSize::Px(s) if s == kind.size()) {
+            font.font_size = size;
+        }
+        let (at, shade, fill) = if layer.0 >= INK_LAYERS {
+            (
+                Vec2::ZERO,
+                TextShadow {
+                    offset: Vec2::new(0.4, 1.3) * w,
+                    color: kind.ink(),
+                },
+                kind.color(),
+            )
+        } else {
+            let (at, shadow) = INK_OFFSETS[layer.0 as usize];
+            (
+                at * w,
+                TextShadow {
+                    offset: shadow * w,
+                    color: kind.ink(),
+                },
+                kind.ink(),
+            )
+        };
+        color.0 = fill;
+        *shadow = shade;
+        transform.translation = Val2::px(at.x, at.y);
+    }
+}
+
 fn hit_feedback(
-    time: Res<Time<Real>>,
+    time: FreezableTime,
     tuning: Res<Tuning>,
     start: Res<FrameStartTick>,
     player: Option<Single<Entity, With<Player>>>,
     mut damage: MessageReader<DamageDealt>,
     mut marker: ResMut<Hitmarker>,
     mut stats: ResMut<HitFeedbackStats>,
-    mut numbers: Query<(
-        Entity,
-        &mut DamageNumber,
-        &mut Text,
-        &mut TextFont,
-        &mut TextColor,
-        &mut Visibility,
-    )>,
+    mut numbers: Query<(Entity, &mut DamageNumber, &mut Visibility, &Children)>,
+    mut glyphs: Query<GlyphParts, Without<DamageNumber>>,
     mut counter: Local<u32>,
 ) {
     let player = player.map(|p| *p);
@@ -604,8 +731,7 @@ fn hit_feedback(
         else {
             continue;
         };
-        let Ok((_, mut number, mut text, mut font, mut color, mut vis)) = numbers.get_mut(pick)
-        else {
+        let Ok((_, mut number, mut vis, children)) = numbers.get_mut(pick) else {
             continue;
         };
         let kind = NumberKind::of(hit.target_kind, hit.headshot, hit.to_shield);
@@ -620,9 +746,7 @@ fn hit_feedback(
             jitter,
             color: kind.color(),
         };
-        text.0 = damage_label(hit.amount);
-        font.font_size = kind.size().into();
-        color.0 = kind.color();
+        style_glyphs(children, &mut glyphs, kind, &damage_label(hit.amount));
         *vis = Visibility::Inherited;
         if hit.target_kind == DamageTarget::Character {
             stats.numbers_same_frame += same_frame as u32;
@@ -651,18 +775,8 @@ fn draw_hitmarker(
     let alpha = if t < 0.5 { 1.0 } else { (1.0 - t) * 2.0 }.clamp(0.0, 1.0);
     let pop = 1.0 + 0.3 * (1.0 - (marker.age / 0.06).clamp(0.0, 1.0));
     let (size, distance, fill, edge) = match kind {
-        MarkerKind::Hit => (
-            1.0,
-            9.5,
-            palette::HIT_WHITE,
-            Color::srgba(0.0, 0.0, 0.0, 0.45),
-        ),
-        MarkerKind::Headshot => (
-            1.1,
-            10.5,
-            palette::HEADSHOT,
-            Color::srgba(0.0, 0.0, 0.0, 0.5),
-        ),
+        MarkerKind::Hit => (1.0, 9.5, palette::HIT_WHITE, INK.with_alpha(0.85)),
+        MarkerKind::Headshot => (1.1, 10.5, palette::HEADSHOT, INK.with_alpha(0.9)),
         MarkerKind::Kill => (1.5, 14.0, palette::HIT_WHITE, Color::srgb(0.95, 0.16, 0.14)),
     };
     let scale = tuning.hud.crosshair_scale.clamp(0.5, 3.0);
@@ -694,7 +808,7 @@ fn draw_hitmarker(
         let edge = edge.with_alpha(edge.alpha() * alpha);
         if outline.color != edge {
             outline.color = edge;
-            outline.width = px(if kind == MarkerKind::Kill { 1.5 } else { 1.0 });
+            outline.width = px(if kind == MarkerKind::Kill { 2.0 } else { 1.5 });
         }
     }
 }
@@ -704,27 +818,27 @@ fn draw_hitmarker(
 // ---------------------------------------------------------------------------
 
 fn place_damage_numbers(
-    time: Res<Time<Real>>,
+    time: FreezableTime,
     tuning: Res<Tuning>,
     fov: Res<CurrentFov>,
-    window: Option<Single<&Window, With<PrimaryWindow>>>,
+    ui: Query<&Camera, With<IsDefaultUiCamera>>,
+    window: Query<&Window, With<PrimaryWindow>>,
     camera: Option<Single<&Transform, With<MainCamera>>>,
     mut numbers: Query<(
         &mut DamageNumber,
         &mut UiTransform,
-        &mut TextColor,
-        &mut TextShadow,
         &mut Visibility,
+        &Children,
     )>,
+    mut glyphs: Query<(&NumberGlyph, &mut TextColor, &mut TextShadow), Without<DamageNumber>>,
 ) {
-    let (Some(window), Some(camera)) = (window, camera) else {
+    let (Some(screen), Some(camera)) = (screen_size(&ui, &window), camera) else {
         return;
     };
-    let screen = Vec2::new(window.width(), window.height());
     let camera = GlobalTransform::from(**camera);
     let dt = time.delta_secs();
     let life = tuning.hud.damage_number_seconds;
-    for (mut number, mut transform, mut color, mut shadow, mut vis) in &mut numbers {
+    for (mut number, mut transform, mut vis, children) in &mut numbers {
         if !number.active {
             continue;
         }
@@ -740,13 +854,29 @@ fn place_damage_numbers(
                     * (1.0 + 0.6 * motion.rise / tuning.hud.damage_number_rise.max(1.0));
                 // Up and to the right of the hit, clear of the crosshair.
                 let at = pos - NUMBER_BOX * 0.5 + Vec2::new(18.0 + drift, -34.0 - motion.rise);
-                *transform = UiTransform {
+                let target = UiTransform {
                     translation: Val2::px(at.x.round(), at.y.round()),
-                    scale: Vec2::splat(motion.scale),
+                    scale: motion.scale * motion.squash,
                     rotation: Rot2::IDENTITY,
                 };
-                color.0 = number.color.with_alpha(motion.alpha);
-                shadow.color = Color::srgba(0.0, 0.0, 0.0, 0.8 * motion.alpha);
+                if *transform != target {
+                    *transform = target;
+                }
+                let alpha = motion.alpha;
+                for child in children.iter() {
+                    if let Ok((layer, mut color, mut shadow)) = glyphs.get_mut(child) {
+                        let fill = if layer.0 >= INK_LAYERS {
+                            number.color
+                        } else {
+                            INK
+                        };
+                        set_color(&mut color, fill.with_alpha(alpha));
+                        let shade = INK.with_alpha(alpha);
+                        if shadow.color != shade {
+                            shadow.color = shade;
+                        }
+                    }
+                }
                 set_visible(&mut vis, true);
             }
             _ => {

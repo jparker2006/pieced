@@ -351,3 +351,232 @@ fn master_volume_and_mute_combine() {
     a.muted = true;
     assert_eq!(a.effective_master(), 0.0);
 }
+
+// ---------------------------------------------------------------------------
+// Milestone 2: the cartoon HUD
+// ---------------------------------------------------------------------------
+
+mod cartoon {
+    use avian3d::prelude::PhysicsPlugins;
+    use bevy::{input::InputPlugin, prelude::*, time::TimeUpdateStrategy};
+    use pieced::{
+        app::SimPlugins,
+        hud::{
+            DamageNumber, HitFeedbackStats, HudPlugin, INK_LAYERS, NUMBER_POOL, NumberGlyph,
+            NumberKind, SQUASH_SECONDS, ammo_crystal_look, anchors, number_motion, squash_pop,
+        },
+        palette,
+        render::CurrentFov,
+        shared::{DamageDealt, DamageTarget, Player, tick_duration},
+    };
+
+    fn luminance(c: Color) -> f32 {
+        let s = c.to_srgba();
+        0.2126 * s.red + 0.7152 * s.green + 0.0722 * s.blue
+    }
+
+    #[test]
+    fn damage_number_colors_map_to_their_types() {
+        let c = DamageTarget::Character;
+        // White on health, cyan on shield, gold on headshots (story 19).
+        let body = NumberKind::of(c, false, 0.0).color().to_srgba();
+        assert!(body.red > 0.95 && body.green > 0.95 && body.blue > 0.95);
+        let shield = NumberKind::of(c, false, 20.0).color().to_srgba();
+        assert!(
+            shield.blue > 0.9 && shield.green > 0.6 && shield.red < 0.5,
+            "shield is cyan: {shield:?}"
+        );
+        let head = NumberKind::of(c, true, 20.0).color().to_srgba();
+        assert!(
+            head.red > 0.9 && (0.6..0.9).contains(&head.green) && head.blue < 0.4,
+            "headshot is gold: {head:?}"
+        );
+        assert_eq!(NumberKind::Shield.color(), palette::SHIELD);
+        // Every number wears the same dark ink outline, thicker on bigger numbers.
+        let kinds = [
+            NumberKind::Body,
+            NumberKind::Shield,
+            NumberKind::Headshot,
+            NumberKind::Structure,
+        ];
+        for k in kinds {
+            assert_eq!(k.ink(), NumberKind::Body.ink());
+            assert!(luminance(k.ink()) < 0.06, "{k:?} ink is dark");
+            assert!(k.outline() >= 1.5 && k.outline() < k.size() * 0.15);
+        }
+        assert!(NumberKind::Headshot.outline() > NumberKind::Body.outline());
+        // Structure damage stays muted next to character hits.
+        assert!(NumberKind::Structure.size() < NumberKind::Body.size());
+    }
+
+    #[test]
+    fn damage_numbers_squash_then_rise_and_fade() {
+        // Wide and flat on the hit frame...
+        let hit = squash_pop(0.0);
+        assert!(hit.x > 1.2 && hit.y < 0.8, "squashed: {hit}");
+        assert_eq!(number_motion(0.0, 0.85, 60.0).squash, hit);
+        // ...then a tall stretch...
+        let stretched = (1..16)
+            .map(|i| squash_pop(i as f32 * SQUASH_SECONDS / 16.0))
+            .any(|s| s.y > 1.05 && s.x < 0.95);
+        assert!(stretched, "stretches after the squash");
+        // ...settled well before the rise ends, then the fade.
+        assert_eq!(squash_pop(SQUASH_SECONDS), Vec2::ONE);
+        assert_eq!(number_motion(0.3, 0.85, 60.0).squash, Vec2::ONE);
+        let late = number_motion(0.8, 0.85, 60.0);
+        assert!(late.alpha < 0.2 && late.rise > 55.0);
+    }
+
+    #[test]
+    fn the_ammo_crystal_dims_as_the_magazine_empties_and_flashes_on_reload() {
+        let full = ammo_crystal_look(1.0);
+        let half = ammo_crystal_look(0.625);
+        let empty = ammo_crystal_look(0.25);
+        assert_eq!(full, (1.0, 1.0));
+        assert!(
+            empty.0 < half.0 && half.0 < full.0,
+            "dims with the magazine"
+        );
+        assert!(empty.0 >= 0.5, "still readable when empty: {empty:?}");
+        let flash = ammo_crystal_look(1.3);
+        assert!(
+            flash.1 > 1.1 && flash.0 == 1.0,
+            "swells in the reload flash"
+        );
+    }
+
+    #[test]
+    fn hud_anchors_are_milestone_ones() {
+        assert_eq!(anchors::STATUS, (28.0, 26.0));
+        assert_eq!(anchors::AMMO, (30.0, 20.0));
+        assert_eq!(anchors::HOTBAR_BOTTOM, 20.0);
+        assert_eq!(anchors::READOUT, (20.0, 18.0));
+        assert_eq!(anchors::PERF, (16.0, 14.0));
+        assert_eq!(anchors::PIECE, (34.0, 124.0));
+    }
+
+    /// The simulation plus the HUD, headless (no window, GPU or UI render).
+    fn hud_app() -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            TransformPlugin,
+            bevy::state::app::StatesPlugin,
+            AssetPlugin::default(),
+            bevy::mesh::MeshPlugin,
+            bevy::scene::ScenePlugin,
+            PhysicsPlugins::default(),
+            InputPlugin,
+        ))
+        .add_plugins(SimPlugins)
+        .add_plugins(HudPlugin)
+        .init_resource::<CurrentFov>()
+        .insert_resource(TimeUpdateStrategy::ManualDuration(tick_duration()));
+        app.finish();
+        app.cleanup();
+        app.update();
+        app
+    }
+
+    fn count<C: Component>(app: &mut App) -> usize {
+        let world = app.world_mut();
+        world.query::<&C>().iter(world).count()
+    }
+
+    fn node_named(app: &mut App, name: &str) -> Node {
+        let world = app.world_mut();
+        world
+            .query::<(&Name, &Node)>()
+            .iter(world)
+            .find(|(n, _)| n.as_str() == name)
+            .map(|(_, node)| node.clone())
+            .unwrap_or_else(|| panic!("no HUD node {name:?}"))
+    }
+
+    #[test]
+    fn the_hud_keeps_milestone_ones_layout() {
+        let mut app = hud_app();
+        let status = node_named(&mut app, "Status");
+        assert_eq!((status.left, status.bottom), (px(28), px(26)));
+        let ammo = node_named(&mut app, "Ammo");
+        assert_eq!((ammo.right, ammo.bottom), (px(30), px(20)));
+        let hotbar = node_named(&mut app, "Hotbar");
+        assert_eq!(
+            (hotbar.left, hotbar.right, hotbar.bottom),
+            (px(0), px(0), px(20))
+        );
+        assert_eq!(hotbar.align_items, AlignItems::Center);
+        let readout = node_named(&mut app, "Combat readout");
+        assert_eq!((readout.right, readout.top), (px(20), px(18)));
+        let perf = node_named(&mut app, "Performance overlay");
+        assert_eq!((perf.left, perf.top), (px(16), px(14)));
+    }
+
+    #[test]
+    fn the_damage_number_pool_never_grows_under_a_30_hit_burst() {
+        let mut app = hud_app();
+        let texts = count::<Text>(&mut app);
+        let images = count::<ImageNode>(&mut app);
+        assert_eq!(count::<DamageNumber>(&mut app), NUMBER_POOL);
+        assert_eq!(
+            count::<NumberGlyph>(&mut app),
+            NUMBER_POOL * (INK_LAYERS as usize + 1)
+        );
+        let player = {
+            let world = app.world_mut();
+            world
+                .query_filtered::<Entity, With<Player>>()
+                .single(world)
+                .unwrap()
+        };
+        // 30 hits land on one tick; the last one is a headshot.
+        for i in 0..30 {
+            app.world_mut().write_message(DamageDealt {
+                source: Some(player),
+                target: player,
+                target_kind: DamageTarget::Character,
+                amount: 20.0 + i as f32,
+                to_shield: 0.0,
+                headshot: i == 29,
+                shield_broke: false,
+                killed: false,
+                point: Vec3::new(0.0, 1.0, -10.0),
+                normal: Vec3::Z,
+                tick: 1,
+            });
+        }
+        app.update();
+        // Every number shows on the frame of its hit: the whole pool, recycled.
+        let world = app.world_mut();
+        let shown: Vec<_> = world
+            .query::<(&DamageNumber, &Visibility)>()
+            .iter(world)
+            .filter(|(n, v)| n.active && **v != Visibility::Hidden)
+            .map(|(n, _)| n.color)
+            .collect();
+        assert_eq!(shown.len(), NUMBER_POOL);
+        assert!(shown.contains(&palette::HEADSHOT));
+        assert_eq!(world.resource::<HitFeedbackStats>().hits, 30);
+        // Nothing was spawned for them: no new text, images or numbers.
+        assert_eq!(count::<DamageNumber>(&mut app), NUMBER_POOL);
+        assert_eq!(count::<Text>(&mut app), texts);
+        assert_eq!(count::<ImageNode>(&mut app), images);
+        // The headshot's face is gold over ink copies.
+        let world = app.world_mut();
+        let mut gold_faces = 0;
+        for (glyph, text, color) in world
+            .query::<(&NumberGlyph, &Text, &TextColor)>()
+            .iter(world)
+        {
+            if text.0 == "49" {
+                if glyph.0 == INK_LAYERS {
+                    assert_eq!(color.0, palette::HEADSHOT);
+                    gold_faces += 1;
+                } else {
+                    assert_eq!(color.0, NumberKind::Headshot.ink());
+                }
+            }
+        }
+        assert_eq!(gold_faces, 1);
+    }
+}
