@@ -93,6 +93,15 @@ const RIFLE_RIBBON_GLOW: f32 = 2.0;
 pub const RIFLE_TRAIL_SPARKLES: usize = 12;
 /// The rifle's burst where a shot leaves the gun, per metre from the eye.
 const RIFLE_MUZZLE_BURST: f32 = 0.3;
+/// The headshot's solid gold flash (T06): its size (m; at least this wide an
+/// angle, rad, so it reads far off without hiding him) and life (s). It holds
+/// full size while the hat pops (about 0.2 s) and then shrinks away.
+pub const HEAD_FLASH_SIZE: f32 = 0.8;
+pub const HEAD_FLASH_ANGLE: f32 = 0.05;
+pub const HEAD_FLASH_LIFE: f32 = 0.42;
+/// Solid gold flash colours (sRGB): the starburst and its pale core.
+const FLASH_GOLD: Color = Color::srgb(1.0, 0.76, 0.14);
+const FLASH_CORE: Color = Color::srgb(1.0, 0.95, 0.6);
 
 // ---------------------------------------------------------------------------
 // Public markers and evidence
@@ -210,6 +219,12 @@ pub struct SpellAssets {
     pub solid: Handle<ToonMaterial>,
     pub cloud: Handle<ToonMaterial>,
     pub star: Handle<ToonMaterial>,
+    /// Flat, unlit-looking gold for the headshot flash (and its pale core):
+    /// opaque, so it stays gold over the grey helmet and the bright sky, where
+    /// additive gold washes out to white.
+    pub flash: Handle<ToonMaterial>,
+    pub flash_core: Handle<ToonMaterial>,
+    pow: Handle<Mesh>,
     sparkle_blue: Handle<Mesh>,
     sparkle_white: Handle<Mesh>,
     sparkle_gold: Handle<Mesh>,
@@ -248,6 +263,14 @@ const HALO_VIOLET: Color = Color::srgb(0.78, 0.4, 1.0);
 const HALO_CYAN: Color = Color::srgb(0.45, 0.88, 1.0);
 const HALO_POOF: Color = Color::srgb(0.95, 0.9, 1.0);
 
+/// A toon material that shows one flat colour whatever the light: no albedo
+/// (so no key, fill or shadow band), no rim, all emissive.
+fn flat_glow(color: Color) -> ToonMaterial {
+    ToonMaterial::new(Color::BLACK)
+        .with_emissive(color, 1.0)
+        .with_rim(0.0)
+}
+
 fn make_assets(
     meshes: &mut Assets<Mesh>,
     spell: &mut Assets<SpellMaterial>,
@@ -259,6 +282,9 @@ fn make_assets(
         solid: toon.add(ToonMaterial::vertex_colored()),
         cloud: toon.add(ToonMaterial::vertex_colored().with_rim(0.5)),
         star: toon.add(ToonMaterial::vertex_colored().with_emissive(cartoon::STAR_GOLD, 0.45)),
+        flash: toon.add(flat_glow(FLASH_GOLD)),
+        flash_core: toon.add(flat_glow(FLASH_CORE)),
+        pow: add(starburst(10, 0x7, GOLD, &[GOLD_DEEP], 0.27)),
         sparkle_blue: add(sparkle(BOLT_BLUE, BOLT_CORE)),
         sparkle_white: add(sparkle(BOLT_CORE, Color::WHITE)),
         sparkle_gold: add(sparkle(GOLD, GOLD_CORE)),
@@ -659,6 +685,7 @@ fn setup_spells(
     warmup.add(assets.brick_chip.clone(), assets.solid.clone());
     warmup.add(assets.clouds[0].clone(), assets.cloud.clone());
     warmup.add(assets.gold_star.clone(), assets.star.clone());
+    warmup.add(assets.pow.clone(), assets.flash.clone());
 
     commands.insert_resource(SpellPools {
         glow: Pool::new(glow),
@@ -772,18 +799,35 @@ impl Emitter<'_> {
         pull: f32,
         spin: f32,
     ) -> bool {
+        self.pop_held(pos, mesh, size, life, intensity, pull, spin, 0.4)
+    }
+
+    /// [`Self::pop`] that keeps full size for the first `hold` of its life
+    /// (and full glow a little longer) before shrinking away.
+    #[allow(clippy::too_many_arguments)]
+    fn pop_held(
+        &mut self,
+        pos: Vec3,
+        mesh: Handle<Mesh>,
+        size: f32,
+        life: f32,
+        intensity: f32,
+        pull: f32,
+        spin: f32,
+        hold: f32,
+    ) -> bool {
         let roll = self.roll();
         let mut s = Spark::new(pos, &mesh);
         s.p.size = Vec3::splat(size);
         s.p.life = life;
         s.p.birth_scale = 0.45;
-        s.p.shrink_start = 0.4;
+        s.p.shrink_start = hold;
         s.face = Face::Billboard {
             roll,
             roll_speed: spin,
         };
         s.intensity = intensity;
-        s.fade_start = 0.5;
+        s.fade_start = (hold + 0.1).min(0.95);
         s.pull = pull;
         self.glow(s)
     }
@@ -1149,51 +1193,65 @@ impl Emitter<'_> {
         shown
     }
 
+    /// A headshot (T06): a big solid gold starburst on the helmet with a pale
+    /// core (opaque, so it reads gold on any background), long thin gold rays,
+    /// a white-hot centre, gold sparks, little gold stars flung off and a warm
+    /// glow. The flash holds full size while the hat pops, then shrinks away.
     fn head_impact(&mut self, point: Vec3, normal: Vec3) -> bool {
         let d = self.dist(point);
         let out = (normal.normalize_or(Vec3::Y) + (self.eye - point).normalize_or_zero())
             .normalize_or(Vec3::Y);
-        let burst = self.assets.burst_gold.clone();
-        let mut shown = self.pop(
-            point,
-            burst,
-            apparent_size(0.85, d, 0.07),
-            0.2,
-            1.8,
-            0.3,
-            4.0,
-        );
+        let roll = self.roll();
+        let size = apparent_size(HEAD_FLASH_SIZE, d, HEAD_FLASH_ANGLE);
+        let mut shown = false;
+        // The core sits a little in front of the starburst.
+        for (material, scale, pull, roll_speed) in [
+            (self.assets.flash.clone(), 1.0, 0.3, 1.2),
+            (self.assets.flash_core.clone(), 0.55, 0.32, -1.8),
+        ] {
+            let mut s = Spark::new(point, &self.assets.pow);
+            s.material = Some(material);
+            s.p.size = Vec3::splat(size * scale);
+            s.p.life = HEAD_FLASH_LIFE;
+            s.p.birth_scale = 0.3;
+            s.p.shrink_start = 0.6;
+            s.face = Face::Billboard {
+                roll: roll + 0.3 * scale,
+                roll_speed,
+            };
+            s.pull = pull;
+            shown |= self.solid(s);
+        }
+        // Glows go in front of the solid flash so it never hides them.
         let rays = self.assets.rays_gold.clone();
-        shown |= self.pop(
-            point,
-            rays,
-            apparent_size(1.25, d, 0.1),
-            0.14,
-            1.4,
-            0.32,
-            -3.0,
-        );
+        shown |= self.pop_held(point, rays, size * 2.3, 0.32, 1.7, 0.36, -2.0, 0.55);
+        let burst = self.assets.burst_gold.clone();
+        shown |= self.pop_held(point, burst, size * 0.85, 0.3, 1.5, 0.38, 3.0, 0.5);
         let core = self.assets.sparkle_white.clone();
-        shown |= self.pop(
-            point,
-            core,
-            apparent_size(0.4, d, 0.03),
-            0.1,
-            2.2,
-            0.34,
-            0.0,
-        );
+        shown |= self.pop_held(point, core, size * 0.55, 0.26, 2.4, 0.4, 0.0, 0.5);
         let meshes = [self.assets.streak_gold.clone()];
-        let w = apparent_size(0.035, d, 0.003);
-        self.sparks(point, out, 0.95, 9, (4.5, 9.0), &meshes, w, w * 5.0);
-        self.flash(
-            point,
-            HALO_GOLD,
-            apparent_size(1.0, d, 0.08),
-            1.8,
-            0.18,
-            0.3,
-        );
+        let w = apparent_size(0.045, d, 0.004);
+        self.sparks(point, out, 1.0, 12, (4.5, 9.5), &meshes, w, w * 6.0);
+        for i in 0..4 {
+            let a = std::f32::consts::TAU * (i as f32 + self.rng.range(-0.25, 0.25)) / 4.0;
+            let side = Vec3::new(a.cos(), 0.0, a.sin());
+            let mut s = Spark::new(point, &self.assets.gold_star);
+            s.material = Some(self.assets.star.clone());
+            s.p.vel = side * self.rng.range(1.2, 2.2) + Vec3::Y * self.rng.range(2.2, 3.4);
+            s.p.gravity = 7.0;
+            s.p.drag = 1.0;
+            s.p.size = Vec3::splat(apparent_size(0.13, d, 0.012) * self.rng.range(0.85, 1.15));
+            s.p.birth_scale = 0.3;
+            s.p.life = self.rng.range(0.5, 0.65);
+            s.p.shrink_start = 0.6;
+            s.face = Face::Billboard {
+                roll: self.rng.range(-0.4, 0.4),
+                roll_speed: self.rng.range(-4.0, 4.0),
+            };
+            s.pull = 0.35;
+            self.solid(s);
+        }
+        self.flash(point, HALO_GOLD, size * 2.0, 2.0, 0.3, 0.3);
         shown
     }
 

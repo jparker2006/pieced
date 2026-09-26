@@ -21,9 +21,9 @@ use pieced::{
             bolt_progress, orbit_offset, pellet_flight, rifle_flight, screen_to_path,
         },
         spells::{
-            BOLT_POOL, BoltHead, DIZZY_TIME, HALO_POOL, ImpactKind, RIFLE_HEAD_ANGLE,
-            RIFLE_HEAD_SIZE, RIFLE_TRAIL_SPARKLES, SpellGlow, SpellHalo, SpellSolid, SpellTiming,
-            SpellsPlugin, pool_counts,
+            BOLT_POOL, BoltHead, DIZZY_TIME, HALO_POOL, HEAD_FLASH_LIFE, HEAD_FLASH_SIZE,
+            ImpactKind, RIFLE_HEAD_ANGLE, RIFLE_HEAD_SIZE, RIFLE_TRAIL_SPARKLES, SpellAssets,
+            SpellGlow, SpellHalo, SpellSolid, SpellTiming, SpellsPlugin, pool_counts,
         },
     },
     hud::{HitFeedbackStats, HudPlugin},
@@ -356,6 +356,54 @@ fn impact_hitmarker_and_number_show_on_the_hit_frame_and_the_bolt_lands_within_t
     assert_eq!(
         verdict["hits_with_impact_marker_and_number_on_the_hit_frame"],
         4
+    );
+}
+
+/// A headshot (T06) flashes a big solid gold starburst in front of the helmet
+/// on the hit frame; it is still full size 0.2 s on, while the hat is up at
+/// the top of its pop, and then it shrinks away.
+#[test]
+fn a_headshot_flashes_a_big_solid_gold_starburst_that_holds_while_the_hat_pops() {
+    let mut game = Game::new(63, |_| {});
+    let feet = game.feet(game.dummy);
+    game.place_dummy(feet, 100.0, 0.0);
+    game.frames(2);
+    game.aim_at(feet + Vec3::Y * HEAD_CENTER);
+    game.clear_shots();
+    game.fire();
+    assert_eq!(game.timing().hits.last().unwrap().kind, ImpactKind::Head);
+    let end = game.shots().pop().expect("the shot").traces[0].end;
+    let flash = game.world().resource::<SpellAssets>().flash.clone();
+    let flashes = |game: &mut Game| -> Vec<Transform> {
+        let world = game.app.world_mut();
+        world
+            .query_filtered::<(&Transform, &Visibility, &MeshMaterial3d<ToonMaterial>), With<SpellSolid>>()
+            .iter(world)
+            .filter(|(_, v, m)| **v == Visibility::Visible && m.0 == flash)
+            .map(|(t, ..)| *t)
+            .collect()
+    };
+    let now = flashes(&mut game);
+    assert_eq!(now.len(), 1, "one gold flash on the hit frame");
+    let eye = game.feet(game.player) + Vec3::Y * 1.62;
+    let at = now[0].translation;
+    assert!(at.distance(end) < 0.5, "at the hit: {at} vs {end}");
+    assert!(
+        at.distance(eye) < end.distance(eye) - 0.2,
+        "in front of the helmet"
+    );
+    game.frames(12);
+    let held = flashes(&mut game);
+    assert_eq!(held.len(), 1);
+    let size = held[0].scale.x;
+    assert!(
+        size >= HEAD_FLASH_SIZE * 0.99,
+        "full size 0.2 s on: {size:.3} m"
+    );
+    game.frames((HEAD_FLASH_LIFE * 60.0) as u32);
+    assert!(
+        flashes(&mut game).is_empty(),
+        "and gone once its life is up"
     );
 }
 
