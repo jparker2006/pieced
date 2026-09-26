@@ -95,3 +95,17 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **S5 evidence:** `tests/knight.rs`. Worst vertex outside its hitbox: Helmet +3.8 cm, Hat +4.2, Gauntlets +3.9, Boots +4.1, Torso +1.0 (the limit is 5). From the front the capsule sticks out at most 9.2 cm past the model, the head sphere 1.4 cm.
   - **Rules the builder set, accepted by the orchestrator:** below 0.12 m the capsule counts as a cylinder, so the boots stand on the ground as in M1. The 10 cm fill rule is applied from the front, because the dummy always faces the player; the side fill is held to ≤ 21 cm.
   - **Art-review notes:** the arms read thin, and the helmet could be rounder and chunkier, closer to T05.
+- 2026-09-26: **guns merged** (`f67211f`), with 252 tests passing:
+  - the rifle (5,036 triangles) and pump (5,604) in brass and dark wood, with a blue crystal in a glass chamber and a violet crystal in gold rings; the gloves (1,960);
+  - crystal glow = 0.25 + 0.75 × magazine fraction (the `CrystalGlow` resource);
+  - the crystal-swap reload, pump shards and ring whirr, the squash kick, ADS on the sights.
+- 2026-09-26: **sky merged** (`40740a0`), with 271 tests passing:
+  - a seeded 6 × 1024² galaxy skybox, turning once per 10 minutes and generated on a background thread (97–400 ms in debug);
+  - the station (12,689 triangles) at 640 m and azimuth 30°, fully in view from spawn;
+  - a ringed planet;
+  - 18 bobbing islands, 11 with solid waterfalls;
+  - 5 ships crossing the view in about 16–18 s;
+  - glass pulsing on a 5 s period.
+
+  **S4 evidence:** `tests/far.rs`.
+- 2026-09-26: the disk was pruned again (`scripts/prune-target.sh`), leaving 23 GB free. The **spells** builder was dispatched. The island is re-merging `main`, and the gallery is in progress.
