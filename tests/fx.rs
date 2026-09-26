@@ -8,7 +8,10 @@ use pieced::{
     combat::GunTuning,
     fx::{
         FeedbackTuning,
-        sim::{Hitstop, Particle, SHAKE_MAX_DEG, Shake, SlotPool, Spring, tracer_segment},
+        sim::{
+            BOLT_ARRIVAL_FRAMES, Hitstop, Particle, SHAKE_MAX_DEG, Shake, SlotPool, Spring,
+            bolt_progress, pellet_flight, rifle_flight,
+        },
     },
     viewmodel::{PUMP_KICK, RIFLE_KICK, anim::switch_phase},
 };
@@ -177,23 +180,23 @@ fn debris_tumbles_bounces_settles_and_fades() {
     assert!(chunk.scale().x < 0.1, "didn't shrink away");
 }
 
+/// Milestone 1's tracers became spell bolts (Milestone 2): every shot still
+/// leaves the gun at once and visibly reaches its end almost at once, now
+/// counted in rendered frames (gate S6; the ECS side is in `tests/spells.rs`).
 #[test]
-fn tracers_leave_the_muzzle_reach_the_hit_and_fade_within_90ms() {
-    let life = 0.085;
+fn bolts_leave_the_muzzle_at_once_and_reach_the_hit_within_two_frames() {
     for length in [3.0, 25.0, 150.0] {
-        let (tail, head) = tracer_segment(0.0, life, length, 14.0).expect("visible at once");
-        assert_eq!(tail, 0.0, "starts at the muzzle");
-        assert!(head > 0.0);
-        let mut reached = false;
-        let mut age = 0.0;
-        while let Some((tail, head)) = tracer_segment(age, life, length, 14.0) {
-            assert!(0.0 <= tail && tail <= head && head <= length + 1e-4);
-            assert!(head - tail <= 14.0_f32.max(0.34 * length) + 1e-3);
-            reached |= (head - length).abs() < 1e-3;
-            age += 0.004;
+        for early in [rifle_flight(0.55, length), pellet_flight(length)] {
+            let first = bolt_progress(0, early);
+            assert!(first > 0.0 && first < 1.0, "out of the gun, in flight");
+            let mut last = first;
+            for frame in 1..=BOLT_ARRIVAL_FRAMES {
+                let p = bolt_progress(frame, early);
+                assert!(p >= last, "never goes back");
+                last = p;
+            }
+            assert_eq!(last, 1.0, "on the hit point by frame 2 ({length} m)");
         }
-        assert!(reached, "never reached the end of a {length} m trace");
-        assert!(age <= 0.09, "lasted {age}s");
     }
 }
 

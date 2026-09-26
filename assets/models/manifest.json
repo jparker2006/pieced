@@ -40,6 +40,10 @@
     "file": "knight.glb"
   },
   {
+    "name": "knight_hat",
+    "file": "knight_hat.glb"
+  },
+  {
     "name": "planet",
     "file": "planet.glb"
   },

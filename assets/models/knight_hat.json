@@ -1,0 +1,43 @@
+{
+  "name": "knight_hat",
+  "kind": "knight",
+  "source": "art/blender/assets/knight.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 780,
+  "triangle_budget": 8000,
+  "bounds": {
+    "min": [
+      -0.2213,
+      -0.0245,
+      -0.2191
+    ],
+    "max": [
+      0.2193,
+      0.141,
+      0.215
+    ]
+  },
+  "parts": {
+    "Hat": {
+      "parent": "knight_hat",
+      "bounds": {
+        "min": [
+          -0.2213,
+          -0.0245,
+          -0.2191
+        ],
+        "max": [
+          0.2193,
+          0.141,
+          0.215
+        ]
+      },
+      "triangles": 780,
+      "colors": [
+        "knight_purple",
+        "star_gold"
+      ]
+    }
+  },
+  "attach": {}
+}

@@ -1,7 +1,8 @@
-//! Slice E — pooled effects: tracers, impact sparks, wood chips, hit bursts,
-//! shield shimmer and break, piece-break debris, the elimination burst, camera
-//! shake and hitstop. (The muzzle flash lives on the viewmodel layer, in
-//! [`crate::viewmodel`].)
+//! Effects: the spells ([`spells`]: bolts, pump sparks, impacts by type,
+//! shield shimmer and break, the elimination poof and the dropped hat), and
+//! here the piece-break debris, camera shake and hitstop. (The muzzle flashes
+//! live on the viewmodel layer, in [`crate::viewmodel`]; [`spells`] restyles
+//! them.)
 //!
 //! Every mesh and material is built once at startup, and every effect draws
 //! from fixed pools of hidden entities sized by [`FeedbackTuning`]'s caps
@@ -9,21 +10,22 @@
 //! recycled, so the frame cost is bounded no matter how much is going on.
 //! Per frame this only moves transforms and swaps handles.
 //!
-//! Every effect clock reads [`FreezableTime`](crate::shared::FreezableTime), so
-//! lifetimes, fades and shake stand still while the gallery holds a moment
-//! ([`GalleryFreeze`](crate::shared::GalleryFreeze)). Spells that replace these
-//! effects must keep reading their delta the same way.
+//! Every effect clock, the spells' included, reads
+//! [`FreezableTime`](crate::shared::FreezableTime), so lifetimes, fades, bolt
+//! flight and shake stand still while the gallery holds a moment
+//! ([`GalleryFreeze`](crate::shared::GalleryFreeze)).
 
+pub mod hat;
+pub mod material;
+pub mod shapes;
 pub mod sim;
+pub mod spells;
 
 use crate::{
     building::{Piece, ramp_surface_height, visuals::PieceDebris},
     palette,
     render::{CameraFollowSet, MainCamera},
-    shared::{
-        Character, DamageDealt, DamageTarget, Eliminated, PieceChange, PieceChanged, PieceKind,
-        Player, ShotFired, WeaponKind,
-    },
+    shared::{Eliminated, PieceChange, PieceChanged, PieceKind, Player, ShotFired, WeaponKind},
     tuning::Tuning,
     viewmodel::{
         MuzzlePoint, ViewmodelSet,
@@ -35,7 +37,7 @@ use bevy::{
     render::render_resource::Face,
 };
 use serde::{Deserialize, Serialize};
-use sim::{FxRng, Hitstop, Particle, Shake, SlotPool, fade_step, tracer_segment};
+use sim::{FxRng, Hitstop, Particle, Shake, SlotPool, fade_step};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -67,10 +69,6 @@ impl Default for FeedbackTuning {
 
 /// Fade steps per translucent effect color.
 const FADE_STEPS: usize = 6;
-const TRACER_POOL: usize = 64;
-const SHIMMER_POOL: usize = 6;
-/// Longest visible tracer streak (m).
-const MAX_STREAK: f32 = 14.0;
 /// Piece breaks closer than this shake the camera (m).
 const SHAKE_RADIUS: f32 = 10.0;
 /// Hard ceilings on the pools, whatever the settings file says.
@@ -78,28 +76,13 @@ const PARTICLE_CEILING: u32 = 2000;
 const DEBRIS_CEILING: u32 = 1000;
 
 /// Translucent effect colors that fade out through [`FADE_STEPS`] materials.
+/// (Spells glow through [`spells`]; only the piece-break dust fades here.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Family {
-    Spark,
-    Tracer,
-    White,
-    Yellow,
-    Shield,
-    ShieldShell,
     Dust,
-    Rim,
 }
 
-const FAMILIES: [Family; 8] = [
-    Family::Spark,
-    Family::Tracer,
-    Family::White,
-    Family::Yellow,
-    Family::Shield,
-    Family::ShieldShell,
-    Family::Dust,
-    Family::Rim,
-];
+const FAMILIES: [Family; 1] = [Family::Dust];
 
 /// How a fade family draws: color, blending, starting alpha, and whether back
 /// faces are culled (closed shells) or drawn (flat cards and rings).
@@ -117,14 +100,7 @@ impl Family {
 
     fn look(self) -> FamilyLook {
         let (color, alpha_mode, alpha, cull_back) = match self {
-            Family::Spark => (Color::srgb(1.0, 0.9, 0.5), AlphaMode::Blend, 1.0, false),
-            Family::Tracer => (Color::srgb(1.0, 0.88, 0.5), AlphaMode::Blend, 0.95, false),
-            Family::White => (palette::HIT_WHITE, AlphaMode::Add, 0.8, true),
-            Family::Yellow => (palette::HEADSHOT, AlphaMode::Add, 0.95, true),
-            Family::Shield => (shade(palette::SHIELD, 1.2), AlphaMode::Blend, 0.9, false),
-            Family::ShieldShell => (palette::SHIELD, AlphaMode::Blend, 0.38, true),
             Family::Dust => (shade(palette::SAND, 1.1), AlphaMode::Blend, 0.22, true),
-            Family::Rim => (palette::TARGET, AlphaMode::Blend, 0.85, false),
         };
         FamilyLook {
             color,
@@ -145,16 +121,8 @@ enum Paint {
 struct FxAssets {
     chunk: Handle<Mesh>,
     wedge: Handle<Mesh>,
-    shard: Handle<Mesh>,
-    spark: Handle<Mesh>,
     ico: Handle<Mesh>,
-    ring: Handle<Mesh>,
     wood: [Handle<StandardMaterial>; 4],
-    coral: [Handle<StandardMaterial>; 3],
-    hot_white: Handle<StandardMaterial>,
-    hot_coral: Handle<StandardMaterial>,
-    hot_yellow: Handle<StandardMaterial>,
-    hot_shield: Handle<StandardMaterial>,
     fades: Vec<[Handle<StandardMaterial>; FADE_STEPS]>,
 }
 
@@ -200,35 +168,10 @@ impl ParticlePool {
     }
 }
 
-struct Tracer {
-    start: Vec3,
-    dir: Vec3,
-    length: f32,
-    age: f32,
-    life: f32,
-    width: f32,
-    fresh: bool,
-    step: usize,
-}
-
-struct Shimmer {
-    target: Entity,
-    age: f32,
-    life: f32,
-    fresh: bool,
-    step: usize,
-}
-
 #[derive(Resource)]
 struct FxPools {
     particles: ParticlePool,
     debris: ParticlePool,
-    tracer_slots: SlotPool,
-    tracer_entities: Vec<Entity>,
-    tracers: Vec<Option<Tracer>>,
-    shimmer_slots: SlotPool,
-    shimmer_entities: Vec<Entity>,
-    shimmers: Vec<Option<Shimmer>>,
 }
 
 #[derive(Resource)]
@@ -293,7 +236,8 @@ impl Plugin for FxPlugin {
                     .after(ViewmodelSet)
                     .before(TransformSystems::Propagate),
             )
-            .add_systems(Last, end_hitstop_frame);
+            .add_systems(Last, end_hitstop_frame)
+            .add_plugins(spells::SpellsPlugin);
     }
 }
 
@@ -327,22 +271,7 @@ fn setup_fx(
         ];
         m.prism_x(&zy, -0.5, 0.5, white);
     }));
-    let shard = meshes.add(unit_mesh(|m| {
-        let zy = [
-            Vec2::new(-0.5, -0.45),
-            Vec2::new(0.5, -0.25),
-            Vec2::new(0.05, 0.5),
-        ];
-        m.prism_x(&zy, -0.5, 0.5, white);
-    }));
-    let spark = meshes.add(unit_mesh(|m| {
-        m.cube(Vec3::splat(-0.5), Vec3::splat(0.5), white)
-    }));
-    let tracer = meshes.add(unit_mesh(|m| {
-        m.cube(Vec3::new(-0.5, -0.5, 0.0), Vec3::new(0.5, 0.5, 1.0), white)
-    }));
     let ico = meshes.add(unit_mesh(|m| m.geosphere(1.0, 2, linear(white, 1.0))));
-    let ring = meshes.add(unit_mesh(|m| m.ring_xz(0.72, 1.0, 32, linear(white, 1.0))));
 
     let mut lit = |color: Color| {
         materials.add(StandardMaterial {
@@ -357,22 +286,6 @@ fn setup_fx(
         lit(palette::WOOD_DARK),
         lit(palette::WOOD_TRIM),
     ];
-    let coral = [
-        lit(palette::TARGET),
-        lit(palette::TARGET_DARK),
-        lit(palette::TARGET_RIM),
-    ];
-    let mut unlit = |color: Color| {
-        materials.add(StandardMaterial {
-            base_color: color,
-            unlit: true,
-            ..default()
-        })
-    };
-    let hot_white = unlit(palette::HIT_WHITE);
-    let hot_coral = unlit(palette::TARGET);
-    let hot_yellow = unlit(palette::HEADSHOT);
-    let hot_shield = unlit(shade(palette::SHIELD, 1.25));
     let fades = FAMILIES
         .iter()
         .map(|family| {
@@ -409,22 +322,20 @@ fn setup_fx(
     let feedback = &tuning.feedback;
     let particles = spawn_pool(
         feedback.max_particles.min(PARTICLE_CEILING) as usize,
-        &spark,
-        &hot_white,
+        &chunk,
+        &wood[0],
     );
     let debris = spawn_pool(
         feedback.max_debris.min(DEBRIS_CEILING) as usize,
         &chunk,
         &wood[0],
     );
-    let tracer_entities = spawn_pool(TRACER_POOL, &tracer, &fades[Family::Tracer.index()][0]);
-    let shimmer_entities = spawn_pool(SHIMMER_POOL, &ico, &fades[Family::ShieldShell.index()][0]);
 
     // Draw every effect material once, too small to see, while the game boots,
     // so their pipelines are compiled before the first shot instead of during it.
     let mut warm: Vec<Handle<StandardMaterial>> =
         fades.iter().map(|steps| steps[0].clone()).collect();
-    warm.extend([wood[0].clone(), coral[0].clone(), hot_white.clone()]);
+    warm.push(wood[0].clone());
     let prewarm = warm
         .into_iter()
         .map(|material| {
@@ -447,26 +358,12 @@ fn setup_fx(
     commands.insert_resource(FxPools {
         particles: ParticlePool::new(particles),
         debris: ParticlePool::new(debris),
-        tracer_slots: SlotPool::new(TRACER_POOL),
-        tracers: (0..TRACER_POOL).map(|_| None).collect(),
-        tracer_entities,
-        shimmer_slots: SlotPool::new(SHIMMER_POOL),
-        shimmers: (0..SHIMMER_POOL).map(|_| None).collect(),
-        shimmer_entities,
     });
     commands.insert_resource(FxAssets {
         chunk,
         wedge,
-        shard,
-        spark,
         ico,
-        ring,
         wood,
-        coral,
-        hot_white,
-        hot_coral,
-        hot_yellow,
-        hot_shield,
         fades,
     });
 }
@@ -502,213 +399,6 @@ impl Emitter<'_> {
     fn chunk(&mut self, p: Particle, mesh: Handle<Mesh>, paint: Paint) {
         let limit = self.debris_limit;
         self.pools.debris.emit(limit, p, &mesh, paint);
-    }
-
-    fn tracer(&mut self, start: Vec3, end: Vec3, width: f32, life: f32) {
-        let d = end - start;
-        let length = d.length();
-        if length < 0.3 {
-            return;
-        }
-        if let Some(i) = self.pools.tracer_slots.alloc(TRACER_POOL) {
-            self.pools.tracers[i] = Some(Tracer {
-                start,
-                dir: d / length,
-                length,
-                age: 0.0,
-                life,
-                width,
-                fresh: true,
-                step: usize::MAX,
-            });
-        }
-    }
-
-    fn pop(&mut self, pos: Vec3, size: f32, grow: f32, life: f32, family: Family) {
-        let p = Particle {
-            pos,
-            size: Vec3::splat(size),
-            birth_scale: 0.45,
-            grow,
-            life,
-            shrink_start: 1.0,
-            ..default()
-        };
-        let mesh = self.assets.ico.clone();
-        self.particle(p, mesh, Paint::Fade(family));
-    }
-
-    fn ring(&mut self, pos: Vec3, facing: Vec3, size: f32, grow: f32, life: f32, family: Family) {
-        let p = Particle {
-            pos,
-            rot: Quat::from_rotation_arc(Vec3::Y, facing.normalize_or(Vec3::Y)),
-            size: Vec3::splat(size),
-            grow,
-            life,
-            shrink_start: 1.0,
-            ..default()
-        };
-        let mesh = self.assets.ring.clone();
-        self.particle(p, mesh, Paint::Fade(family));
-    }
-
-    /// Hot sparks off world geometry.
-    fn sparks(&mut self, point: Vec3, normal: Vec3, count: usize) {
-        let normal = normal.normalize_or(Vec3::Y);
-        for _ in 0..count {
-            let dir = self.rng.cone(normal, 0.9);
-            let p = Particle {
-                pos: point + normal * 0.02,
-                vel: dir * self.rng.range(4.0, 10.0),
-                gravity: 16.0,
-                drag: 3.0,
-                life: self.rng.range(0.12, 0.26),
-                size: Vec3::new(0.028, 0.028, 0.03),
-                stretch: 0.02,
-                shrink_start: 0.3,
-                ..default()
-            };
-            let mesh = self.assets.spark.clone();
-            self.particle(p, mesh, Paint::Fade(Family::Spark));
-        }
-        self.pop(point + normal * 0.03, 0.11, 2.0, 0.08, Family::Spark);
-    }
-
-    /// Wood chips and a puff of dust off a building piece.
-    fn chips(&mut self, point: Vec3, normal: Vec3, count: usize) {
-        let normal = normal.normalize_or(Vec3::Y);
-        for _ in 0..count {
-            let dir = self.rng.cone(normal, 0.75);
-            let size = Vec3::new(
-                self.rng.range(0.03, 0.06),
-                self.rng.range(0.02, 0.035),
-                self.rng.range(0.05, 0.10),
-            );
-            let p = Particle {
-                pos: point + normal * 0.03,
-                vel: dir * self.rng.range(2.0, 5.0) + Vec3::Y * self.rng.range(0.5, 2.0),
-                rot: Quat::from_scaled_axis(self.rng.dir() * 3.0),
-                spin: self.rng.dir() * self.rng.range(8.0, 20.0),
-                gravity: 18.0,
-                bounce: Some(0.3),
-                radius: size.y * 0.5,
-                size,
-                life: self.rng.range(0.5, 0.9),
-                shrink_start: 0.6,
-                ..default()
-            };
-            let k = self.rng.pick(4);
-            let (mesh, paint) = (
-                self.assets.chunk.clone(),
-                Paint::Solid(self.assets.wood[k].clone()),
-            );
-            self.particle(p, mesh, paint);
-        }
-        let dust = Particle {
-            pos: point + normal * 0.05,
-            vel: normal * 0.6 + Vec3::Y * 0.3,
-            size: Vec3::splat(0.1),
-            birth_scale: 0.6,
-            grow: 2.4,
-            drag: 3.0,
-            life: 0.3,
-            shrink_start: 1.0,
-            ..default()
-        };
-        let mesh = self.assets.ico.clone();
-        self.particle(dust, mesh, Paint::Fade(Family::Dust));
-    }
-
-    /// Small bits of a character hit.
-    fn bits(&mut self, point: Vec3, normal: Vec3, count: usize, headshot: bool, speed: f32) {
-        let normal = normal.normalize_or(Vec3::Y);
-        for i in 0..count {
-            let dir = self.rng.cone(normal, 0.85);
-            let s = self.rng.range(0.025, 0.045);
-            let p = Particle {
-                pos: point + normal * 0.03,
-                vel: dir * self.rng.range(0.4, 1.0) * speed,
-                rot: Quat::from_scaled_axis(self.rng.dir() * 3.0),
-                spin: self.rng.dir() * self.rng.range(10.0, 25.0),
-                gravity: 9.0,
-                drag: 2.0,
-                life: self.rng.range(0.18, 0.32),
-                size: Vec3::splat(s),
-                shrink_start: 0.4,
-                ..default()
-            };
-            let material = if headshot {
-                self.assets.hot_yellow.clone()
-            } else if i % 2 == 0 {
-                self.assets.hot_coral.clone()
-            } else {
-                self.assets.hot_white.clone()
-            };
-            let mesh = self.assets.chunk.clone();
-            self.particle(p, mesh, Paint::Solid(material));
-        }
-    }
-
-    /// The coral/white pop on a character hit (yellow flash for headshots).
-    fn hit_burst(&mut self, point: Vec3, normal: Vec3, headshot: bool) {
-        let normal = normal.normalize_or(Vec3::Y);
-        if headshot {
-            self.pop(point + normal * 0.05, 0.15, 2.1, 0.12, Family::Yellow);
-            self.bits(point, normal, 10, true, 6.0);
-        } else {
-            self.pop(point + normal * 0.05, 0.09, 1.9, 0.08, Family::White);
-            self.bits(point, normal, 6, false, 5.0);
-        }
-    }
-
-    fn shimmer(&mut self, target: Entity) {
-        let pools = &mut *self.pools;
-        if let Some(existing) = pools
-            .shimmers
-            .iter_mut()
-            .flatten()
-            .find(|s| s.target == target)
-        {
-            existing.age = 0.0;
-            return;
-        }
-        if let Some(i) = pools.shimmer_slots.alloc(SHIMMER_POOL) {
-            pools.shimmers[i] = Some(Shimmer {
-                target,
-                age: 0.0,
-                life: 0.18,
-                fresh: true,
-                step: usize::MAX,
-            });
-        }
-    }
-
-    fn shield_break(&mut self, point: Vec3, center: Vec3, eye: Vec3) {
-        self.pop(point, 0.32, 2.6, 0.16, Family::Shield);
-        self.ring(center, eye - center, 0.4, 4.0, 0.24, Family::Shield);
-        let out = (point - center).normalize_or(Vec3::Y);
-        for _ in 0..18 {
-            let dir = (self.rng.dir() + out * 0.8).normalize_or(out);
-            let p = Particle {
-                pos: point + self.rng.dir() * 0.15,
-                vel: dir * self.rng.range(3.0, 6.5) + Vec3::Y * 1.5,
-                rot: Quat::from_scaled_axis(self.rng.dir() * 3.0),
-                spin: self.rng.dir() * self.rng.range(10.0, 25.0),
-                gravity: 12.0,
-                drag: 1.0,
-                life: self.rng.range(0.35, 0.6),
-                size: Vec3::new(
-                    0.018,
-                    self.rng.range(0.09, 0.14),
-                    self.rng.range(0.09, 0.14),
-                ),
-                shrink_start: 0.5,
-                ..default()
-            };
-            let mesh = self.assets.shard.clone();
-            let paint = Paint::Solid(self.assets.hot_shield.clone());
-            self.particle(p, mesh, paint);
-        }
     }
 
     /// The signature moment: a destroyed piece bursts into chunky bricks (walls)
@@ -897,46 +587,6 @@ impl Emitter<'_> {
             self.particle(p, mesh, Paint::Fade(Family::Dust));
         }
     }
-
-    /// Coral chunks, a flash and an expanding ring, readable across the arena.
-    fn elimination(&mut self, feet: Vec3, eye: Vec3) {
-        let center = feet + Vec3::Y * 0.95;
-        self.pop(center, 0.36, 2.1, 0.16, Family::White);
-        self.ring(center, eye - center, 0.5, 7.0, 0.42, Family::Rim);
-        self.ring(feet + Vec3::Y * 0.06, Vec3::Y, 0.4, 8.0, 0.5, Family::Rim);
-        for _ in 0..24 {
-            let dir = (self.rng.dir() + Vec3::Y * 0.7).normalize_or(Vec3::Y);
-            let s = self.rng.range(0.11, 0.22);
-            let size = Vec3::new(
-                s * self.rng.range(0.8, 1.2),
-                s,
-                s * self.rng.range(0.8, 1.2),
-            );
-            let p = Particle {
-                pos: center + self.rng.dir() * self.rng.range(0.0, 0.35),
-                vel: dir * self.rng.range(3.5, 8.0),
-                rot: Quat::from_scaled_axis(self.rng.dir() * 3.0),
-                spin: self.rng.dir() * self.rng.range(4.0, 14.0),
-                gravity: 20.0,
-                drag: 0.2,
-                bounce: Some(0.4),
-                radius: s * 0.5,
-                size,
-                life: self.rng.range(1.0, 1.35),
-                shrink_start: 0.7,
-                ..default()
-            };
-            let mesh = if self.rng.f() < 0.35 {
-                self.assets.wedge.clone()
-            } else {
-                self.assets.chunk.clone()
-            };
-            let k = self.rng.pick(3);
-            let paint = Paint::Solid(self.assets.coral[k].clone());
-            self.chunk(p, mesh, paint);
-        }
-        self.bits(center, Vec3::Y, 16, false, 8.0);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -979,6 +629,8 @@ fn shake_camera(
     }
 }
 
+/// Piece-break debris and the hitstop on eliminations. (Shots, hits and
+/// eliminations look like spells: see [`spells`].)
 fn emit_fx(
     tuning: Res<Tuning>,
     assets: Option<Res<FxAssets>>,
@@ -986,24 +638,16 @@ fn emit_fx(
     mut state: ResMut<FxState>,
     mut removed: ResMut<RemovedPieces>,
     debris: Option<Res<PieceDebris>>,
-    muzzle: Res<MuzzlePoint>,
     mut virtual_time: ResMut<Time<Virtual>>,
-    mut shots: MessageReader<ShotFired>,
-    mut damage: MessageReader<DamageDealt>,
     mut changes: MessageReader<PieceChanged>,
     mut eliminated: MessageReader<Eliminated>,
     player: Option<Single<(Entity, &Transform), With<Player>>>,
-    pieces: Query<(), With<Piece>>,
-    characters: Query<&Transform, With<Character>>,
-    exists: Query<()>,
 ) {
     let (Some(assets), Some(mut pools)) = (assets, pools) else {
         return;
     };
     let feedback = &tuning.feedback;
-    let (me, eye) = player
-        .map(|p| (Some(p.0), p.1.translation + Vec3::Y * 1.6))
-        .unwrap_or((None, Vec3::ZERO));
+    let eye = player.map_or(Vec3::ZERO, |p| p.1.translation + Vec3::Y * 1.6);
     let FxState { hitstop, rng, .. } = &mut *state;
     let mut fx = Emitter {
         pools: &mut pools,
@@ -1013,55 +657,6 @@ fn emit_fx(
         debris_limit: feedback.max_debris as usize,
     };
 
-    for shot in shots.read() {
-        let pump = shot.weapon == WeaponKind::Pump;
-        let first_dir = shot
-            .traces
-            .first()
-            .map(|t| (t.end - shot.origin).normalize_or(Vec3::NEG_Z))
-            .unwrap_or(Vec3::NEG_Z);
-        let start = if Some(shot.shooter) == me {
-            muzzle
-                .0
-                .unwrap_or(shot.origin + first_dir * 0.5 - Vec3::Y * 0.12)
-        } else {
-            shot.origin + first_dir * 0.5
-        };
-        let (width, life) = if pump { (0.018, 0.075) } else { (0.03, 0.085) };
-        for trace in &shot.traces {
-            fx.tracer(start, trace.end, width, life);
-            let Some(hit) = trace.hit else {
-                continue;
-            };
-            if characters.contains(hit) {
-                if pump {
-                    fx.bits(trace.end, trace.normal, 2, false, 4.0);
-                }
-            } else if pieces.contains(hit) || !exists.contains(hit) {
-                fx.chips(trace.end, trace.normal, if pump { 2 } else { 5 });
-            } else {
-                fx.sparks(trace.end, trace.normal, if pump { 3 } else { 8 });
-            }
-        }
-    }
-
-    for hit in damage.read() {
-        if hit.target_kind != DamageTarget::Character {
-            continue;
-        }
-        fx.hit_burst(hit.point, hit.normal, hit.headshot);
-        let center = characters
-            .get(hit.target)
-            .map(|t| t.translation + Vec3::Y * 0.92)
-            .unwrap_or(hit.point);
-        if hit.to_shield > 0.0 {
-            fx.shimmer(hit.target);
-        }
-        if hit.shield_broke {
-            fx.shield_break(hit.point, center, eye);
-        }
-    }
-
     for change in changes.read() {
         if change.change == PieceChange::Destroyed {
             let piece = removed.0.get(&change.entity).map(|(p, _)| *p);
@@ -1069,8 +664,7 @@ fn emit_fx(
         }
     }
 
-    for elimination in eliminated.read() {
-        fx.elimination(elimination.position, eye);
+    for _ in eliminated.read() {
         if feedback.hitstop_on_kill && hitstop.trigger(feedback.hitstop_frames) {
             virtual_time.pause();
         }
@@ -1095,7 +689,6 @@ fn simulate_fx(
         ),
         With<FxEntity>,
     >,
-    characters: Query<&Transform, (With<Character>, Without<FxEntity>)>,
 ) {
     let (Some(assets), Some(mut pools)) = (assets, pools) else {
         return;
@@ -1135,69 +728,6 @@ fn simulate_fx(
             tf.rotation = slot.p.render_rotation();
             tf.scale = slot.p.scale().max(Vec3::splat(1e-4));
         }
-    }
-
-    for i in 0..pools.tracers.len() {
-        let Some(tracer) = pools.tracers[i].as_mut() else {
-            continue;
-        };
-        let Ok((mut tf, mut vis, _, mut material)) = q.get_mut(pools.tracer_entities[i]) else {
-            continue;
-        };
-        if tracer.fresh {
-            tracer.fresh = false;
-        } else {
-            tracer.age += dt;
-        }
-        let Some((tail, head)) = tracer_segment(tracer.age, tracer.life, tracer.length, MAX_STREAK)
-        else {
-            vis.set_if_neq(Visibility::Hidden);
-            pools.tracers[i] = None;
-            pools.tracer_slots.free(i);
-            continue;
-        };
-        let t = tracer.age / tracer.life;
-        let step = fade_step(t, FADE_STEPS);
-        if step != tracer.step {
-            tracer.step = step;
-            material.0 = assets.fade(Family::Tracer, step);
-        }
-        let width = tracer.width * (1.0 - 0.4 * t);
-        tf.translation = tracer.start + tracer.dir * tail;
-        tf.rotation = Quat::from_rotation_arc(Vec3::Z, tracer.dir);
-        tf.scale = Vec3::new(width, width, head - tail);
-        vis.set_if_neq(Visibility::Visible);
-    }
-
-    for i in 0..pools.shimmers.len() {
-        let Some(shimmer) = pools.shimmers[i].as_mut() else {
-            continue;
-        };
-        let Ok((mut tf, mut vis, _, mut material)) = q.get_mut(pools.shimmer_entities[i]) else {
-            continue;
-        };
-        if shimmer.fresh {
-            shimmer.fresh = false;
-        } else {
-            shimmer.age += dt;
-        }
-        let target = characters.get(shimmer.target).ok();
-        let (Some(target), true) = (target, shimmer.age < shimmer.life) else {
-            vis.set_if_neq(Visibility::Hidden);
-            pools.shimmers[i] = None;
-            pools.shimmer_slots.free(i);
-            continue;
-        };
-        let t = shimmer.age / shimmer.life;
-        let step = fade_step(t, FADE_STEPS);
-        if step != shimmer.step {
-            shimmer.step = step;
-            material.0 = assets.fade(Family::ShieldShell, step);
-        }
-        tf.translation = target.translation + Vec3::Y * 0.92;
-        tf.rotation = Quat::IDENTITY;
-        tf.scale = Vec3::new(0.56, 1.0, 0.56) * (1.0 + 0.14 * (1.0 - (1.0 - t) * (1.0 - t)));
-        vis.set_if_neq(Visibility::Visible);
     }
 }
 

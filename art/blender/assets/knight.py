@@ -818,8 +818,18 @@ def check_fit(root):
                          f"{TOLERANCE} m: {bad}")
 
 
+def build_knight_hat(root):
+    """The knight's hat on its own, for the prop that drops off his head when he
+    is eliminated (src/fx/hat.rs, target T08). The same `Hat` geometry as on
+    the knight, with its pivot at the base of the brim (`PivotHat`), so the
+    prop starts exactly where the hat sat."""
+    build_hat().finish("Hat", root, HAT_BASE, HAT_BASE)
+
+
 ASSETS = [
     Asset("knight", "knight", build_knight, "the goofy armoured knight-wizard enemy"),
+    # Budgeted as part of the knight.
+    Asset("knight_hat", "knight", build_knight_hat, "the knight's floppy hat, pivot at its base"),
 ]
 
 
