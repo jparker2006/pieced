@@ -130,3 +130,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - The knight reads **smaller than in the paintings** in T03–T08, because the targets paint him 2–3× closer than the planned distances. Move him closer to match the painted framing.
   - The HUD and spells are still M1 style (their slices are in flight).
   - Offscreen damage numbers render top-left (no window), which is an artifact of the offscreen setup.
+- 2026-09-26: **HUD and menu merged**, with 311 tests passing:
+  - **Font:** Lilita One. Luckiest Guy was removed, so one font ships (S9).
+  - **Art:** hotbar icons and the PIECED logo rasterized deterministically from the real models (`assets/ui`, covered by `build-art --check`).
+  - **HUD:** cartoon frames with crystal and heart icons; the crystal ammo readout pulses with `CrystalGlow`.
+  - **Damage numbers:** white for health, cyan for shield, gold for headshots, with an ink outline and a squash pop. Pooled at 24, they show on the hit frame and run on `FreezableTime`.
+  - **Pause menu:** logo buttons, with the HUD hidden, as in T12.
+  - **Accepted extras:** hotbar slots 66×60 without text labels, and bigger numbers.
