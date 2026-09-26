@@ -205,7 +205,40 @@ def g6(summary):
     return measurement, "TTK 1.0-2.0 s x>=5, pump never kills, wall >= 1.0 s", verdict(ok)
 
 
-GATES = {"perf": ("G2", g2), "latency": ("G3", g3), "ttk": ("G6", g6)}
+def s6(summary):
+    scn = summary.get("scenario") or {}
+    v = scn.get("s6") or {}
+    hits = v.get("hits", 0)
+    same = v.get("hits_with_impact_marker_and_number_on_the_hit_frame", 0)
+    bolts = v.get("bolts", 0)
+    in_time = v.get("bolts_on_their_hit_point_within_2_frames", 0)
+    ok = hits > 0 and same == hits and bolts > 0 and in_time == bolts
+    measurement = (
+        f"{same}/{hits} hits with impact, hitmarker and damage number on the hit frame; "
+        f"{in_time}/{bolts} bolts on their hit point within 2 frames (worst {v.get('worst_bolt_frames', '-')})"
+    )
+    return measurement, "all hits same-frame, all bolts <= 2 frames", verdict(ok)
+
+
+def s4(summary):
+    scn = summary.get("scenario") or {}
+    diffs = scn.get("diffs") or []
+    changed = [d.get("changed_fraction") for d in diffs]
+    ok = bool(scn.get("frames_differ"))
+    shown = ", ".join(num(c * 100 if c is not None else None, 1) + "%" for c in changed) or "-"
+    covered = ((scn.get("run_conditions") or {}).get("window_occluded_ms") or 0) > 0
+    note = " (window covered: frames may be stale)" if covered else ""
+    measurement = f"{scn.get('frames_read', 0)} frames; sky pixels changed between frames: {shown}"
+    return measurement, "every 5 s frame differs from the last", verdict(ok) + note
+
+
+GATES = {
+    "perf": ("G2/S2", g2),
+    "latency": ("G3", g3),
+    "ttk": ("G6", g6),
+    "fx_check": ("S6", s6),
+    "sky_check": ("S4", s4),
+}
 
 
 def main(argv):
