@@ -1,0 +1,60 @@
+{
+  "name": "stump_a",
+  "kind": "stump",
+  "source": "art/blender/assets/props.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 298,
+  "triangle_budget": 300,
+  "bounds": {
+    "min": [
+      -0.6065,
+      0.0,
+      -0.6051
+    ],
+    "max": [
+      0.6354,
+      0.56,
+      0.6087
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "stump_a",
+      "bounds": {
+        "min": [
+          -0.6065,
+          0.0,
+          -0.6051
+        ],
+        "max": [
+          0.6354,
+          0.56,
+          0.6087
+        ]
+      },
+      "triangles": 298,
+      "colors": [
+        "stump_bark",
+        "stump_bark_line",
+        "stump_ring_line",
+        "stump_rings"
+      ]
+    }
+  },
+  "attach": {
+    "Top": {
+      "parent": "stump_a",
+      "position": [
+        0.0,
+        0.56,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

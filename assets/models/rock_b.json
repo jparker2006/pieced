@@ -1,0 +1,57 @@
+{
+  "name": "rock_b",
+  "kind": "rock",
+  "source": "art/blender/assets/props.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 196,
+  "triangle_budget": 300,
+  "bounds": {
+    "min": [
+      -1.07,
+      0.0,
+      -0.73
+    ],
+    "max": [
+      0.725,
+      1.05,
+      0.65
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "rock_b",
+      "bounds": {
+        "min": [
+          -1.07,
+          0.0,
+          -0.73
+        ],
+        "max": [
+          0.725,
+          1.05,
+          0.65
+        ]
+      },
+      "triangles": 196,
+      "colors": [
+        "rock"
+      ]
+    }
+  },
+  "attach": {
+    "Top": {
+      "parent": "rock_b",
+      "position": [
+        0.0,
+        1.05,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

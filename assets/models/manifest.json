@@ -1,0 +1,22 @@
+[
+  {
+    "name": "axis_probe",
+    "file": "axis_probe.glb"
+  },
+  {
+    "name": "rock_a",
+    "file": "rock_a.glb"
+  },
+  {
+    "name": "rock_b",
+    "file": "rock_b.glb"
+  },
+  {
+    "name": "stump_a",
+    "file": "stump_a.glb"
+  },
+  {
+    "name": "tree_a",
+    "file": "tree_a.glb"
+  }
+]
