@@ -16,6 +16,7 @@ pub mod dummy;
 pub mod fx;
 pub mod hud;
 pub mod input;
+pub mod knight;
 pub mod look;
 pub mod menu;
 pub mod models;

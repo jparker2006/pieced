@@ -31,6 +31,7 @@ use pieced::{
     building::{BuildingVisualsPlugin, Piece},
     fx::FxPlugin,
     look::{Halo, LookPlugin, LookSettings, OutlineBackend},
+    models::ModelsPlugin,
     perf_knobs::PerfKnobs,
     render::{RenderSetupPlugin, WorldTarget},
     scenario::gallery::GalleryCamera,
@@ -74,6 +75,8 @@ fn look_app(knobs: Option<&str>, log: bool) -> App {
         .add_plugins((
             RenderSetupPlugin,
             LookPlugin,
+            // The dummy wears the knight model.
+            ModelsPlugin,
             ArenaVisualsPlugin,
             BuildingVisualsPlugin,
             ViewmodelPlugin,

@@ -4,6 +4,10 @@
     "file": "axis_probe.glb"
   },
   {
+    "name": "knight",
+    "file": "knight.glb"
+  },
+  {
     "name": "rock_a",
     "file": "rock_a.glb"
   },

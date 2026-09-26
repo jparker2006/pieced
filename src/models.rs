@@ -66,8 +66,14 @@ macro_rules! embedded_models {
 
 /// Every model in `assets/models/manifest.json`. Add a line here when you add an
 /// asset (the `models` tests fail until this list and the manifest agree).
-pub const EMBEDDED_MODELS: &[EmbeddedModel] =
-    embedded_models!["axis_probe", "rock_a", "rock_b", "stump_a", "tree_a"];
+pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
+    "axis_probe",
+    "knight",
+    "rock_a",
+    "rock_b",
+    "stump_a",
+    "tree_a"
+];
 
 /// `assets/models/manifest.json`, as compiled in.
 pub const MANIFEST_JSON: &str = include_str!("../assets/models/manifest.json");
