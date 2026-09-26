@@ -95,6 +95,24 @@ pub const PUMP_HIP: HipPose = HipPose {
     euler: Vec3::new(0.10, 0.30, -0.10),
 };
 
+/// The rifle's gallery-only "inspect" pose (target T02): about 30° further
+/// turned toward the camera than at the hip, tipped up and brought in, so it
+/// crosses the frame from the bottom-right corner to the muzzle left of centre
+/// and the glass chamber and crystal read big. Only the gallery shows it
+/// (`super::ViewmodelInspect`); play never does.
+pub const RIFLE_INSPECT: HipPose = HipPose {
+    anchor: Vec3::new(0.10, -0.075, -0.52),
+    euler: Vec3::new(0.32, 0.84, -0.06),
+};
+
+impl HipPose {
+    /// The rig translation that puts `spec`'s crystal socket at this pose's
+    /// anchor (as [`GunSpec::hip`] does for the hip pose).
+    pub fn rig_translation(&self, spec: &GunSpec) -> Vec3 {
+        self.anchor - super::anim::euler(self.euler) * spec.socket
+    }
+}
+
 pub static RIFLE: LazyLock<GunSpec> =
     LazyLock::new(|| GunSpec::from_sidecar(&sidecar("rifle"), RIFLE_HIP, 0.30));
 pub static PUMP: LazyLock<GunSpec> =
