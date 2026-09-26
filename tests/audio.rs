@@ -11,7 +11,7 @@ use pieced::{
         Sfx, SfxCategory, bank,
         bank::LOUDNESS_BAND,
         duck_gain, render_bank,
-        synth::{PEAK_CEILING, SAMPLE_RATE, Svf, WavInfo, gain_to_db, peak, short_term_rms_db},
+        synth::{PEAK_CEILING, SAMPLE_RATE, Svf, WavInfo, ad, gain_to_db, peak, short_term_rms_db},
     },
     shared::{PieceChange, PieceKind},
 };
@@ -215,6 +215,33 @@ fn the_rifle_zap_sweeps_down_fast() {
             "take {take} falls over an octave in 50 ms: {pitch:?}"
         );
     }
+}
+
+#[test]
+fn the_rifle_zap_is_gone_before_the_next_shot() {
+    // Six casts a second must not smear: each take has fallen at least 25 dB
+    // below its own loudness in the 15 ms before the next cast starts.
+    let interval = pieced::combat::GunTuning::rifle().fire_interval;
+    for take in 0..Sfx::RifleShot.takes() {
+        let zap = Sfx::RifleShot.synthesize_take(take);
+        let tail = short_term_rms_db(slice(&zap, interval - 0.015, interval));
+        let drop = short_term_rms_db(&zap) - tail;
+        assert!(
+            drop >= 25.0,
+            "take {take} only {drop:.1} dB down at the next cast"
+        );
+    }
+}
+
+#[test]
+fn attacks_ramp_up_instead_of_jumping() {
+    // M1's envelope was silent for the whole attack and then jumped to full
+    // level; attacks now ramp linearly into the decay.
+    let (a, tau) = (0.02, 0.1);
+    assert!((ad(0.5 * a, a, tau) - 0.5).abs() < 1e-4);
+    assert!((ad(a, a, tau) - 1.0).abs() < 1e-4);
+    assert!((ad(a + tau, a, tau) - (-1.0f32).exp()).abs() < 1e-4);
+    assert_eq!(ad(-0.01, a, tau), 0.0);
 }
 
 #[test]

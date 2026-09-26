@@ -689,16 +689,17 @@ pub fn brick_crack() -> Vec<f32> {
 /// Planks crack: a woody snap and a short creak.
 pub fn plank_crack() -> Vec<f32> {
     let mut b = Buffer::new(0.38);
-    click(&mut b, 0.0, 2200.0, 1.2, 0.002, 1.0, 161);
+    snap(&mut b, 0.0, 1500.0, 0.002, 0.4, 160);
+    click(&mut b, 0.0, 2200.0, 1.2, 0.002, 0.9, 161);
     partials(
         &mut b,
         0.0,
         &[(410.0, 0.5, 0.02), (980.0, 0.35, 0.012)],
-        0.6,
+        0.9,
     );
     let mut o = Osc::default();
     let mut f = Svf::default();
-    b.add(0.015, 0.36, 0.7, |t| {
+    b.add(0.015, 0.36, 0.5, |t| {
         let pitch = 160.0 + 40.0 * (t * 9.0 * TAU).sin() + 90.0 * t;
         f.band(o.saw(pitch, 12), 900.0, 4.0) * ad(t, 0.02, 0.08) * release(t, 0.36, 0.05)
     });
@@ -891,7 +892,7 @@ pub fn slide() -> Vec<f32> {
         0.55,
         0.9,
         221,
-        0.9,
+        1.5,
         |t| 2600.0 * 2f32.powf(-1.5 * (t / 0.45).min(1.0)),
         |t| ad(t, 0.035, 0.16) * release(t, 0.55, 0.08),
     );

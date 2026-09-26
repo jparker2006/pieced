@@ -228,10 +228,12 @@ pub fn attack(t: f32, a: f32) -> f32 {
     }
 }
 
-/// Attack then exponential decay.
+/// A linear attack over `a` seconds, then exponential decay with time constant
+/// `tau`. (The decay holds at 1 during the attack: `decay` is 0 before time 0, so
+/// the attack would otherwise be silent and then jump to full level.)
 #[inline]
 pub fn ad(t: f32, a: f32, tau: f32) -> f32 {
-    attack(t, a) * decay(t - a, tau).min(1.0)
+    attack(t, a) * decay((t - a).max(0.0), tau)
 }
 
 /// 1 until `end - release`, then a linear fade to 0 at `end`.

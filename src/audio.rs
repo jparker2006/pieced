@@ -283,9 +283,10 @@ impl Sfx {
     }
 
     /// The mix: how loud the cue plays in game (short-term RMS, dBFS) before master
-    /// volume, category volume and distance. Hit confirmation sits 4 dB above the
-    /// rifle (which fires six times a second) and level with the pump; building
-    /// sits with the rifle; handling sounds and movement sit well under.
+    /// volume, category volume and distance. Hit confirmation sits 4–5 dB above
+    /// the rifle (which fires six times a second) and 1–2 dB above the pump, and
+    /// the player's own casts also dip by `hit_duck` on the frame a hit lands;
+    /// building sits with the rifle; handling sounds and movement sit well under.
     ///
     /// | Cues | Mix (dBFS) |
     /// |---|---|
