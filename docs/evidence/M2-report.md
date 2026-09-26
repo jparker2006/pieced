@@ -156,3 +156,12 @@ Every number here names its run folder, the commit, and the power and Low Power 
     - the T08 hat is small.
 
   Polish round 1 was dispatched.
+- 2026-09-26: **polish round 1 merged**, with 331 tests passing:
+  - **Knight framing:** gallery framing re-matched to the paintings (T03 8 m, T04 4 m, T05 5 m, T06 6 m, T07 4.5 m, T08 closer, with a crouched 1.05 m eye).
+  - **T02:** a gallery-only viewmodel inspect pose.
+  - **Bolt:** twice the size, with more sparkles.
+  - **Knight model:** chunkier arms and fists, and a rounder helmet (worst overshoot +4.6 cm, under the 5 cm limit).
+  - **Hat prop:** 2.1× the size.
+  - **Pause:** the gun hides while paused.
+
+  Jake was shown the full offscreen board (target next to game for all 12). Open: the planet sits left of the station, where the targets paint it to the right.
