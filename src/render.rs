@@ -24,7 +24,8 @@ pub enum QualityPreset {
     /// Default: tuned to hold 60 fps on battery with Low Power Mode on.
     #[default]
     Battery,
-    /// Extra shadow resolution and effects when plugged in.
+    /// A bigger pixel budget and denser grass when plugged in (see
+    /// [`crate::look::preset_look`]).
     PluggedIn,
 }
 
@@ -36,6 +37,7 @@ pub struct GraphicsTuning {
     pub render_scale: f32,
     /// Upper bound on 3D render pixels, in megapixels (0 = no cap). Keeps "More
     /// Space" display scaling (1710×1073 logical) from costing extra GPU time.
+    /// The quality preset's pixel budget multiplies it.
     pub max_megapixels: f32,
     pub fullscreen: bool,
     /// true = vsync (Fifo); false = no vsync with `frame_cap`.
@@ -251,6 +253,11 @@ pub fn target_size(window: &Window, scale: f32, max_megapixels: f32) -> UVec2 {
     )
 }
 
+/// The megapixel cap after the quality preset's pixel budget.
+pub fn pixel_cap(graphics: &GraphicsTuning) -> f32 {
+    graphics.max_megapixels * crate::look::preset_look(graphics.preset).pixel_budget
+}
+
 pub fn render_size(logical: Vec2, scale: f32, max_megapixels: f32) -> UVec2 {
     let mut size = logical * scale.clamp(0.25, 2.0);
     let pixels = size.x * size.y;
@@ -275,7 +282,7 @@ fn setup_render_target(
             target_size(
                 &w,
                 tuning.graphics.render_scale,
-                tuning.graphics.max_megapixels,
+                pixel_cap(&tuning.graphics),
             )
         })
         .unwrap_or(UVec2::new(1470, 956));
@@ -305,7 +312,9 @@ fn setup_render_target(
             far: FAR_PLANE,
             ..default()
         }),
-        Msaa::Sample4,
+        // Both 3D cameras share one MSAA setting from the quality preset;
+        // `look` also sets `Tonemapping::None` on them (palette colors as authored).
+        crate::look::msaa_for(crate::look::preset_look(tuning.graphics.preset).msaa_samples),
         Transform::from_xyz(0.0, 1.6, 0.0),
     ));
     commands.spawn((
@@ -347,7 +356,7 @@ fn resize_world_target(
     let size = target_size(
         &window,
         tuning.graphics.render_scale,
-        tuning.graphics.max_megapixels,
+        pixel_cap(&tuning.graphics),
     );
     if size == target.size {
         return;
@@ -450,5 +459,17 @@ mod tests {
             render_size(Vec2::new(1280.0, 800.0), 0.5, 1.4),
             UVec2::new(640, 400)
         );
+    }
+
+    #[test]
+    fn plugged_in_preset_raises_the_pixel_budget() {
+        let mut graphics = GraphicsTuning::default();
+        assert_eq!(pixel_cap(&graphics), graphics.max_megapixels);
+        graphics.preset = QualityPreset::PluggedIn;
+        assert!(pixel_cap(&graphics) > graphics.max_megapixels);
+        // The default window on the 15" Air renders at the reference height the
+        // outline width is tuned for.
+        let battery = render_size(Vec2::new(1710.0, 1107.0), 1.0, 1.4);
+        assert!((battery.y as f32 - crate::look::REFERENCE_HEIGHT_PX).abs() < 8.0);
     }
 }
