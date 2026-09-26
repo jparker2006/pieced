@@ -109,3 +109,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
 
   **S4 evidence:** `tests/far.rs`.
 - 2026-09-26: the disk was pruned again (`scripts/prune-target.sh`), leaving 23 GB free. The **spells** builder was dispatched. The island is re-merging `main`, and the gallery is in progress.
+- 2026-09-26: **island merged** (`f6d5527`), with 292 tests passing:
+  - brick wall and plank floor and ramp, with 66% and 33% crack stages, debris and a dust poof;
+  - pieces share one mesh per kind and stage and one toon material. **Placing, cracking and breaking 50 pieces leaves the mesh, material and image asset counts unchanged** (`tests/pieces.rs`);
+  - the D29 props: 8 rocks and stumps with collision (`tests/props.rs`, 8 tests, including a 5-minute no-stall run and a rock blocking a shot);
+  - the grass top with a faint world-space build grid (fading between 12 and 40 m), a margin of 46 trees, cliffs, and the rune barrier.
+
+  This is the first time the whole look is together offscreen (spawn view against T01). The **HUD and menu** builder was dispatched.
