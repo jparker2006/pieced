@@ -34,7 +34,6 @@
       },
       "triangles": 840,
       "colors": [
-        "galaxy_deep",
         "galaxy_purple",
         "glass_pink",
         "glass_violet",
@@ -58,7 +57,6 @@
       "triangles": 672,
       "colors": [
         "cloud",
-        "galaxy_deep",
         "galaxy_purple",
         "glass_violet"
       ]

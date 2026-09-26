@@ -200,6 +200,7 @@ fn ships_cross_the_view_in_ten_to_twenty_seconds() {
         }
     });
     let mut level_seen = 0;
+    let mut slow_or_fast = Vec::new();
     for i in 0..entities.len() {
         let (v, &(deg, secs)) = swept
             .iter()
@@ -214,11 +215,11 @@ fn ships_cross_the_view_in_ten_to_twenty_seconds() {
             views[v].0,
             deg / secs
         );
-        assert!(
-            (10.0..=20.0).contains(&crossing),
-            "ship {i} would cross the view in {crossing:.1} s"
-        );
+        if !(10.0..=20.0).contains(&crossing) {
+            slow_or_fast.push(format!("ship {i}: {crossing:.1} s"));
+        }
     }
+    assert!(slow_or_fast.is_empty(), "outside 10-20 s: {slow_or_fast:?}");
     assert!(
         level_seen >= 3,
         "at least three ships show from spawn ({level_seen})"

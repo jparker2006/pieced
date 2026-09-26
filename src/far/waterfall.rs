@@ -1,11 +1,12 @@
-//! Waterfalls: an additive, scrolling streak material for the `Waterfall*`
-//! strips of the far models (`assets/shaders/waterfall.wgsl`).
+//! Waterfalls: a solid, bright water body with scrolling highlights for the
+//! `Waterfall*` strips of the far models (`assets/shaders/waterfall.wgsl`).
 //!
 //! Each strip is a unit mesh (x -0.5..0.5 across, y from 0 at the lip down to
 //! -1) scaled to size by its glTF node, so the shader reads strip coordinates
 //! from the vertex position and the strip's width and length from the model
-//! matrix. The streaks scroll with the shader's global time: no per-frame
-//! uploads. Distance fades them like the far layer's haze.
+//! matrix. The highlights scroll with the shader's global time: no per-frame
+//! uploads. The water is nearly opaque, feathers at its edges, dissolves toward
+//! the bottom (into the mist halo) and hazes like the far layer.
 
 use crate::look::FarHaze;
 use bevy::{
@@ -20,32 +21,39 @@ use bevy::{
 
 pub const WATERFALL_SHADER_PATH: &str = "embedded://pieced/shaders/waterfall.wgsl";
 
-/// Additive waterfall streaks.
+/// Scrolling waterfall water (premultiplied alpha).
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone, PartialEq)]
 pub struct WaterfallMaterial {
-    /// Linear rgb of the water body (added to what's behind).
+    /// Linear rgb of the water body; alpha is its opacity.
     #[uniform(0)]
     pub body: LinearRgba,
-    /// Linear rgb of the bright streaks.
+    /// Linear rgb of the scrolling highlights.
     #[uniform(0)]
-    pub streak: LinearRgba,
-    /// x: fall speed (m/s), y: streak column width (m), z: streak dash length
-    /// (m), w: pattern seed.
+    pub highlight: LinearRgba,
+    /// x: fall speed (m/s), y: highlight band length (m), z: stripe width
+    /// across the fall (m), w: pattern seed.
     #[uniform(0)]
     pub flow: Vec4,
-    /// x: haze start (m), y: haze density (per m), z: how much haze fades this
-    /// material (0..1). Kept in step with [`FarHaze`] by [`sync_waterfall_haze`].
+    /// x: haze start (m), y: haze density (per m), z: how much haze this
+    /// material takes (0..1). Kept in step with [`FarHaze`] by
+    /// [`sync_waterfall_haze`].
     #[uniform(0)]
     pub haze: Vec4,
+    /// Linear rgb of the far haze (synced like `haze`).
+    #[uniform(0)]
+    pub haze_color: LinearRgba,
 }
 
 impl WaterfallMaterial {
-    pub fn new(body: Color, streak: Color, haze: &FarHaze, haze_amount: f32) -> Self {
+    pub fn new(body: Color, highlight: Color, haze: &FarHaze, haze_amount: f32) -> Self {
+        let mut body = body.to_linear();
+        body.alpha = 0.94;
         Self {
-            body: body.to_linear(),
-            streak: streak.to_linear(),
-            flow: Vec4::new(22.0, 2.6, 9.0, 0.0),
+            body,
+            highlight: highlight.to_linear(),
+            flow: Vec4::new(20.0, 16.0, 3.0, 0.0),
             haze: Vec4::new(haze.start, haze.density, haze_amount, 0.0),
+            haze_color: haze.color.to_linear(),
         }
     }
 }
@@ -60,7 +68,7 @@ impl Material for WaterfallMaterial {
     }
 
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Add
+        AlphaMode::Premultiplied
     }
 
     fn enable_prepass() -> bool {
@@ -93,13 +101,15 @@ pub fn sync_waterfall_haze(haze: Res<FarHaze>, mut materials: ResMut<Assets<Wate
     if !haze.is_changed() {
         return;
     }
+    let color = haze.color.to_linear();
     let ids: Vec<_> = materials.ids().collect();
     for id in ids {
         if let Some(mut m) = materials.get_mut(id)
-            && (m.haze.x != haze.start || m.haze.y != haze.density)
+            && (m.haze.x != haze.start || m.haze.y != haze.density || m.haze_color != color)
         {
             m.haze.x = haze.start;
             m.haze.y = haze.density;
+            m.haze_color = color;
         }
     }
 }

@@ -504,7 +504,7 @@ pub fn glass_panes(far: &mut Assets<FarMaterial>) -> Vec<GlassPane> {
         .map(|(i, &phase)| {
             let windows = i == 3;
             GlassPane {
-                material: far.add(FarMaterial::default().with_haze(0.3)),
+                material: far.add(FarMaterial::default().with_haze(0.18)),
                 phase,
                 brightness: if windows { (1.0, 1.25) } else { (1.0, 1.45) },
                 emissive: cartoon::GLASS_VIOLET,
@@ -537,18 +537,18 @@ fn create_far_assets(
     pulse.panes = glass_panes(&mut far);
     let glass = pulse.panes.iter().map(|p| p.material.clone()).collect();
     let assets = FarAssets {
-        station: far.add(FarMaterial::default().with_haze(0.85)),
+        station: far.add(FarMaterial::default().with_haze(0.5)),
         island: far.add(FarMaterial::default()),
-        planet: far.add(FarMaterial::default().with_haze(0.55)),
-        ship: far.add(FarMaterial::default().with_haze(0.6)),
+        planet: far.add(FarMaterial::default().with_haze(0.3)),
+        ship: far.add(FarMaterial::default().with_haze(0.45)),
         glass,
         trail: far.add(additive(Color::linear_rgb(1.1, 1.1, 1.2))),
         horizon: far.add(additive(Color::WHITE)),
         waterfall: falls.add(WaterfallMaterial::new(
-            cartoon::WATERFALL_BLUE.mix(&Color::BLACK, 0.35),
-            Color::srgb(0.85, 0.95, 1.0),
+            cartoon::WATERFALL_BLUE,
+            Color::srgb(0.9, 0.97, 1.0),
             &haze,
-            0.9,
+            0.8,
         )),
         horizon_mesh: meshes.add(horizon_mesh(layout.horizon_radius)),
     };
@@ -761,6 +761,10 @@ fn attach_halo(model: &FarModel, point: &str) -> Option<(Halo, Option<GlassGlow>
     }
     if point == "Engine" {
         return Some((Halo::new(cartoon::CRYSTAL_BLUE, 9.0, 2.2), None));
+    }
+    if point == "Center" && model.kind == FarKind::Planet {
+        // A thin atmosphere so the planet stands off the sky.
+        return Some((Halo::new(cartoon::GLASS_VIOLET, 250.0, 0.3), None));
     }
     None
 }

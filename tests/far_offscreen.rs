@@ -176,6 +176,26 @@ fn out_dir() -> PathBuf {
         .unwrap_or_else(|_| std::env::temp_dir().join("pieced-look"))
 }
 
+/// Hides the Milestone 1 backdrop (far terrain, mesas, clouds, boundary cliffs,
+/// near trees), which the island slice replaces with cliffs dropping into
+/// space, so the far view can be judged as it will be seen.
+fn hide_m1_backdrop(app: &mut App) {
+    const BACKDROP: [&str; 5] = [
+        "Far terrain",
+        "Backdrop",
+        "Clouds",
+        "Boundary cliffs",
+        "Near trees",
+    ];
+    let world = app.world_mut();
+    let mut q = world.query::<(&Name, &mut Visibility)>();
+    for (name, mut v) in q.iter_mut(world) {
+        if BACKDROP.contains(&name.as_str()) {
+            *v = Visibility::Hidden;
+        }
+    }
+}
+
 fn eye_looking(eye: Vec3, azimuth_deg: f32, pitch_deg: f32) -> Transform {
     let (az, el) = (azimuth_deg.to_radians(), pitch_deg.to_radians());
     let dir = Vec3::new(az.sin() * el.cos(), el.sin(), -az.cos() * el.cos());
@@ -229,34 +249,61 @@ fn render_the_far_view_offscreen() {
         "core {core} vs corner {edge}"
     );
 
-    // T01: the spawn vista (first person, level, facing -Z).
+    // T01: the spawn vista (first person, level, facing -Z), first with the
+    // Milestone 1 backdrop, then (like everything after) without it.
+    view(&mut app, 0.0, eye_looking(SPAWN_EYE, 0.0, 0.0));
+    capture(
+        &mut app,
+        Some(out.join("far-00-spawn-with-m1-backdrop.png")),
+    );
+    hide_m1_backdrop(&mut app);
     view(&mut app, 0.0, eye_looking(SPAWN_EYE, 0.0, 0.0));
     capture(&mut app, Some(out.join("far-01-spawn-T01.png")));
     // sky_check: the same view five seconds later.
     view(&mut app, 5.0, eye_looking(SPAWN_EYE, 0.0, 0.0));
     capture(&mut app, Some(out.join("far-01b-spawn-5s-later.png")));
 
-    // T10: looking up at the station from the arena's north-east.
-    let eye = Vec3::new(16.0, 1.6, -16.0);
-    let station_top = layout.station.position + Vec3::Y * 90.0;
+    // T10: looking up at the station from the arena's north-east corner, and
+    // from a scenario camera 250 m out toward it (where the station fills the
+    // frame).
+    let station_mid = layout.station.position + Vec3::Y * 70.0;
+    let eye = Vec3::new(20.0, 1.6, -20.0);
     view(
         &mut app,
         3.0,
-        Transform::from_translation(eye).looking_at(station_top, Vec3::Y),
+        Transform::from_translation(eye).looking_at(station_mid, Vec3::Y),
     );
     capture(&mut app, Some(out.join("far-02-station-up-T10.png")));
+    let toward = (layout.station.position - eye) * Vec3::new(1.0, 0.0, 1.0);
+    let out_eye = eye + toward.normalize() * 250.0 + Vec3::Y * 20.0;
+    view(
+        &mut app,
+        3.0,
+        Transform::from_translation(out_eye).looking_at(station_mid, Vec3::Y),
+    );
+    capture(&mut app, Some(out.join("far-02b-station-up-close-T10.png")));
+    // A worm's-eye scenario camera well out toward it, below its rock.
+    let below_eye = eye + toward.normalize() * 400.0 + Vec3::Y * 40.0;
+    view(
+        &mut app,
+        3.0,
+        Transform::from_translation(below_eye).looking_at(station_mid + Vec3::Y * 30.0, Vec3::Y),
+    );
+    capture(&mut app, Some(out.join("far-02c-station-up-below-T10.png")));
 
     // T11: at the island's east edge, looking out over the void.
     view(
         &mut app,
         7.0,
-        eye_looking(Vec3::new(23.0, 1.6, 4.0), 22.0, 6.0),
+        eye_looking(Vec3::new(23.0, 1.6, 4.0), 25.0, 5.0),
     );
     capture(&mut app, Some(out.join("far-03-island-edge-T11.png")));
 
-    // Behind the spawn, and a high overview of the whole far layout.
-    view(&mut app, 9.0, eye_looking(SPAWN_EYE, 180.0, 4.0));
-    capture(&mut app, Some(out.join("far-05-behind.png")));
+    // The other directions from spawn, and a high overview.
+    for (az, name) in [(90.0, "east"), (180.0, "south"), (270.0, "west")] {
+        view(&mut app, 9.0, eye_looking(SPAWN_EYE, az, 3.0));
+        capture(&mut app, Some(out.join(format!("far-05-{name}.png"))));
+    }
     view(
         &mut app,
         11.0,

@@ -851,7 +851,7 @@ def build_planet(root):
     for f in faces:
         lat = (inv @ f.calc_center_median()).z / PLANET_R
         name = [n for lo, n in BANDS if lat >= lo][-1]
-        shade(bm, [f], name, shadow="galaxy_deep", threshold=-0.3)
+        shade(bm, [f], name, shadow="galaxy_purple", threshold=-0.45)
     made_part("Body", bm, root)
 
     bm = palette.new_bmesh()
@@ -873,7 +873,7 @@ def build_planet(root):
     # The tilted ring dips below the sphere; put the lowest point on the ground.
     lowest = max(PLANET_R, max(-v.co.z for v in all_verts))
     for fs, name, up in ring_faces:
-        palette.tag(bm, fs, name if up else "galaxy_deep")
+        palette.tag(bm, fs, name if up else "galaxy_purple")
     made_part("Rings", bm, root)
     scene.make_attach("Center", root, (0.0, 0.0, 0.0))
     lift_children(root, lowest)

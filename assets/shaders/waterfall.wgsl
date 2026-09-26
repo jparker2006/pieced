@@ -1,9 +1,9 @@
-// Pieced waterfalls (src/far/waterfall.rs): additive streaks scrolling down a
-// unit strip (x -0.5..0.5 across, y 0 at the lip to -1 at the bottom) that the
-// model's node scales to its real width and length. The streaks move with the
-// global time, fade in at the lip, out toward the bottom and at the edges, and
-// fade with distance like the far layer's haze. Output is premultiplied with
-// alpha 0, so it adds to whatever is behind it.
+// Pieced waterfalls (src/far/waterfall.rs): a solid, bright water body with
+// soft highlights scrolling down it, on a unit strip (x -0.5..0.5 across,
+// y 0 at the lip to -1 at the bottom) that the model's node scales to its real
+// width and length. The water is nearly opaque, feathers at its edges, foams at
+// the lip, dissolves over its lower half (into the mist halo) and hazes toward
+// the far layer's haze color with distance. Output is premultiplied alpha.
 
 #import bevy_pbr::{
     mesh_functions::{get_world_from_local, mesh_position_local_to_world},
@@ -16,12 +16,14 @@
 #endif
 
 struct Waterfall {
+    // rgb: water, a: opacity.
     body: vec4<f32>,
-    streak: vec4<f32>,
-    // x: fall speed m/s, y: column width m, z: dash length m, w: seed.
+    highlight: vec4<f32>,
+    // x: fall speed m/s, y: highlight band length m, z: stripe width m, w: seed.
     flow: vec4<f32>,
     // x: haze start m, y: haze density per m, z: haze amount.
     haze: vec4<f32>,
+    haze_color: vec4<f32>,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> fall: Waterfall;
@@ -52,9 +54,7 @@ fn vertex(v: Vertex) -> VertexOutput {
     return out;
 }
 
-fn hash11(x: f32) -> f32 {
-    return fract(sin(x * 127.1 + 311.7) * 43758.5453);
-}
+const TAU: f32 = 6.2831853;
 
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -62,36 +62,32 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let down = clamp(in.strip.y, 0.0, 1.0);
     let width = max(in.size.x, 0.1);
     let len = max(in.size.y, 0.1);
-
-    // Streak columns, each with its own speed and phase.
-    let columns = max(round(width / fall.flow.y), 3.0);
-    let col = floor(across * columns);
-    let r = hash11(col + fall.flow.w);
-    let r2 = hash11(col * 1.37 + 5.0 + fall.flow.w);
+    let xm = across * width;
     let metres = down * len;
-    let speed = fall.flow.x * (0.8 + 0.45 * r);
-    let p = (metres - globals.time * speed) / (fall.flow.z * (0.7 + 0.6 * r2)) + r * 13.0;
-    let dash = fract(p);
-    let streak = smoothstep(0.0, 0.18, dash) * (1.0 - smoothstep(0.35, 0.75, dash));
-    // Thin columns: bright in the middle of each.
-    let in_col = fract(across * columns);
-    let column = 1.0 - abs(in_col - 0.5) * 1.6;
 
-    let edges = smoothstep(0.0, 0.16, across) * smoothstep(0.0, 0.16, 1.0 - across);
-    let lip = 0.55 + 0.45 * smoothstep(0.0, 0.05, down);
-    let tail = 1.0 - smoothstep(0.5, 1.0, down);
-    let foam = 1.0 - smoothstep(0.0, 0.08, down);
+    // Soft vertical stripes of lighter and deeper water.
+    let wave = sin(xm / fall.flow.z * 1.7 + fall.flow.w) + 0.6 * sin(xm / fall.flow.z * 0.63 + 1.3);
+    let stripe = 0.5 + 0.25 * wave;
+    // Long highlights scrolling down, their phase drifting across the width so
+    // they ripple rather than march in rows.
+    let phase = 0.14 * sin(xm * 0.41 + fall.flow.w) + 0.06 * sin(xm * 1.13);
+    let t = (metres - globals.time * fall.flow.x) / fall.flow.y + phase;
+    let band = 0.5 + 0.5 * sin(t * TAU);
+    let highlight = band * band * band * (0.45 + 0.55 * stripe);
 
-    var rgb = fall.body.rgb * (0.75 + 0.25 * column)
-        + fall.streak.rgb * streak * column * 0.9
-        + fall.streak.rgb * foam * 0.5;
-    rgb = rgb * edges * lip * tail;
+    let foam = 1.0 - smoothstep(0.0, 0.07, down);
+    var rgb = fall.body.rgb * (0.82 + 0.3 * stripe)
+        + fall.highlight.rgb * (highlight * 0.55 + foam * 0.6);
+
+    let edges = smoothstep(0.0, 0.12, across) * smoothstep(0.0, 0.12, 1.0 - across);
+    let tail = 1.0 - smoothstep(0.45, 1.0, down);
+    let alpha = fall.body.a * edges * tail;
 
     let d = max(distance(in.world, view.world_position) - fall.haze.x, 0.0) * fall.haze.y;
     let h = (1.0 - exp(-d * d)) * fall.haze.z;
-    rgb = rgb * (1.0 - h);
+    rgb = mix(rgb, fall.haze_color.rgb, h);
 
-    var out = vec4<f32>(rgb, 0.0);
+    var out = vec4<f32>(rgb * alpha, alpha);
 #ifdef TONEMAP_IN_SHADER
     out = tone_mapping(out, view.color_grading);
 #endif
