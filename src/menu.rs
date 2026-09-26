@@ -1,5 +1,8 @@
 //! Slice F — pause menu, settings, the dev tuning panel and settings persistence.
 //!
+//! Milestone 2: the pause menu wears the PIECED logo and cartoon buttons
+//! (`pause.rs`, target T12).
+//!
 //! - The pause menu ([`AppState::Paused`], cursor free) offers Resume, Settings and
 //!   Quit. Settings edit the live [`Tuning`]; every change applies immediately
 //!   (window mode and vsync included).
@@ -431,6 +434,8 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
+        // The font, the logo and the crystal (shared with the HUD).
+        crate::hud::art::install(app);
         app.init_resource::<MenuState>()
             .add_systems(Startup, init_autosave)
             .add_systems(OnEnter(AppState::Paused), open_menu)

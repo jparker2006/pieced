@@ -1,9 +1,17 @@
 //! The pause menu and its Settings page, in native Bevy UI (trackpad clicks and
 //! drags work because the cursor is free while paused).
+//!
+//! Milestone 2 look (target T12): the world dimmed behind a dark translucent
+//! veil, the PIECED logo (`art/blender/assets/logo.py`) over Resume, Settings
+//! and Quit as rounded cartoon buttons (gold frame, rivets, a crystal, ink
+//! outline), and a Settings card in the same style.
 
 use super::{MenuPage, MenuState, Setting, SettingKind};
 use crate::{
-    hud::style::{ACCENT, INK, TEXT, caps, dim, text},
+    hud::{
+        UiArt,
+        style::{ACCENT, INK, PANEL, RIM, SHIELD_FILL, TEXT, TROUGH, caps, dim, ink, text},
+    },
     shared::AppState,
     tuning::Tuning,
 };
@@ -70,11 +78,22 @@ const FEEDBACK: &[Setting] = &[Setting::Bloom, Setting::DamageNumbers, Setting::
 const AUDIO: &[Setting] = &[Setting::Volume, Setting::Mute];
 const DISPLAY: &[Setting] = &[Setting::Quality, Setting::WindowMode];
 
-const CARD_BG: Color = Color::srgba(0.07, 0.075, 0.1, 0.98);
-const BUTTON_BG: Color = Color::srgba(1.0, 1.0, 1.0, 0.055);
-const BUTTON_HOVER: Color = Color::srgba(1.0, 1.0, 1.0, 0.11);
-const BUTTON_BORDER: Color = Color::srgba(1.0, 1.0, 1.0, 0.08);
-const TRACK_BG: Color = Color::srgba(1.0, 1.0, 1.0, 0.13);
+/// The veil over the paused world: dark and a little violet, like T12's
+/// softened background.
+const BACKDROP: Color = Color::srgba(0.035, 0.03, 0.09, 0.58);
+/// Button fills: the primary (Resume) in crystal blue, the rest in slate.
+const BLUE: Color = Color::srgb(0.17, 0.43, 0.77);
+const BLUE_HOVER: Color = Color::srgb(0.23, 0.53, 0.88);
+const SLATE: Color = Color::srgb(0.16, 0.21, 0.28);
+const SLATE_HOVER: Color = Color::srgb(0.22, 0.29, 0.38);
+/// The brass frame round buttons and the Settings card.
+const GOLD_FRAME: Color = Color::srgb(0.9, 0.66, 0.22);
+const GOLD_HOVER: Color = Color::srgb(1.0, 0.83, 0.36);
+const RIVET: Color = Color::srgb(0.62, 0.65, 0.74);
+
+/// Menu buttons are this wide; the logo above them is a little wider.
+const BUTTON_WIDTH: f32 = 380.0;
+const LOGO_WIDTH: f32 = 600.0;
 
 fn card(width: f32) -> impl Bundle {
     (
@@ -83,12 +102,13 @@ fn card(width: f32) -> impl Bundle {
             flex_direction: FlexDirection::Column,
             padding: UiRect::all(px(28)),
             row_gap: px(10),
-            border: UiRect::all(px(1)),
-            border_radius: BorderRadius::all(px(16)),
+            border: UiRect::all(px(4)),
+            border_radius: BorderRadius::all(px(22)),
             ..default()
         },
-        BackgroundColor(CARD_BG),
-        BorderColor::all(Color::srgba(1.0, 1.0, 1.0, 0.07)),
+        BackgroundColor(PANEL.with_alpha(0.97)),
+        BorderColor::all(GOLD_FRAME),
+        ink(3.0),
         BoxShadow::new(
             Color::srgba(0.0, 0.0, 0.0, 0.45),
             px(0),
@@ -99,31 +119,99 @@ fn card(width: f32) -> impl Bundle {
     )
 }
 
-fn menu_button(label: &str, action: MenuAction, primary: bool) -> impl Bundle {
+/// A small riveted brass dot for a button corner.
+fn rivet(left: bool, top: bool) -> impl Bundle {
+    let at = px(6);
+    (
+        Node {
+            position_type: PositionType::Absolute,
+            left: if left { at } else { Val::Auto },
+            right: if left { Val::Auto } else { at },
+            top: if top { at } else { Val::Auto },
+            bottom: if top { Val::Auto } else { at },
+            width: px(8),
+            height: px(8),
+            border: UiRect::all(px(1.5)),
+            border_radius: BorderRadius::MAX,
+            ..default()
+        },
+        BackgroundColor(RIVET),
+        BorderColor::all(INK),
+    )
+}
+
+/// A rounded cartoon button: a brass frame with rivets, a shine along the top,
+/// an ink outline, a crystal on the left (when given) and the label.
+fn menu_button(
+    label: &str,
+    action: MenuAction,
+    height: f32,
+    size: f32,
+    crystal: Option<Handle<Image>>,
+) -> impl Bundle {
+    let primary = action == MenuAction::Resume;
+    let icon = crystal.map(|image| {
+        (
+            ImageNode::new(image),
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(18),
+                width: px(height * 0.58),
+                height: px(height * 0.58),
+                ..default()
+            },
+        )
+    });
     (
         action,
         Button,
         Node {
-            height: px(48),
+            height: px(height),
             width: percent(100),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
-            border: UiRect::all(px(1)),
-            border_radius: BorderRadius::all(px(10)),
+            border: UiRect::all(px(4)),
+            border_radius: BorderRadius::all(px(height * 0.27)),
             ..default()
         },
-        BackgroundColor(if primary { ACCENT } else { BUTTON_BG }),
-        BorderColor::all(if primary { ACCENT } else { BUTTON_BORDER }),
-        children![(
-            Text::new(label),
-            TextFont::from_font_size(18.0),
-            TextColor(if primary { INK } else { TEXT }),
-            LetterSpacing::Px(1.5),
-        )],
+        BackgroundColor(if primary { BLUE } else { SLATE }),
+        BorderColor::all(GOLD_FRAME),
+        ink(3.0),
+        Children::spawn((
+            Spawn((
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(12),
+                    right: px(12),
+                    top: px(3),
+                    height: percent(32),
+                    border_radius: BorderRadius::MAX,
+                    ..default()
+                },
+                BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.13)),
+            )),
+            Spawn(rivet(true, true)),
+            Spawn(rivet(false, true)),
+            Spawn(rivet(true, false)),
+            Spawn(rivet(false, false)),
+            SpawnIter(icon.into_iter()),
+            Spawn((
+                Text::new(label),
+                TextFont::from_font_size(size),
+                TextColor(TEXT),
+                TextShadow {
+                    offset: Vec2::new(0.0, 2.5),
+                    color: INK,
+                },
+                LetterSpacing::Px(1.0),
+            )),
+        )),
     )
 }
 
-fn spawn_menu(mut commands: Commands) {
+fn spawn_menu(mut commands: Commands, art: Option<Res<UiArt>>) {
+    let art = art.map(|a| a.clone()).unwrap_or_default();
+    let logo_height = LOGO_WIDTH * art.logo_size.y as f32 / art.logo_size.x.max(1) as f32;
     commands
         .spawn((
             MenuRoot,
@@ -136,38 +224,55 @@ fn spawn_menu(mut commands: Commands) {
                 align_items: AlignItems::Center,
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.02, 0.025, 0.04, 0.58)),
+            BackgroundColor(BACKDROP),
             GlobalZIndex(100),
             Visibility::Hidden,
         ))
         .with_children(|root| {
-            root.spawn((MainCard, card(360.0))).with_children(|c| {
-                c.spawn(Node {
+            root.spawn((
+                MainCard,
+                Node {
+                    width: px(LOGO_WIDTH),
                     flex_direction: FlexDirection::Column,
                     align_items: AlignItems::Center,
-                    margin: UiRect::bottom(px(14)),
-                    row_gap: px(4),
+                    row_gap: px(16),
                     ..default()
-                })
-                .with_children(|title| {
-                    title.spawn((
-                        Text::new("PIECED"),
-                        TextFont::from_font_size(34.0),
-                        TextColor(ACCENT),
-                        LetterSpacing::Px(9.0),
-                    ));
-                    title.spawn(caps("PAUSED", 12.0, dim(0.55)));
-                });
-                c.spawn(menu_button("RESUME", MenuAction::Resume, true));
-                c.spawn(menu_button("SETTINGS", MenuAction::Settings, false));
-                c.spawn(menu_button("QUIT", MenuAction::Quit, false));
+                },
+            ))
+            .with_children(|c| {
                 c.spawn((
+                    Name::new("Logo"),
+                    ImageNode::new(art.logo.clone()),
                     Node {
-                        justify_content: JustifyContent::Center,
-                        margin: UiRect::top(px(8)),
+                        width: px(LOGO_WIDTH),
+                        height: px(logo_height),
+                        margin: UiRect::bottom(px(4)),
                         ..default()
                     },
-                    children![text("Esc resume   F3 stats   F4 tuning", 11.0, dim(0.45))],
+                ));
+                for (label, action) in [
+                    ("RESUME", MenuAction::Resume),
+                    ("SETTINGS", MenuAction::Settings),
+                    ("QUIT", MenuAction::Quit),
+                ] {
+                    c.spawn(Node {
+                        width: px(BUTTON_WIDTH),
+                        ..default()
+                    })
+                    .with_child(menu_button(
+                        label,
+                        action,
+                        68.0,
+                        30.0,
+                        Some(art.crystal_blue.clone()),
+                    ));
+                }
+                c.spawn((
+                    Node {
+                        margin: UiRect::top(px(6)),
+                        ..default()
+                    },
+                    children![text("Esc resume   F3 stats   F4 tuning", 13.0, dim(0.6))],
                 ));
             });
             root.spawn((SettingsCard, card(900.0))).with_children(|c| {
@@ -181,18 +286,20 @@ fn spawn_menu(mut commands: Commands) {
                 .with_children(|header| {
                     header.spawn((
                         Text::new("SETTINGS"),
-                        TextFont::from_font_size(24.0),
+                        TextFont::from_font_size(32.0),
                         TextColor(TEXT),
-                        LetterSpacing::Px(5.0),
+                        TextShadow {
+                            offset: Vec2::new(0.0, 2.5),
+                            color: INK,
+                        },
+                        LetterSpacing::Px(2.5),
                     ));
                     header
                         .spawn(Node {
-                            width: px(120),
+                            width: px(130),
                             ..default()
                         })
-                        .with_children(|b| {
-                            b.spawn(menu_button("BACK", MenuAction::Back, false));
-                        });
+                        .with_child(menu_button("BACK", MenuAction::Back, 46.0, 20.0, None));
                 });
                 c.spawn(Node {
                     flex_direction: FlexDirection::Row,
@@ -216,7 +323,7 @@ fn spawn_menu(mut commands: Commands) {
                                         margin: UiRect::new(px(0), px(0), px(10), px(4)),
                                         ..default()
                                     },
-                                    children![caps(*title, 11.0, ACCENT)],
+                                    children![caps(*title, 14.0, ACCENT)],
                                 ));
                                 for setting in *settings {
                                     spawn_row(col, *setting);
@@ -241,8 +348,8 @@ fn spawn_menu(mut commands: Commands) {
                     },
                     children![text(
                         "Changes apply immediately and are saved automatically.",
-                        11.0,
-                        dim(0.45)
+                        13.0,
+                        dim(0.6)
                     )],
                 ));
             });
@@ -259,7 +366,7 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
         ..default()
     })
     .with_children(|row| {
-        row.spawn(text(setting.label(), 14.0, dim(0.9)));
+        row.spawn(text(setting.label(), 16.0, dim(0.95)));
         row.spawn(Node {
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
@@ -275,7 +382,7 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
                         RelativeCursorPosition::default(),
                         Node {
                             width: px(170),
-                            height: px(24),
+                            height: px(26),
                             justify_content: JustifyContent::Center,
                             ..default()
                         },
@@ -285,12 +392,15 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
                         hit.spawn((
                             Node {
                                 width: percent(100),
-                                height: px(6),
-                                margin: UiRect::top(px(9)),
-                                border_radius: BorderRadius::all(px(3)),
+                                height: px(10),
+                                margin: UiRect::top(px(8)),
+                                border: UiRect::all(px(1.5)),
+                                border_radius: BorderRadius::MAX,
                                 ..default()
                             },
-                            BackgroundColor(TRACK_BG),
+                            BackgroundColor(TROUGH),
+                            BorderColor::all(RIM),
+                            ink(1.5),
                         ))
                         .with_children(|track| {
                             track.spawn((
@@ -298,10 +408,10 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
                                 Node {
                                     width: percent(50),
                                     height: percent(100),
-                                    border_radius: BorderRadius::all(px(3)),
+                                    border_radius: BorderRadius::MAX,
                                     ..default()
                                 },
-                                BackgroundColor(ACCENT),
+                                BackgroundColor(SHIELD_FILL),
                             ));
                         });
                         hit.spawn((
@@ -309,31 +419,26 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
                             Node {
                                 position_type: PositionType::Absolute,
                                 left: percent(50),
-                                top: px(4),
-                                width: px(16),
-                                height: px(16),
-                                margin: UiRect::left(px(-8)),
+                                top: px(3),
+                                width: px(20),
+                                height: px(20),
+                                margin: UiRect::left(px(-10)),
+                                border: UiRect::all(px(2.5)),
                                 border_radius: BorderRadius::MAX,
                                 ..default()
                             },
                             BackgroundColor(TEXT),
-                            BoxShadow::new(
-                                Color::srgba(0.0, 0.0, 0.0, 0.4),
-                                px(0),
-                                px(1),
-                                px(0),
-                                px(3),
-                            ),
+                            BorderColor::all(INK),
                         ));
                     });
                 control
                     .spawn(Node {
-                        width: px(52),
+                        width: px(56),
                         justify_content: JustifyContent::FlexEnd,
                         ..default()
                     })
                     .with_children(|v| {
-                        v.spawn((Part::Value(setting), text("", 14.0, TEXT)));
+                        v.spawn((Part::Value(setting), text("", 16.0, TEXT)));
                     });
             }
             SettingKind::Toggle => {
@@ -342,13 +447,16 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
                         Widget::Toggle(setting),
                         Button,
                         Node {
-                            width: px(46),
-                            height: px(26),
+                            width: px(50),
+                            height: px(28),
+                            border: UiRect::all(px(2)),
                             border_radius: BorderRadius::MAX,
-                            padding: UiRect::all(px(3)),
+                            padding: UiRect::all(px(2)),
                             ..default()
                         },
-                        BackgroundColor(TRACK_BG),
+                        BackgroundColor(TROUGH),
+                        BorderColor::all(RIM),
+                        ink(1.5),
                     ))
                     .with_children(|t| {
                         t.spawn((
@@ -356,20 +464,22 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
                             Node {
                                 width: px(20),
                                 height: px(20),
+                                border: UiRect::all(px(2)),
                                 border_radius: BorderRadius::MAX,
                                 ..default()
                             },
                             BackgroundColor(TEXT),
+                            BorderColor::all(INK),
                         ));
                     });
                 control
                     .spawn(Node {
-                        width: px(52),
+                        width: px(56),
                         justify_content: JustifyContent::FlexEnd,
                         ..default()
                     })
                     .with_children(|v| {
-                        v.spawn((Part::Value(setting), text("", 14.0, dim(0.7))));
+                        v.spawn((Part::Value(setting), text("", 16.0, dim(0.8))));
                     });
             }
             SettingKind::Choice(options) => {
@@ -379,10 +489,13 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
                             flex_direction: FlexDirection::Row,
                             padding: UiRect::all(px(3)),
                             column_gap: px(3),
-                            border_radius: BorderRadius::all(px(9)),
+                            border: UiRect::all(px(1.5)),
+                            border_radius: BorderRadius::all(px(12)),
                             ..default()
                         },
-                        BackgroundColor(Color::srgba(1.0, 1.0, 1.0, 0.07)),
+                        BackgroundColor(TROUGH),
+                        BorderColor::all(RIM),
+                        ink(1.5),
                     ))
                     .with_children(|seg| {
                         for (i, option) in options.iter().enumerate() {
@@ -390,12 +503,16 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
                                 Widget::Choice(setting, i as u8),
                                 Button,
                                 Node {
-                                    padding: UiRect::axes(px(12), px(5)),
-                                    border_radius: BorderRadius::all(px(7)),
+                                    padding: UiRect::axes(px(12), px(4)),
+                                    border_radius: BorderRadius::all(px(9)),
                                     ..default()
                                 },
                                 BackgroundColor(Color::NONE),
-                                children![text(*option, 13.0, TEXT)],
+                                children![(
+                                    Text::new(*option),
+                                    TextFont::from_font_size(15.0),
+                                    TextColor(TEXT),
+                                )],
                             ));
                         }
                     });
@@ -533,30 +650,28 @@ fn button_looks(
 ) {
     for (interaction, mut bg, border, action, widget) in &mut buttons {
         let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        let pressed = *interaction == Interaction::Pressed;
         let (fill, edge) = match (action, widget) {
-            (Some(MenuAction::Resume), _) => (
-                if hovered {
-                    Color::srgb(0.98, 0.83, 0.6)
+            (Some(action), _) => {
+                let (rest, hover) = if *action == MenuAction::Resume {
+                    (BLUE, BLUE_HOVER)
                 } else {
-                    ACCENT
-                },
-                ACCENT,
-            ),
-            (Some(_), _) => (
-                if hovered { BUTTON_HOVER } else { BUTTON_BG },
-                if hovered {
-                    ACCENT.with_alpha(0.55)
-                } else {
-                    BUTTON_BORDER
-                },
-            ),
+                    (SLATE, SLATE_HOVER)
+                };
+                let fill = match (hovered, pressed) {
+                    (_, true) => rest.darker(0.06),
+                    (true, false) => hover,
+                    _ => rest,
+                };
+                (fill, if hovered { GOLD_HOVER } else { GOLD_FRAME })
+            }
             (None, Some(Widget::Choice(setting, i))) => {
                 let selected = setting.get(&tuning).round() as u8 == *i;
                 (
                     if selected {
-                        ACCENT.with_alpha(0.9)
+                        ACCENT
                     } else if hovered {
-                        BUTTON_HOVER
+                        Color::srgba(1.0, 1.0, 1.0, 0.12)
                     } else {
                         Color::NONE
                     },
@@ -567,11 +682,11 @@ fn button_looks(
                 let on = setting.get(&tuning) >= 0.5;
                 (
                     match (on, hovered) {
-                        (true, _) => ACCENT,
-                        (false, true) => Color::srgba(1.0, 1.0, 1.0, 0.2),
-                        (false, false) => TRACK_BG,
+                        (true, _) => SHIELD_FILL,
+                        (false, true) => Color::srgba(0.16, 0.22, 0.3, 1.0),
+                        (false, false) => TROUGH,
                     },
-                    Color::NONE,
+                    if hovered { GOLD_HOVER } else { RIM },
                 )
             }
             _ => continue,
@@ -624,7 +739,7 @@ fn refresh_widgets(
             }
         }
     }
-    // Selected choice labels switch to dark ink on the accent pill.
+    // Selected choice labels switch to dark ink on the gold pill.
     for (parent, mut color) in &mut choice_text {
         if let Ok(Widget::Choice(setting, i)) = choices.get(parent.parent()) {
             let selected = setting.get(&tuning).round() as u8 == *i;
