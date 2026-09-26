@@ -28,6 +28,14 @@ from `art/palette.json`, sampled from the target images by
 | `models/manifest.json` | `art/blender/build.py` | Every model the game loads (`[{name, file}]`) |
 | `models/axis_probe.glb` | `art/blender/assets/probe.py` | Orientation test fixture: `Forward` empty 1 m in front |
 | `models/axis_probe.json` | `art/blender/assets/probe.py` | Sidecar |
+| `models/knight.glb` | `art/blender/assets/knight.py` | The knight-wizard enemy, 1.86 m, fitted to the dummy's hitboxes; named parts, joint pivots and eye states |
+| `models/knight.json` | `art/blender/assets/knight.py` | Sidecar |
+| `models/gloves.glb` | `art/blender/assets/gloves.py` | White four-finger cartoon gloves (`GloveR`, `GloveL`) with dark sleeves; each pivots on its grip frame |
+| `models/gloves.json` | `art/blender/assets/gloves.py` | Sidecar |
+| `models/pump.glb` | `art/blender/assets/guns.py` | Pump viewmodel: bell muzzle, sliding `PumpGrip`, violet `Crystal` in spinning gold `Rings`, `Shard` shell |
+| `models/pump.json` | `art/blender/assets/guns.py` | Sidecar: `MuzzleTip`, `CrystalSocket`, `GripR`, `GripL` (on `PumpGrip`), `Sight`, `SightFront` |
+| `models/rifle.glb` | `art/blender/assets/guns.py` | Rifle viewmodel: brass, dark wood, glass `Chamber` with a blue `Crystal`, energy-cell `Mag` |
+| `models/rifle.json` | `art/blender/assets/guns.py` | Sidecar: `MuzzleTip`, `CrystalSocket`, `GripR`, `GripL`, `Sight`, `SightFront` |
 | `models/rock_a.glb` | `art/blender/assets/props.py` | Arena rock, 1.25 m, crouch cover (D29) |
 | `models/rock_a.json` | `art/blender/assets/props.py` | Sidecar |
 | `models/rock_b.glb` | `art/blender/assets/props.py` | Arena rock with a buddy rock, 1.05 m (D29) |
@@ -58,6 +66,18 @@ from `art/palette.json`, sampled from the target images by
 | `models/wall_brick_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
 | `models/wall_brick_crack2.glb` | `art/blender/assets/pieces.py` | Brick wall at 33% HP: bigger cracks, missing bricks, a bite out of the top corner (584 tris) |
 | `models/wall_brick_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/far_island_a.glb` | `art/blender/assets/far.py` | Far island: grass top, three trees, waterfall |
+| `models/far_island_a.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/far_island_b.glb` | `art/blender/assets/far.py` | Far island with a gothic chapel tower and a waterfall |
+| `models/far_island_b.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/far_island_c.glb` | `art/blender/assets/far.py` | Small craggy islet with a tree and a thin waterfall |
+| `models/far_island_c.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/planet.glb` | `art/blender/assets/far.py` | Ringed lavender planet, radius 90 m |
+| `models/planet.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/ship.glb` | `art/blender/assets/far.py` | Small starship with an additive engine streak |
+| `models/ship.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/station.glb` | `art/blender/assets/far.py` | Stained-glass cathedral station: spires, four glass sails, ring walkway, floating rock, waterfalls |
+| `models/station.json` | `art/blender/assets/far.py` | Sidecar |
 
 ## Shaders (`assets/shaders/`)
 
@@ -65,7 +85,6 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 
 | File | Made by | Notes |
 |---|---|---|
-| `shaders/sky.wgsl` | hand-written, used by `src/arena/visuals/sky.rs` | Sky dome (the sky slice replaces it with the galaxy) |
 | `shaders/toon.wgsl` | hand-written, used by `src/look/toon.rs` | Two-band toon shading, rim, emissive, vertex colors |
 | `shaders/ink.wgsl` | hand-written, used by `src/look/outline.rs` | Inverted-hull ink outlines, screen-space width, distance fade |
 | `shaders/far.wgsl` | hand-written, used by `src/look/far.rs` | Unlit far layer with distance haze |
@@ -73,6 +92,7 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 | `shaders/blob.wgsl` | hand-written, used by `src/look/blob.rs` | Soft blob shadows under characters and props |
 | `shaders/ground.wgsl` | hand-written, used by `src/look/ground.rs` | The island's toon-lit grass with the glowing build grid in world space |
 | `shaders/barrier.wgsl` | hand-written, used by `src/arena/visuals/barrier.rs` | The island's shimmering rune barrier on the arena edge (translucent, fades in near the player) |
+| `shaders/waterfall.wgsl` | hand-written, used by `src/far/waterfall.rs` | Additive scrolling waterfall streaks for the far models |
 
 ## Fonts (`assets/fonts/`)
 

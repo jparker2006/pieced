@@ -1,0 +1,442 @@
+{
+  "name": "knight",
+  "kind": "knight",
+  "source": "art/blender/assets/knight.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 7824,
+  "triangle_budget": 8000,
+  "bounds": {
+    "min": [
+      -0.366,
+      0.0,
+      -0.235
+    ],
+    "max": [
+      0.366,
+      1.861,
+      0.2516
+    ]
+  },
+  "parts": {
+    "BootL": {
+      "parent": "PivotLegL",
+      "bounds": {
+        "min": [
+          -0.26,
+          0.0,
+          -0.235
+        ],
+        "max": [
+          -0.0504,
+          0.6672,
+          0.107
+        ]
+      },
+      "triangles": 620,
+      "colors": [
+        "gun_iron",
+        "knight_steel"
+      ]
+    },
+    "BootR": {
+      "parent": "PivotLegR",
+      "bounds": {
+        "min": [
+          0.0504,
+          0.0,
+          -0.235
+        ],
+        "max": [
+          0.26,
+          0.6672,
+          0.107
+        ]
+      },
+      "triangles": 620,
+      "colors": [
+        "gun_iron",
+        "knight_steel"
+      ]
+    },
+    "Cape": {
+      "parent": "PivotCape",
+      "bounds": {
+        "min": [
+          -0.2932,
+          0.36,
+          0.0521
+        ],
+        "max": [
+          0.2932,
+          1.27,
+          0.2516
+        ]
+      },
+      "triangles": 392,
+      "colors": [
+        "knight_purple",
+        "star_gold"
+      ]
+    },
+    "EyeBlinkL": {
+      "parent": "Helmet",
+      "bounds": {
+        "min": [
+          -0.1006,
+          1.6225,
+          -0.1665
+        ],
+        "max": [
+          -0.0114,
+          1.647,
+          -0.1515
+        ]
+      },
+      "triangles": 56,
+      "colors": [
+        "eye_white"
+      ]
+    },
+    "EyeBlinkR": {
+      "parent": "Helmet",
+      "bounds": {
+        "min": [
+          0.0114,
+          1.6225,
+          -0.1665
+        ],
+        "max": [
+          0.1006,
+          1.647,
+          -0.1515
+        ]
+      },
+      "triangles": 56,
+      "colors": [
+        "eye_white"
+      ]
+    },
+    "EyeL": {
+      "parent": "Helmet",
+      "bounds": {
+        "min": [
+          -0.1018,
+          1.592,
+          -0.172
+        ],
+        "max": [
+          -0.0102,
+          1.686,
+          -0.107
+        ]
+      },
+      "triangles": 200,
+      "colors": [
+        "eye_white",
+        "pupil_black"
+      ]
+    },
+    "EyeR": {
+      "parent": "Helmet",
+      "bounds": {
+        "min": [
+          0.0102,
+          1.592,
+          -0.172
+        ],
+        "max": [
+          0.1018,
+          1.686,
+          -0.107
+        ]
+      },
+      "triangles": 200,
+      "colors": [
+        "eye_white",
+        "pupil_black"
+      ]
+    },
+    "EyeWideL": {
+      "parent": "Helmet",
+      "bounds": {
+        "min": [
+          -0.1057,
+          1.588,
+          -0.174
+        ],
+        "max": [
+          -0.0063,
+          1.69,
+          -0.107
+        ]
+      },
+      "triangles": 188,
+      "colors": [
+        "eye_white",
+        "pupil_black"
+      ]
+    },
+    "EyeWideR": {
+      "parent": "Helmet",
+      "bounds": {
+        "min": [
+          0.0063,
+          1.588,
+          -0.174
+        ],
+        "max": [
+          0.1057,
+          1.69,
+          -0.107
+        ]
+      },
+      "triangles": 188,
+      "colors": [
+        "eye_white",
+        "pupil_black"
+      ]
+    },
+    "EyeXL": {
+      "parent": "Helmet",
+      "bounds": {
+        "min": [
+          -0.0954,
+          1.5996,
+          -0.1668
+        ],
+        "max": [
+          -0.0166,
+          1.6784,
+          -0.1512
+        ]
+      },
+      "triangles": 40,
+      "colors": [
+        "eye_white"
+      ]
+    },
+    "EyeXR": {
+      "parent": "Helmet",
+      "bounds": {
+        "min": [
+          0.0166,
+          1.5996,
+          -0.1668
+        ],
+        "max": [
+          0.0954,
+          1.6784,
+          -0.1512
+        ]
+      },
+      "triangles": 40,
+      "colors": [
+        "eye_white"
+      ]
+    },
+    "GauntletL": {
+      "parent": "PivotArmL",
+      "bounds": {
+        "min": [
+          -0.366,
+          0.628,
+          -0.149
+        ],
+        "max": [
+          -0.1186,
+          1.308,
+          0.1032
+        ]
+      },
+      "triangles": 716,
+      "colors": [
+        "gun_iron",
+        "knight_steel"
+      ]
+    },
+    "GauntletR": {
+      "parent": "PivotArmR",
+      "bounds": {
+        "min": [
+          0.1186,
+          0.628,
+          -0.149
+        ],
+        "max": [
+          0.366,
+          1.308,
+          0.1032
+        ]
+      },
+      "triangles": 716,
+      "colors": [
+        "gun_iron",
+        "knight_steel"
+      ]
+    },
+    "Hat": {
+      "parent": "PivotHat",
+      "bounds": {
+        "min": [
+          -0.2213,
+          1.6955,
+          -0.2191
+        ],
+        "max": [
+          0.2193,
+          1.861,
+          0.215
+        ]
+      },
+      "triangles": 780,
+      "colors": [
+        "knight_purple",
+        "star_gold"
+      ]
+    },
+    "Helmet": {
+      "parent": "PivotHead",
+      "bounds": {
+        "min": [
+          -0.2103,
+          1.446,
+          -0.172
+        ],
+        "max": [
+          0.2103,
+          1.74,
+          0.172
+        ]
+      },
+      "triangles": 1090,
+      "colors": [
+        "knight_steel",
+        "pupil_black"
+      ]
+    },
+    "Torso": {
+      "parent": "knight",
+      "bounds": {
+        "min": [
+          -0.2524,
+          0.452,
+          -0.2275
+        ],
+        "max": [
+          0.2524,
+          1.44,
+          0.1912
+        ]
+      },
+      "triangles": 1922,
+      "colors": [
+        "crystal_violet",
+        "gun_iron",
+        "knight_purple",
+        "knight_steel",
+        "star_gold",
+        "stock"
+      ]
+    }
+  },
+  "attach": {
+    "PivotArmL": {
+      "parent": "Torso",
+      "position": [
+        -0.2,
+        1.2,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "PivotArmR": {
+      "parent": "Torso",
+      "position": [
+        0.2,
+        1.2,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "PivotCape": {
+      "parent": "Torso",
+      "position": [
+        0.0,
+        1.28,
+        0.14
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "PivotHat": {
+      "parent": "PivotHead",
+      "position": [
+        0.0,
+        1.72,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "PivotHead": {
+      "parent": "Torso",
+      "position": [
+        0.0,
+        1.42,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "PivotLegL": {
+      "parent": "knight",
+      "position": [
+        -0.11,
+        0.62,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "PivotLegR": {
+      "parent": "knight",
+      "position": [
+        0.11,
+        0.62,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

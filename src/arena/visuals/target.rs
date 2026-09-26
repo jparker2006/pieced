@@ -1,251 +1,303 @@
-//! The target look: a chunky low-poly training-dummy figure for every non-player
-//! character, with a bullseye plate, drawn with the toon material, a doubled rim
-//! light and an ink outline so it pops against any background and still reads in
-//! greyscale. The figure fits the gameplay hitboxes (body capsule r 0.33 from
-//! y 0.05 to 1.45, head sphere r 0.2 at y 1.62). The knight slice replaces it.
+//! The target figure: every non-player character is drawn as the knight
+//! (docs/M2-SPEC.md → The knight), replacing Milestone 1's training-dummy figure.
+//! Only the look changes; the dummy's behavior and hitboxes are untouched.
+//!
+//! A [`TargetFigure`] is a top-level entity that follows its owner with render
+//! interpolation and faces its look direction. It carries the knight model (from
+//! `models::spawn_model`, toon-dressed and ink-outlined by `look`, with the
+//! knight's warm-rim material), a [`BlobShadow`] under the boots, and the
+//! knight's [`KnightAnim`], fed each frame with the owner's velocity, grounded
+//! state, jumps, landings, hits and elimination (see `crate::knight`). When the
+//! owner is eliminated the knight shows X eyes for `knight::KO_TIME`, then the
+//! figure hides until respawn, when it pops back in.
 
-use super::geo::{Geo, Rgba, blob, lin, mix, ring, shade};
-use crate::{look::ToonMaterial, palette};
+use crate::{
+    app::BootGate,
+    combat::Downed,
+    knight::{
+        self, KNIGHT_MODEL, KnightAnim, KnightEvent, KnightInput, KnightModel, KnightRig,
+        RespawnSparkle, SPARKLE_TIME,
+    },
+    look::{BlobShadow, ModelDressed, Outline},
+    models::{ModelLibrary, spawn_model},
+    movement::Motor,
+    shared::{
+        AppState, Character, DamageDealt, DamageTarget, EyeHeight, GameCue, Health, LookAngles,
+        Player, PreviousFeet,
+    },
+};
 use bevy::prelude::*;
 
-/// Rim multiplier for characters: they must read against the sky.
-pub const FIGURE_RIM: f32 = 2.0;
+/// Blob shadow under a standing figure (a little wider than the body capsule).
+pub const FIGURE_SHADOW_RADIUS: f32 = 0.45;
+/// The [`BootGate`] key held until every figure's knight is rigged, so its
+/// draws are warmed up behind the loading screen.
+pub const KNIGHT_GATE: &str = "knight";
+/// Never hold Boot for the knight longer than this many frames.
+pub const KNIGHT_GATE_TIMEOUT: u32 = 600;
 
-/// The figure's material: vertex colors under toon lighting, strong rim.
-pub fn target_material() -> ToonMaterial {
-    ToonMaterial::vertex_colored().with_rim(FIGURE_RIM)
+/// The visible figure of a non-player character.
+#[derive(Component, Debug)]
+pub struct TargetFigure {
+    pub owner: Entity,
 }
 
-/// Octagonal prism/loft through `(y, radius_x, radius_z)` stations, face toward -Z.
-fn lathe(geo: &mut Geo, center: Vec3, sides: usize, stations: &[(f32, f32, f32)], color: Rgba) {
-    let phase = std::f32::consts::PI / sides as f32;
-    let rings: Vec<Vec<Vec3>> = stations
-        .iter()
-        .map(|&(y, rx, rz)| {
-            ring(center, sides, phase, y, |_| 1.0)
-                .into_iter()
-                .map(|p| {
-                    let off = p - center;
-                    center + Vec3::new(off.x * rx, off.y, off.z * rz)
+/// Spawns, follows and animates the figures. Client only; needs `LookPlugin` and
+/// `ModelsPlugin` for the model to appear (without them the figure is an empty,
+/// still-animated entity).
+pub struct TargetFigurePlugin;
+
+impl Plugin for TargetFigurePlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<BootGate>();
+        app.world_mut().resource_mut::<BootGate>().hold(KNIGHT_GATE);
+        app.add_message::<ModelDressed>()
+            .add_message::<DamageDealt>()
+            .add_message::<GameCue>()
+            .add_systems(Startup, knight::create_knight_assets)
+            .add_systems(Update, (attach_knight_models, release_knight_gate))
+            .add_systems(
+                PostUpdate,
+                (
+                    knight::rig_knights,
+                    pose_target_figures,
+                    animate_knights,
+                    knight::fade_sparkles,
+                )
+                    .chain()
+                    .before(TransformSystems::Propagate),
+            )
+            .add_observer(spawn_target_figure);
+    }
+}
+
+fn spawn_target_figure(
+    add: On<Add, Character>,
+    players: Query<(), With<Player>>,
+    owners: Query<&Transform>,
+    mut commands: Commands,
+) {
+    // The player is invisible in first person.
+    if players.contains(add.entity) {
+        return;
+    }
+    let at = owners.get(add.entity).copied().unwrap_or_default();
+    commands.spawn((
+        Name::new("Target figure"),
+        TargetFigure { owner: add.entity },
+        KnightAnim::new(add.entity.to_bits()),
+        BlobShadow::new(FIGURE_SHADOW_RADIUS),
+        Transform::from_translation(at.translation),
+        Visibility::default(),
+    ));
+}
+
+/// Puts the knight model under each new figure once the model library exists.
+fn attach_knight_models(
+    figures: Query<Entity, (With<TargetFigure>, Without<KnightModel>)>,
+    library: Option<Res<ModelLibrary>>,
+    mut commands: Commands,
+) {
+    let Some(library) = library else {
+        return;
+    };
+    for figure in &figures {
+        let Some(model) = spawn_model(&mut commands, &library, KNIGHT_MODEL, Transform::IDENTITY)
+        else {
+            error!("target figure: no `{KNIGHT_MODEL}` model in the library");
+            commands
+                .entity(figure)
+                .insert(KnightModel(Entity::PLACEHOLDER));
+            continue;
+        };
+        commands
+            .entity(model)
+            .insert((Outline::default(), ChildOf(figure)));
+        commands.entity(figure).insert(KnightModel(model));
+    }
+}
+
+/// Lets Boot finish once every figure's knight is rigged (and warm-up items
+/// registered), or there is nothing to wait for: no model library, no figures,
+/// or no knight model.
+fn release_knight_gate(
+    mut gate: ResMut<BootGate>,
+    library: Option<Res<ModelLibrary>>,
+    figures: Query<(Option<&KnightModel>, Has<KnightRig>), With<TargetFigure>>,
+    mut frames: Local<u32>,
+) {
+    if !gate.held().any(|k| k == KNIGHT_GATE) {
+        return;
+    }
+    *frames += 1;
+    let done = match library {
+        None => *frames > 2,
+        Some(library) => {
+            let missing = library.failed().iter().any(|f| f == KNIGHT_MODEL);
+            library.is_ready()
+                && figures.iter().all(|(model, rigged)| {
+                    rigged || missing || model.is_some_and(|m| m.0 == Entity::PLACEHOLDER)
                 })
-                .collect()
-        })
-        .collect();
-    let mut k = 0;
-    geo.loft(&rings, |_, _| {
-        k += 1;
-        // Alternate facets slightly so the flat shading reads even in flat light.
-        shade(color, if k % 2 == 0 { 1.0 } else { 0.94 })
-    });
-    geo.cap(rings.last().expect("stations"), true, shade(color, 1.05));
-    geo.cap(&rings[0], false, shade(color, 0.8));
-}
-
-/// A flat disc facing -Z (or +Z when `back`), `thickness` deep.
-fn plate(geo: &mut Geo, center: Vec3, radius: f32, thickness: f32, back: bool, color: Rgba) {
-    let sides = 12;
-    let dir = if back { 1.0 } else { -1.0 };
-    let pts: Vec<Vec3> = (0..sides)
-        .map(|i| {
-            let a = std::f32::consts::TAU * i as f32 / sides as f32;
-            Vec3::new(a.cos() * radius, a.sin() * radius, 0.0)
-        })
-        .collect();
-    let front: Vec<Vec3> = pts
-        .iter()
-        .map(|p| center + *p + Vec3::Z * dir * thickness * 0.5)
-        .collect();
-    let rear: Vec<Vec3> = pts
-        .iter()
-        .map(|p| center + *p - Vec3::Z * dir * thickness * 0.5)
-        .collect();
-    let c_front = center + Vec3::Z * dir * thickness * 0.5;
-    for i in 0..sides {
-        let j = (i + 1) % sides;
-        // Front face must face along `dir`.
-        let (a, b) = if back {
-            (front[i], front[j])
-        } else {
-            (front[j], front[i])
-        };
-        geo.tri(c_front, a, b, color);
-        let (r0, r1, f0, f1) = if back {
-            (rear[i], rear[j], front[i], front[j])
-        } else {
-            (rear[j], rear[i], front[j], front[i])
-        };
-        geo.quad(r0, r1, f1, f0, shade(color, 0.85));
+        }
+    };
+    if done || *frames > KNIGHT_GATE_TIMEOUT {
+        if !done {
+            warn!("target figure: the knight wasn't rigged in time; not holding Boot");
+        }
+        gate.release(KNIGHT_GATE);
     }
 }
 
-/// The training-dummy figure, feet at the origin, facing -Z.
-pub fn figure() -> Geo {
-    // A touch deeper than the pure hue: in greyscale the body reads darker than
-    // the mid-grey world while the rim and bullseye read lighter.
-    let body = mix(lin(palette::TARGET), lin(palette::TARGET_DARK), 0.3);
-    let dark = lin(palette::TARGET_DARK);
-    let light = lin(palette::TARGET_LIGHT);
-    let mut g = Geo::default();
-    for side in [-1.0f32, 1.0] {
-        let x = side * 0.13;
-        // Feet: chunky wedges, toes forward.
-        lathe(
-            &mut g,
-            Vec3::new(x, 0.0, -0.03),
-            4,
-            &[(0.0, 0.11, 0.18), (0.1, 0.1, 0.15)],
-            dark,
-        );
-        // Legs.
-        lathe(
-            &mut g,
-            Vec3::new(x, 0.0, 0.0),
-            6,
-            &[(0.08, 0.095, 0.095), (0.62, 0.11, 0.11)],
-            dark,
-        );
-        // Arms hang close to the body, inside the hitbox silhouette.
-        lathe(
-            &mut g,
-            Vec3::new(side * 0.275, 0.0, 0.0),
-            5,
-            &[(0.84, 0.055, 0.055), (1.22, 0.068, 0.068)],
-            dark,
-        );
-        blob(
-            &mut g,
-            0,
-            |v| Vec3::new(side * 0.28, 0.8, 0.0) + v * 0.068,
-            |_| body,
-        );
+/// Whether a character counts as eliminated for its figure: downed awaiting
+/// respawn, or dead.
+pub fn figure_hidden(health: Option<&Health>, downed: bool) -> bool {
+    downed || health.is_some_and(Health::is_dead)
+}
+
+/// Follows each figure's owner: interpolated feet, look yaw, crouch height.
+pub fn pose_target_figures(
+    mut commands: Commands,
+    fixed: Res<Time<Fixed>>,
+    state: Res<State<AppState>>,
+    owners: Query<
+        (
+            &Transform,
+            Option<&PreviousFeet>,
+            Option<&LookAngles>,
+            Option<&EyeHeight>,
+        ),
+        (With<Character>, Without<TargetFigure>),
+    >,
+    mut figures: Query<(Entity, &TargetFigure, &mut Transform)>,
+) {
+    let alpha = if *state.get() == AppState::Playing {
+        fixed.overstep_fraction().clamp(0.0, 1.0)
+    } else {
+        1.0
+    };
+    for (entity, figure, mut transform) in &mut figures {
+        let Ok((owner, previous, look, eye)) = owners.get(figure.owner) else {
+            commands.entity(entity).despawn();
+            continue;
+        };
+        let feet = previous.map_or(owner.translation, |p| p.0.lerp(owner.translation, alpha));
+        let yaw = look.map_or(0.0, |l| l.yaw);
+        let crouch = eye.map_or(1.0, |e| (e.0 / EyeHeight::default().0).clamp(0.6, 1.0));
+        transform.translation = feet;
+        transform.rotation = Quat::from_rotation_y(yaw);
+        transform.scale = Vec3::new(1.0, crouch, 1.0);
     }
-    // Pelvis and torso: a beveled octagonal barrel, widest at the chest.
-    lathe(
-        &mut g,
-        Vec3::ZERO,
-        8,
-        &[(0.56, 0.22, 0.2), (0.74, 0.24, 0.22)],
-        dark,
-    );
-    lathe(
-        &mut g,
-        Vec3::ZERO,
-        8,
-        &[
-            (0.72, 0.25, 0.23),
-            (0.98, 0.29, 0.26),
-            (1.18, 0.3, 0.27),
-            (1.33, 0.25, 0.22),
-            (1.43, 0.15, 0.13),
-        ],
-        body,
-    );
-    // Neck and faceted head.
-    lathe(
-        &mut g,
-        Vec3::ZERO,
-        6,
-        &[(1.4, 0.08, 0.08), (1.5, 0.075, 0.075)],
-        dark,
-    );
-    blob(
-        &mut g,
-        1,
-        |v| Vec3::new(0.0, 1.62, 0.0) + v * 0.2,
-        |n| shade(body, 0.96 + 0.08 * n.y.max(0.0)),
-    );
-    // Visor band so facing reads at a glance.
-    lathe(
-        &mut g,
-        Vec3::new(0.0, 0.0, -0.12),
-        4,
-        &[(1.6, 0.16, 0.12), (1.66, 0.16, 0.12)],
-        dark,
-    );
-    // Bullseye plates on chest and back: light / dark / light rings.
-    for back in [false, true] {
-        let s = if back { 1.0 } else { -1.0 };
-        plate(
-            &mut g,
-            Vec3::new(0.0, 1.08, s * 0.26),
-            0.2,
-            0.07,
-            back,
-            light,
-        );
-        plate(
-            &mut g,
-            Vec3::new(0.0, 1.08, s * 0.298),
-            0.135,
-            0.006,
-            back,
-            dark,
-        );
-        plate(
-            &mut g,
-            Vec3::new(0.0, 1.08, s * 0.303),
-            0.065,
-            0.006,
-            back,
-            light,
-        );
+}
+
+/// Feeds each knight its owner's motion and moments, steps its animation and
+/// writes the pose (and the figure's visibility).
+#[allow(clippy::type_complexity)]
+pub fn animate_knights(
+    time: Res<Time>,
+    mut damage: MessageReader<DamageDealt>,
+    mut cues: MessageReader<GameCue>,
+    owners: Query<
+        (
+            Option<&Motor>,
+            Option<&Health>,
+            Has<Downed>,
+            Option<&LookAngles>,
+        ),
+        With<Character>,
+    >,
+    mut figures: Query<(
+        Entity,
+        &TargetFigure,
+        &mut KnightAnim,
+        Option<&KnightRig>,
+        &mut Visibility,
+    )>,
+    mut transforms: Query<&mut Transform, Without<TargetFigure>>,
+    mut visibility: Query<&mut Visibility, Without<TargetFigure>>,
+    mut commands: Commands,
+) {
+    // World directions into an owner's model space (its figure faces its yaw).
+    let local = |owner: Entity, v: Vec3| {
+        let yaw = owners
+            .get(owner)
+            .ok()
+            .and_then(|o| o.3)
+            .map_or(0.0, |l| l.yaw);
+        Quat::from_rotation_y(-yaw) * v
+    };
+    let mut events: Vec<(Entity, KnightEvent)> = Vec::new();
+    for hit in damage.read() {
+        if hit.target_kind != DamageTarget::Character || hit.amount <= 0.0 {
+            continue;
+        }
+        // The shot pushes into the body: against the hit surface's normal.
+        let push = Vec3::new(-hit.normal.x, 0.0, -hit.normal.z);
+        let push = if push.length_squared() > 1e-6 {
+            local(hit.target, push)
+        } else {
+            Vec3::Z
+        };
+        events.push((
+            hit.target,
+            KnightEvent::Hit {
+                push,
+                headshot: hit.headshot,
+            },
+        ));
     }
-    g
+    for cue in cues.read() {
+        match *cue {
+            GameCue::Jump { who } => events.push((who, KnightEvent::Jump)),
+            GameCue::Land { who, speed } => events.push((who, KnightEvent::Land { speed })),
+            _ => {}
+        }
+    }
+    let dt = time.delta_secs();
+    for (entity, figure, mut anim, rig, mut shown) in &mut figures {
+        for (_, event) in events.iter().filter(|(who, _)| *who == figure.owner) {
+            anim.event(*event);
+        }
+        let input = match owners.get(figure.owner) {
+            Ok((motor, health, downed, _)) => KnightInput {
+                velocity: local(figure.owner, motor.map_or(Vec3::ZERO, |m| m.velocity)),
+                grounded: motor.is_none_or(|m| m.grounded),
+                downed: figure_hidden(health, downed),
+            },
+            Err(_) => KnightInput::default(),
+        };
+        let was_down = anim.is_downed();
+        let pose = anim.step(dt, &input);
+        if was_down && !anim.is_downed() {
+            commands.spawn((
+                Name::new("Respawn sparkle"),
+                RespawnSparkle { left: SPARKLE_TIME },
+                knight::sparkle_halo(0.0),
+                Transform::from_xyz(0.0, 1.0, 0.0),
+                ChildOf(entity),
+            ));
+        }
+        shown.set_if_neq(if pose.visible {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        });
+        if let Some(rig) = rig {
+            knight::write_pose(&pose, rig, &mut transforms, &mut visibility);
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::player::{BODY_BOTTOM, BODY_RADIUS, BODY_TOP, HEAD_CENTER, HEAD_RADIUS};
-
-    /// Distance from a point to the body capsule's core segment.
-    fn capsule_distance(p: Vec3) -> f32 {
-        let lo = BODY_BOTTOM + BODY_RADIUS;
-        let hi = BODY_TOP - BODY_RADIUS;
-        let y = p.y.clamp(lo, hi);
-        p.distance(Vec3::new(0.0, y, 0.0))
-    }
 
     #[test]
-    fn figure_lines_up_with_the_hitboxes() {
-        let g = figure();
-        let (lo, hi) = g.bounds().unwrap();
-        // Top of the head matches the head sphere; feet on the ground.
-        assert!(
-            (hi.y - (HEAD_CENTER + HEAD_RADIUS)).abs() < 0.03,
-            "top {}",
-            hi.y
-        );
-        assert!(lo.y >= -0.01 && lo.y < 0.05, "bottom {}", lo.y);
-        // Every vertex sits inside the hitboxes, give or take a few centimeters.
-        for v in g.vertices() {
-            let in_body = capsule_distance(v) <= BODY_RADIUS + 0.05;
-            let in_head = v.distance(Vec3::Y * HEAD_CENTER) <= HEAD_RADIUS + 0.05;
-            // Feet may poke slightly out of the capsule's rounded bottom.
-            let foot = v.y < 0.12 && v.xz().length() < 0.36;
-            assert!(in_body || in_head || foot, "vertex outside hitboxes: {v}");
-        }
-        // And the silhouette fills them: wide enough to read as the body.
-        assert!(hi.x > 0.3 && lo.x < -0.3);
-    }
-
-    #[test]
-    fn bullseye_faces_front_and_back() {
-        let g = figure();
-        let light = lin(palette::TARGET_LIGHT);
-        let mut front = 0;
-        let mut back = 0;
-        for (i, n) in g.normals.chunks(3).enumerate() {
-            if g.colors[i * 3] == light {
-                let n = Vec3::from_array(n[0]);
-                if n.z < -0.99 {
-                    front += 1;
-                }
-                if n.z > 0.99 {
-                    back += 1;
-                }
-            }
-        }
-        assert!(front >= 24 && back >= 24, "front {front}, back {back}");
+    fn figure_hides_when_owner_is_down() {
+        let mut health = Health::default();
+        assert!(!figure_hidden(Some(&health), false));
+        assert!(figure_hidden(Some(&health), true));
+        health.apply(1000.0);
+        assert!(figure_hidden(Some(&health), false));
+        assert!(!figure_hidden(None, false));
     }
 }

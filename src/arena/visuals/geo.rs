@@ -144,6 +144,7 @@ impl Geo {
     }
 }
 
+#[cfg(test)]
 /// A horizontal ring of `sides` points (counter-clockwise from above, first point
 /// toward -Z rotated by `phase`), at height `y`, with per-point radius from `radius`.
 pub fn ring(

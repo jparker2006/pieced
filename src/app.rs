@@ -7,6 +7,7 @@ use crate::{
     building::{BuildingPlugin, BuildingVisualsPlugin},
     combat::CombatPlugin,
     dummy::DummyPlugin,
+    far::FarViewPlugin,
     fx::FxPlugin,
     hud::HudPlugin,
     input::{InputAdapterPlugin, InputProbe, InputProbePlugin},
@@ -101,6 +102,7 @@ impl PluginGroup for ClientPlugins {
             .add(LookPlugin)
             .add(ModelsPlugin)
             .add(ArenaVisualsPlugin)
+            .add(FarViewPlugin)
             .add(BuildingVisualsPlugin)
             .add(ViewmodelPlugin)
             .add(FxPlugin)

@@ -1,10 +1,24 @@
-//! Slice E — the first-person gun models, drawn by a separate viewmodel camera.
+//! The first-person guns and gloves, drawn by a separate viewmodel camera
+//! (docs/M2-SPEC.md → Guns and gloves).
 //!
 //! A second 3D camera (a child of the main camera) renders only
 //! [`VIEWMODEL_LAYER`] into the same [`WorldTarget`] after the world, with its
 //! own depth and a fixed FOV, so the guns never clip into walls and don't warp
-//! when the world FOV zooms. The layer has its own shadowless light that copies
-//! the sun's direction, warmth and ambient.
+//! when the world FOV zooms.
+//!
+//! The rifle, the pump and the white cartoon gloves are Blender models
+//! (`art/blender/assets/guns.py`, `gloves.py`), toon-shaded and inked by the
+//! look module. Each gun sits on a "kick" node that squashes and stretches on
+//! every shot (pivoting on the right hand); the gloves hold the gun at its
+//! `GripR` / `GripL` attach points. Named parts are animated here:
+//!
+//! - both crystals glow with the magazine ([`CrystalGlow`]: 0.25 + 0.75 × the
+//!   magazine fraction) and turn slowly;
+//! - rifle reload: the glass `Chamber` slides open, the dim `Crystal` pops up
+//!   and spins away, a fresh one slides in, and its glow charges up the moment
+//!   the reload completes;
+//! - pump: the left glove pushes a violet `Shard` in through the `Rings` for
+//!   each shell; the `PumpGrip` racks after every shot and the rings whirr.
 //!
 //! Every frame (PostUpdate, after the camera follows the eye) the rig's pose is
 //! composed from the hip/ADS pose, look and movement sway, walk bob, spring
@@ -16,11 +30,16 @@ pub mod mesh;
 pub mod models;
 
 use crate::{
+    app::BootGate,
     combat::Loadout,
     fx::sim::{FxRng, Spring},
-    look::{Outline, ToonMaterial, with_outline_normals},
+    look::{
+        InheritedOutline, ModelDressed, ModelLook, NoOutline, Outline, OutlineHull, ToonMaterial,
+        warmup::Warmup, with_outline_normals,
+    },
+    models::{MODEL_FORWARD_FIX, ModelLibrary, ModelParts, spawn_model},
     movement::Motor,
-    palette,
+    palette::cartoon,
     render::{
         CameraFollowSet, CurrentFov, MainCamera, VIEWMODEL_CAMERA_ORDER, VIEWMODEL_LAYER,
         WorldTarget,
@@ -29,16 +48,18 @@ use crate::{
     tuning::Tuning,
 };
 use anim::{
-    LOWERED, PUMP_RELOAD_STANCE, PoseOffset, ads_translation, euler, forend_offset, pump_rack,
-    pump_shell, rifle_reload, smoothstep, switch_phase,
+    CrystalPose, LOWERED, PUMP_RELOAD_STANCE, PUMP_SQUASH, PUMP_SQUASH_PEAK, PoseOffset,
+    RACK_START, RIFLE_SQUASH, RIFLE_SQUASH_PEAK, RING_RACK_KICK, RING_SHARD_KICK, RingSpin,
+    SHARD_MERGED, SHARD_START, Squash, ads_translation, chamber_transform, euler, hand_hold,
+    pump_crystal_glow, pump_grip_offset, pump_rack, pump_shard, rifle_crystal_glow, rifle_reload,
+    smoothstep, squash_transform, switch_phase,
 };
 use bevy::{
     camera::{ClearColorConfig, RenderTarget, visibility::RenderLayers},
-    core_pipeline::tonemapping::Tonemapping,
-    light::{AmbientLight, GlobalAmbientLight, NotShadowCaster, NotShadowReceiver},
+    light::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
 };
-use models::{GunSpec, PUMP, PUMP_FOREND_REST, RIFLE, RIFLE_MAG_SEAT, RIFLE_MAG_TILT};
+use models::{BLUEPRINT, GLOVES_MODEL, GunSpec, PUMP, RIFLE, gun_model, gun_spec};
 
 /// Viewmodel poses are written in this PostUpdate set: after the main camera
 /// follows the eye (and after camera shake), before transform propagation.
@@ -55,12 +76,65 @@ pub struct MuzzlePoint(pub Option<Vec3>);
 #[derive(Component, Debug)]
 pub struct ViewmodelCamera;
 
-/// Mirrors the world's n-th brightest directional light on the viewmodel layer.
-#[derive(Component, Debug)]
-struct ViewmodelLight(usize);
+/// The `BootGate` key held until the gun and glove models are attached, dressed
+/// and registered for pipeline warm-up.
+pub const VIEWMODEL_GATE: &str = "viewmodel";
 
-/// How many world directional lights (sun, sky fill) the viewmodel mirrors.
-const MIRRORED_LIGHTS: usize = 2;
+/// How brightly each gun's crystal glows (see [`anim::ammo_glow`]): 0.25 when
+/// empty, 1 when full, a brief flash above 1 as a fresh rifle crystal charges.
+/// Updated every frame from the player's loadout.
+#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+pub struct CrystalGlow {
+    pub rifle: f32,
+    pub pump: f32,
+}
+
+impl Default for CrystalGlow {
+    fn default() -> Self {
+        Self {
+            rifle: 1.0,
+            pump: 1.0,
+        }
+    }
+}
+
+impl CrystalGlow {
+    pub fn of(&self, kind: WeaponKind) -> f32 {
+        match kind {
+            WeaponKind::Rifle => self.rifle,
+            WeaponKind::Pump => self.pump,
+        }
+    }
+}
+
+/// Emissive strength of a crystal at glow 1 (crystal color × this is added).
+pub const CRYSTAL_EMISSIVE: f32 = 1.5;
+/// The rifle's glass chamber glows with its crystal, fainter.
+pub const GLASS_EMISSIVE: f32 = 0.55;
+/// The glass chamber's opacity.
+pub const GLASS_ALPHA: f32 = 0.42;
+/// Idle spin of a seated crystal (rad/s): it's alive in there.
+pub const CRYSTAL_IDLE_SPIN: f32 = 0.7;
+
+/// Tracks the crystal glow from the player's loadout. Needs only the
+/// simulation, so it also runs in headless tests.
+pub struct CrystalGlowPlugin;
+
+impl Plugin for CrystalGlowPlugin {
+    fn build(&self, app: &mut App) {
+        Self::install(app);
+    }
+}
+
+impl CrystalGlowPlugin {
+    /// Adds the glow tracking to an app that is already running (a test's
+    /// headless simulation, where plugins can no longer be added).
+    pub fn install(app: &mut App) {
+        app.init_resource::<CrystalGlow>()
+            .init_resource::<GlowTracker>()
+            .add_systems(Update, track_crystal_glow);
+    }
+}
 
 /// What the viewmodel can hold up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,6 +152,14 @@ impl Item {
             ActiveTool::Build(_) => Item::Blueprint,
         }
     }
+
+    fn gun(self) -> Option<WeaponKind> {
+        match self {
+            Item::Rifle => Some(WeaponKind::Rifle),
+            Item::Pump => Some(WeaponKind::Pump),
+            Item::Blueprint => None,
+        }
+    }
 }
 
 /// Role of each animated viewmodel entity.
@@ -85,21 +167,18 @@ impl Item {
 enum VmPart {
     Rig,
     Item(Item),
-    RifleMag,
-    PumpForend,
-    PumpShell,
+    /// The squash-and-stretch node holding a gun model.
+    Kick(WeaponKind),
     Flash(WeaponKind),
     Mini(PieceKind),
 }
 
-/// The blueprint tablet's hip pose (no ADS, no muzzle).
-const BLUEPRINT: GunSpec = GunSpec {
-    sight: Vec3::ZERO,
-    muzzle: Vec3::ZERO,
-    hip: Vec3::new(0.165, -0.15, -0.40),
-    hip_euler: Vec3::new(0.62, -0.32, 0.10),
-    ads_distance: 0.3,
-};
+/// What a spawned viewmodel model root is.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VmModel {
+    Gun(WeaponKind),
+    Gloves(WeaponKind),
+}
 
 /// Seconds to ease into and out of aim-down-sights.
 const ADS_SECONDS: f32 = 0.12;
@@ -119,9 +198,6 @@ pub const PUMP_KICK: Spring = Spring::new(19.0);
 const SWAY: Spring = Spring::new(13.0);
 /// Walk bob: one left-right cycle per this many meters walked.
 const BOB_STRIDE: f32 = 2.8;
-/// The viewmodel light copies the sun at this strength, plus ambient at this gain.
-const LIGHT_GAIN: f32 = 1.0;
-const AMBIENT_GAIN: f32 = 1.25;
 
 #[derive(Resource, Debug)]
 struct ViewmodelState {
@@ -135,6 +211,9 @@ struct ViewmodelState {
     kick_pos_v: Vec3,
     kick_rot: Vec3,
     kick_rot_v: Vec3,
+    squash: Squash,
+    squash_x: f32,
+    squash_v: f32,
     sway_pos: Vec3,
     sway_pos_v: Vec3,
     sway_rot: Vec3,
@@ -146,6 +225,10 @@ struct ViewmodelState {
     pump_reload: f32,
     last_look: Option<(f32, f32)>,
     rack_age: f32,
+    rings: RingSpin,
+    /// Idle crystal spin angle.
+    crystal_spin: f32,
+    last_shell: Option<f32>,
     flash_frames: u8,
     flash_kind: WeaponKind,
     flash_roll: f32,
@@ -153,6 +236,12 @@ struct ViewmodelState {
     /// Frames left drawing the flash invisibly small so its pipeline is ready.
     prewarm: u32,
     rng: FxRng,
+    /// This frame's part poses, for [`animate_gun_parts`].
+    shown: Option<WeaponKind>,
+    rifle_reload: Option<anim::RifleReloadPose>,
+    pump_loading: f32,
+    shard: Option<anim::ShardPose>,
+    rack: f32,
 }
 
 impl Default for ViewmodelState {
@@ -167,6 +256,9 @@ impl Default for ViewmodelState {
             kick_pos_v: Vec3::ZERO,
             kick_rot: Vec3::ZERO,
             kick_rot_v: Vec3::ZERO,
+            squash: RIFLE_SQUASH,
+            squash_x: 0.0,
+            squash_v: 0.0,
             sway_pos: Vec3::ZERO,
             sway_pos_v: Vec3::ZERO,
             sway_rot: Vec3::ZERO,
@@ -178,12 +270,91 @@ impl Default for ViewmodelState {
             pump_reload: 0.0,
             last_look: None,
             rack_age: 10.0,
+            rings: RingSpin::default(),
+            crystal_spin: 0.0,
+            last_shell: None,
             flash_frames: 0,
             flash_kind: WeaponKind::Rifle,
             flash_roll: 0.0,
             flash_scale: 1.0,
             prewarm: 120,
             rng: FxRng::new(0x51DE),
+            shown: None,
+            rifle_reload: None,
+            pump_loading: 0.0,
+            shard: None,
+            rack: 0.0,
+        }
+    }
+}
+
+/// A model part that is animated: its entity (the glTF node) and its rest
+/// transform in model space.
+#[derive(Debug, Clone, Copy)]
+struct AnimPart {
+    entity: Entity,
+    rest: Transform,
+}
+
+/// One gun's animated parts, found after its models are dressed.
+#[derive(Debug, Default, Clone)]
+struct GunParts {
+    crystal: Option<AnimPart>,
+    chamber: Option<AnimPart>,
+    rings: Option<AnimPart>,
+    pump_grip: Option<AnimPart>,
+    shard: Option<AnimPart>,
+    glove_r: Option<Entity>,
+    glove_l: Option<Entity>,
+    gun_ready: bool,
+    gloves_ready: bool,
+}
+
+/// Half the rifle's glass chamber length along the barrel (it is 0.218 m).
+const CHAMBER_HALF_LENGTH: f32 = 0.109;
+
+/// The viewmodel's Blender models: whether they are attached, their parts, and
+/// the per-gun materials that glow.
+#[derive(Resource, Debug, Default)]
+pub struct ViewmodelModels {
+    /// The model library exists, so models are expected (and Boot waits).
+    wanted: bool,
+    spawned: bool,
+    released: bool,
+    rifle: GunParts,
+    pump: GunParts,
+    rifle_crystal: Option<Handle<ToonMaterial>>,
+    pump_crystal: Option<Handle<ToonMaterial>>,
+    glass: Option<Handle<ToonMaterial>>,
+}
+
+impl ViewmodelModels {
+    fn parts(&self, kind: WeaponKind) -> &GunParts {
+        match kind {
+            WeaponKind::Rifle => &self.rifle,
+            WeaponKind::Pump => &self.pump,
+        }
+    }
+
+    fn parts_mut(&mut self, kind: WeaponKind) -> &mut GunParts {
+        match kind {
+            WeaponKind::Rifle => &mut self.rifle,
+            WeaponKind::Pump => &mut self.pump,
+        }
+    }
+
+    /// Every gun and glove model is attached and its parts found.
+    pub fn is_ready(&self) -> bool {
+        [&self.rifle, &self.pump]
+            .iter()
+            .all(|p| p.gun_ready && p.gloves_ready)
+    }
+
+    /// The material a gun's crystal glows with (once its model is dressed).
+    pub fn crystal_material(&self, kind: WeaponKind) -> Option<&Handle<ToonMaterial>> {
+        match kind {
+            WeaponKind::Rifle => self.rifle_crystal.as_ref(),
+            WeaponKind::Pump => self.pump_crystal.as_ref(),
         }
     }
 }
@@ -192,8 +363,11 @@ pub struct ViewmodelPlugin;
 
 impl Plugin for ViewmodelPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<MuzzlePoint>()
+        app.add_plugins(CrystalGlowPlugin)
+            .init_resource::<MuzzlePoint>()
             .init_resource::<ViewmodelState>()
+            .init_resource::<ViewmodelModels>()
+            .init_resource::<BootGate>()
             .configure_sets(
                 PostUpdate,
                 ViewmodelSet
@@ -201,11 +375,17 @@ impl Plugin for ViewmodelPlugin {
                     .before(TransformSystems::Propagate),
             )
             .add_systems(PostStartup, spawn_viewmodel)
-            .add_systems(Update, match_sun)
-            .add_systems(PostUpdate, animate_viewmodel.in_set(ViewmodelSet));
+            .add_systems(Update, (attach_models, configure_models).chain())
+            .add_systems(
+                PostUpdate,
+                (animate_viewmodel, animate_gun_parts)
+                    .chain()
+                    .in_set(ViewmodelSet),
+            );
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_viewmodel(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -214,19 +394,22 @@ fn spawn_viewmodel(
     target: Option<Res<WorldTarget>>,
     main: Option<Single<Entity, With<MainCamera>>>,
     tuning: Res<Tuning>,
+    library: Option<Res<ModelLibrary>>,
+    mut vm_models: ResMut<ViewmodelModels>,
+    mut gate: ResMut<BootGate>,
 ) {
     let (Some(target), Some(main)) = (target, main) else {
         return;
     };
+    if library.is_some() {
+        // The gun and glove models load with the library; Boot waits for them.
+        vm_models.wanted = true;
+        gate.hold(VIEWMODEL_GATE);
+    }
     let layer = RenderLayers::layer(VIEWMODEL_LAYER);
-    // Guns and the blueprint: toon-shaded vertex colors with ink outlines. The
-    // reticle dot and the muzzle flash stay unlit effect materials.
-    let gun_mat = toon.add(ToonMaterial::vertex_colored());
-    let glow_mat = materials.add(StandardMaterial {
-        base_color: mesh::shade(palette::GUN_ACCENT, 1.35),
-        unlit: true,
-        ..default()
-    });
+    // The blueprint tablet: toon-shaded vertex colors with ink outlines. The
+    // muzzle flash stays an unlit additive effect.
+    let tablet_mat = toon.add(ToonMaterial::vertex_colored());
     let flash_mat = materials.add(StandardMaterial {
         base_color: Color::WHITE,
         unlit: true,
@@ -254,29 +437,10 @@ fn spawn_viewmodel(
             }),
             Msaa::Sample4,
             layer.clone(),
-            AmbientLight {
-                color: palette::AMBIENT,
-                brightness: 500.0 * AMBIENT_GAIN,
-                ..default()
-            },
             Transform::IDENTITY,
             ChildOf(*main),
         ))
         .id();
-    for index in 0..MIRRORED_LIGHTS {
-        commands.spawn((
-            Name::new("Viewmodel light"),
-            ViewmodelLight(index),
-            DirectionalLight {
-                illuminance: if index == 0 { 9000.0 } else { 0.0 },
-                color: palette::SUNLIGHT,
-                shadow_maps_enabled: false,
-                ..default()
-            },
-            Transform::from_xyz(20.0, 30.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
-            layer.clone(),
-        ));
-    }
 
     let rig = commands
         .spawn((
@@ -299,207 +463,262 @@ fn spawn_viewmodel(
             ))
             .id()
     };
-    let rifle_item = item(&mut commands, Item::Rifle);
-    let pump_item = item(&mut commands, Item::Pump);
-    let blueprint_item = item(&mut commands, Item::Blueprint);
-
-    let part = |commands: &mut Commands,
-                parent: Entity,
-                mesh: Handle<Mesh>,
-                material: &dyn VmMaterial,
-                transform: Transform,
-                role: Option<VmPart>,
-                visible: bool| {
-        let mut e = commands.spawn((
-            Mesh3d(mesh),
-            transform,
-            if visible {
-                Visibility::Inherited
-            } else {
-                Visibility::Hidden
-            },
+    let flash = meshes.add(models::muzzle_flash().build());
+    for (it, kind) in [
+        (Item::Rifle, WeaponKind::Rifle),
+        (Item::Pump, WeaponKind::Pump),
+    ] {
+        let parent = item(&mut commands, it);
+        let kick = commands
+            .spawn((
+                Name::new(format!("Viewmodel {kind:?} kick")),
+                VmPart::Kick(kind),
+                Transform::IDENTITY,
+                Visibility::Inherited,
+                ChildOf(parent),
+            ))
+            .id();
+        commands.spawn((
+            Name::new(format!("Viewmodel {kind:?} flash")),
+            VmPart::Flash(kind),
+            Mesh3d(flash.clone()),
+            MeshMaterial3d(flash_mat.clone()),
+            Transform::from_translation(gun_spec(kind).muzzle),
+            Visibility::Hidden,
             layer.clone(),
             NotShadowCaster,
             NotShadowReceiver,
-            ChildOf(parent),
+            ChildOf(kick),
         ));
-        material.insert_into(&mut e);
-        if let Some(role) = role {
-            e.insert(role);
-        }
+    }
+
+    let blueprint_item = item(&mut commands, Item::Blueprint);
+    let mut tablet_part = |commands: &mut Commands, mesh: Mesh, transform: Transform| {
+        commands
+            .spawn((
+                Mesh3d(meshes.add(with_outline_normals(mesh))),
+                MeshMaterial3d(tablet_mat.clone()),
+                Outline::default(),
+                transform,
+                Visibility::Inherited,
+                layer.clone(),
+                NotShadowCaster,
+                NotShadowReceiver,
+                ChildOf(blueprint_item),
+            ))
+            .id()
     };
-
-    let flash = meshes.add(models::muzzle_flash().build());
-
-    let rifle = models::rifle();
-    let body = meshes.add(with_outline_normals(rifle.body.build()));
-    part(
+    tablet_part(
         &mut commands,
-        rifle_item,
-        body,
-        &gun_mat,
+        models::blueprint().build(),
         Transform::IDENTITY,
-        None,
-        true,
-    );
-    let mag = meshes.add(with_outline_normals(rifle.mag.build()));
-    part(
-        &mut commands,
-        rifle_item,
-        mag,
-        &gun_mat,
-        Transform::from_translation(RIFLE_MAG_SEAT)
-            .with_rotation(Quat::from_rotation_x(RIFLE_MAG_TILT)),
-        Some(VmPart::RifleMag),
-        true,
-    );
-    let dot = meshes.add(rifle.dot.build());
-    part(
-        &mut commands,
-        rifle_item,
-        dot,
-        &glow_mat,
-        Transform::from_translation(RIFLE.sight),
-        None,
-        true,
-    );
-    part(
-        &mut commands,
-        rifle_item,
-        flash.clone(),
-        &flash_mat,
-        Transform::from_translation(RIFLE.muzzle),
-        Some(VmPart::Flash(WeaponKind::Rifle)),
-        false,
-    );
-
-    let pump = models::pump();
-    let body = meshes.add(with_outline_normals(pump.body.build()));
-    part(
-        &mut commands,
-        pump_item,
-        body,
-        &gun_mat,
-        Transform::IDENTITY,
-        None,
-        true,
-    );
-    let forend = meshes.add(with_outline_normals(pump.forend.build()));
-    part(
-        &mut commands,
-        pump_item,
-        forend,
-        &gun_mat,
-        Transform::from_translation(PUMP_FOREND_REST),
-        Some(VmPart::PumpForend),
-        true,
-    );
-    let shell = meshes.add(with_outline_normals(pump.shell.build()));
-    part(
-        &mut commands,
-        pump_item,
-        shell,
-        &gun_mat,
-        Transform::IDENTITY,
-        Some(VmPart::PumpShell),
-        false,
-    );
-    part(
-        &mut commands,
-        pump_item,
-        flash,
-        &flash_mat,
-        Transform::from_translation(PUMP.muzzle),
-        Some(VmPart::Flash(WeaponKind::Pump)),
-        false,
-    );
-
-    let tablet = meshes.add(with_outline_normals(models::blueprint().build()));
-    part(
-        &mut commands,
-        blueprint_item,
-        tablet,
-        &gun_mat,
-        Transform::IDENTITY,
-        None,
-        true,
     );
     for kind in [PieceKind::Wall, PieceKind::Floor, PieceKind::Ramp] {
-        let mini = meshes.add(with_outline_normals(models::mini_piece(kind).build()));
-        part(
+        let mini = tablet_part(
             &mut commands,
-            blueprint_item,
-            mini,
-            &gun_mat,
+            models::mini_piece(kind).build(),
             Transform::from_xyz(-0.01, 0.0036, 0.0),
-            Some(VmPart::Mini(kind)),
-            false,
         );
+        commands
+            .entity(mini)
+            .insert((VmPart::Mini(kind), Visibility::Hidden));
     }
 }
 
-/// A viewmodel part's material: toon parts also get an ink outline (on the
-/// viewmodel layer, like the part).
-trait VmMaterial {
-    fn insert_into(&self, entity: &mut EntityCommands);
-}
-
-impl VmMaterial for Handle<ToonMaterial> {
-    fn insert_into(&self, entity: &mut EntityCommands) {
-        entity.insert((MeshMaterial3d(self.clone()), Outline::default()));
-    }
-}
-
-impl VmMaterial for Handle<StandardMaterial> {
-    fn insert_into(&self, entity: &mut EntityCommands) {
-        entity.insert(MeshMaterial3d(self.clone()));
-    }
-}
-
-/// Keeps the viewmodel lights, ambient and tonemapping matched to the world's,
-/// so the guns sit in the same light as everything else.
-fn match_sun(
-    world_lights: Query<(&DirectionalLight, &GlobalTransform), Without<ViewmodelLight>>,
-    mut vm_lights: Query<(&ViewmodelLight, &mut DirectionalLight, &mut Transform)>,
-    global: Res<GlobalAmbientLight>,
-    ambient: Option<Single<&mut AmbientLight, With<ViewmodelCamera>>>,
-    main_tonemapping: Option<Single<&Tonemapping, (With<MainCamera>, Without<ViewmodelCamera>)>>,
-    vm_tonemapping: Option<Single<&mut Tonemapping, With<ViewmodelCamera>>>,
+/// Once the model library has loaded, puts the gun models on their kick nodes
+/// and a pair of gloves on each gun's item.
+fn attach_models(
+    mut commands: Commands,
+    library: Option<Res<ModelLibrary>>,
+    mut vm_models: ResMut<ViewmodelModels>,
+    nodes: Query<(Entity, &VmPart, &ChildOf)>,
+    mut gate: ResMut<BootGate>,
 ) {
-    let mut lights: Vec<_> = world_lights.iter().collect();
-    lights.sort_by(|a, b| b.0.illuminance.total_cmp(&a.0.illuminance));
-    for (index, mut light, mut tf) in &mut vm_lights {
-        let (illuminance, color, rotation) = match lights.get(index.0) {
-            Some((src, src_tf)) => (src.illuminance * LIGHT_GAIN, src.color, src_tf.rotation()),
-            None => (0.0, light.color, tf.rotation),
+    let Some(library) = library else { return };
+    if !vm_models.wanted || vm_models.spawned || !library.is_ready() {
+        return;
+    }
+    vm_models.spawned = true;
+    let mut missing = Vec::new();
+    for kind in [WeaponKind::Rifle, WeaponKind::Pump] {
+        let Some((kick, item)) = nodes.iter().find_map(|(e, part, child_of)| {
+            (*part == VmPart::Kick(kind)).then_some((e, child_of.parent()))
+        }) else {
+            continue;
         };
-        if tf.rotation != rotation {
-            tf.rotation = rotation;
-        }
-        if light.illuminance != illuminance || light.color != color {
-            light.illuminance = illuminance;
-            light.color = color;
+        for (name, parent, role) in [
+            (gun_model(kind), kick, VmModel::Gun(kind)),
+            (GLOVES_MODEL, item, VmModel::Gloves(kind)),
+        ] {
+            let failed = library.failed().iter().any(|f| f == name);
+            match spawn_model(&mut commands, &library, name, Transform::IDENTITY) {
+                Some(root) if !failed => {
+                    commands.entity(root).insert((
+                        role,
+                        ModelLook::Viewmodel,
+                        Outline::default(),
+                        ChildOf(parent),
+                    ));
+                }
+                _ => missing.push(name),
+            }
         }
     }
-    if let Some(mut ambient) = ambient {
-        let brightness = global.brightness * AMBIENT_GAIN;
-        if ambient.brightness != brightness || ambient.color != global.color {
-            ambient.brightness = brightness;
-            ambient.color = global.color;
-        }
-    }
-    if let (Some(main), Some(mut vm)) = (main_tonemapping, vm_tonemapping)
-        && **vm != **main
-    {
-        **vm = **main;
+    if !missing.is_empty() {
+        error!("viewmodel: models missing: {missing:?}; the guns will be incomplete");
+        vm_models.released = true;
+        gate.release(VIEWMODEL_GATE);
     }
 }
 
-fn spec_of(item: Item) -> GunSpec {
+/// Maps a frame in model space (a sidecar attach point, or a part's pose) to
+/// a glTF part node's local transform.
+///
+/// The node's glTF parent is the asset's root node (at the origin), under the
+/// model root's forward-fix node, a half turn `F` about +Y. A node frame `N`
+/// sits at `F·N` in model space, but its mesh is stored in glTF axes, which
+/// are the model axes turned by `F` too, so the frame the sidecar describes is
+/// `F·N·F`. The half turn is its own inverse, so both directions are the same
+/// conjugation.
+pub fn model_to_node(t: Transform) -> Transform {
+    let fix = Transform::from_rotation(MODEL_FORWARD_FIX);
+    fix * t * fix
+}
+
+/// The inverse of [`model_to_node`] (the same conjugation).
+pub fn node_to_model(t: Transform) -> Transform {
+    model_to_node(t)
+}
+
+/// After the look has dressed a viewmodel model: finds its animated parts,
+/// gives the crystals and the glass their own materials, puts the gloves on
+/// their grips, and (once everything is in) registers warm-up draws and lets
+/// Boot go.
+#[allow(clippy::too_many_arguments)]
+fn configure_models(
+    mut dressed: MessageReader<ModelDressed>,
+    roles: Query<&VmModel>,
+    parts: ModelParts,
+    children: Query<&Children>,
+    mut transforms: Query<&mut Transform>,
+    // A part's own meshes, not the ink hulls the look hangs under them.
+    mesh_entities: Query<&Mesh3d, Without<OutlineHull>>,
+    mut toon: ResMut<Assets<ToonMaterial>>,
+    mut vm_models: ResMut<ViewmodelModels>,
+    mut commands: Commands,
+    mut warmup: Warmup,
+) {
+    let layer = RenderLayers::layer(VIEWMODEL_LAYER);
+    for event in dressed.read() {
+        let Ok(&role) = roles.get(event.root) else {
+            continue;
+        };
+        let meshes_below = |node: Entity| -> Vec<Entity> {
+            std::iter::once(node)
+                .chain(children.iter_descendants(node))
+                .filter(|e| mesh_entities.contains(*e))
+                .collect()
+        };
+        match role {
+            VmModel::Gun(kind) => {
+                let anim_part = |name: &str| {
+                    parts.find(event.root, name).map(|entity| AnimPart {
+                        entity,
+                        rest: node_to_model(transforms.get(entity).copied().unwrap_or_default()),
+                    })
+                };
+                let mut found = GunParts {
+                    crystal: anim_part("Crystal"),
+                    shard: anim_part("Shard"),
+                    rings: anim_part("Rings"),
+                    pump_grip: anim_part("PumpGrip"),
+                    chamber: anim_part("Chamber"),
+                    ..default()
+                };
+                let color = match kind {
+                    WeaponKind::Rifle => cartoon::CRYSTAL_BLUE,
+                    WeaponKind::Pump => cartoon::CRYSTAL_VIOLET,
+                };
+                let crystal_mat =
+                    toon.add(ToonMaterial::vertex_colored().with_emissive(color, CRYSTAL_EMISSIVE));
+                for part in [found.crystal, found.shard].into_iter().flatten() {
+                    for mesh in meshes_below(part.entity) {
+                        commands
+                            .entity(mesh)
+                            .insert(MeshMaterial3d(crystal_mat.clone()));
+                    }
+                }
+                if let Some(crystal) = found.crystal
+                    && let Some(m) = meshes_below(crystal.entity)
+                        .first()
+                        .and_then(|e| mesh_entities.get(*e).ok())
+                {
+                    warmup.add_with(
+                        m.0.clone(),
+                        crystal_mat.clone(),
+                        (layer.clone(), Outline::default()),
+                    );
+                }
+                if let Some(shard) = found.shard {
+                    commands.entity(shard.entity).insert(Visibility::Hidden);
+                }
+                if let Some(chamber) = found.chamber {
+                    let glass = toon.add(
+                        ToonMaterial::new(cartoon::GLASS_CYAN.with_alpha(GLASS_ALPHA))
+                            .with_emissive(cartoon::CRYSTAL_BLUE, GLASS_EMISSIVE)
+                            .with_alpha(AlphaMode::Blend),
+                    );
+                    for mesh in meshes_below(chamber.entity) {
+                        // Glass is see-through: an ink hull behind it would
+                        // show through as a dark tube.
+                        commands
+                            .entity(mesh)
+                            .insert((MeshMaterial3d(glass.clone()), NoOutline))
+                            .remove::<(Outline, InheritedOutline)>();
+                        if let Ok(m) = mesh_entities.get(mesh) {
+                            warmup.add_with(m.0.clone(), glass.clone(), layer.clone());
+                        }
+                    }
+                    vm_models.glass = Some(glass);
+                }
+                match kind {
+                    WeaponKind::Rifle => vm_models.rifle_crystal = Some(crystal_mat),
+                    WeaponKind::Pump => vm_models.pump_crystal = Some(crystal_mat),
+                }
+                let slot = vm_models.parts_mut(kind);
+                found.gun_ready = true;
+                found.glove_r = slot.glove_r;
+                found.glove_l = slot.glove_l;
+                found.gloves_ready = slot.gloves_ready;
+                *slot = found;
+            }
+            VmModel::Gloves(kind) => {
+                let spec = gun_spec(kind);
+                let slot = vm_models.parts_mut(kind);
+                slot.glove_r = parts.find(event.root, "GloveR");
+                slot.glove_l = parts.find(event.root, "GloveL");
+                for (glove, grip) in [(slot.glove_r, spec.grip_r), (slot.glove_l, spec.grip_l)] {
+                    if let Some(glove) = glove
+                        && let Ok(mut t) = transforms.get_mut(glove)
+                    {
+                        *t = model_to_node(grip);
+                    }
+                }
+                slot.gloves_ready = true;
+            }
+        }
+    }
+    if vm_models.wanted && !vm_models.released && vm_models.is_ready() {
+        vm_models.released = true;
+        warmup.gate().release(VIEWMODEL_GATE);
+    }
+}
+
+fn spec_of(item: Item) -> &'static GunSpec {
     match item {
-        Item::Rifle => RIFLE,
-        Item::Pump => PUMP,
-        Item::Blueprint => BLUEPRINT,
+        Item::Rifle => &RIFLE,
+        Item::Pump => &PUMP,
+        Item::Blueprint => &BLUEPRINT,
     }
 }
 
@@ -520,6 +739,57 @@ fn flag(b: bool) -> f32 {
     if b { 1.0 } else { 0.0 }
 }
 
+/// Seconds since the rifle's last reload completed (for the charge-up).
+#[derive(Resource, Debug)]
+struct GlowTracker {
+    was_reloading: bool,
+    since_reload: f32,
+}
+
+impl Default for GlowTracker {
+    fn default() -> Self {
+        Self {
+            was_reloading: false,
+            since_reload: 1.0e6,
+        }
+    }
+}
+
+fn track_crystal_glow(
+    time: Res<Time>,
+    tuning: Res<Tuning>,
+    player: Option<Single<&Loadout, With<Player>>>,
+    mut tracker: ResMut<GlowTracker>,
+    mut glow: ResMut<CrystalGlow>,
+) {
+    let Some(loadout) = player else { return };
+    let combat = &tuning.combat;
+    let reloading = loadout.rifle.is_reloading();
+    if tracker.was_reloading && !reloading {
+        tracker.since_reload = 0.0;
+    } else {
+        tracker.since_reload = (tracker.since_reload + time.delta_secs()).min(1.0e6);
+    }
+    tracker.was_reloading = reloading;
+    let next = CrystalGlow {
+        rifle: rifle_crystal_glow(
+            loadout.rifle.ammo,
+            combat.rifle.magazine,
+            loadout.rifle.reload_progress(&combat.rifle),
+            tracker.since_reload,
+        ),
+        pump: pump_crystal_glow(
+            loadout.pump.ammo,
+            combat.pump.magazine,
+            loadout.pump.reload_progress(&combat.pump),
+        ),
+    };
+    if *glow != next {
+        *glow = next;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn animate_viewmodel(
     time: Res<Time>,
     tuning: Res<Tuning>,
@@ -553,6 +823,7 @@ fn animate_viewmodel(
             }
         }
         muzzle.0 = None;
+        state.shown = None;
         shots.clear();
         cues.clear();
         return;
@@ -586,11 +857,7 @@ fn animate_viewmodel(
     };
     let shown = Item::of(shown_tool);
     let spec = spec_of(shown);
-    let gun = match shown {
-        Item::Rifle => Some(WeaponKind::Rifle),
-        Item::Pump => Some(WeaponKind::Pump),
-        Item::Blueprint => None,
-    };
+    let gun = shown.gun();
 
     // ADS eases in over ~0.12 s.
     let ads_target = flag(ads.0 && !tool.is_build());
@@ -598,22 +865,26 @@ fn animate_viewmodel(
     let ads_e = smoothstep(st.ads);
     let calm = 1.0 - 0.85 * ads_e;
 
-    // Shots: spring kick, muzzle flash, pump rack.
+    // Shots: spring kick, squash, muzzle flash, pump rack.
     for shot in shots.read() {
         if shot.shooter != me {
             continue;
         }
         let rng = &mut st.rng;
-        let (spring, pos_peak, rot_peak) = match shot.weapon {
+        let (spring, pos_peak, rot_peak, squash, squash_peak) = match shot.weapon {
             WeaponKind::Rifle => (
                 RIFLE_KICK,
                 Vec3::new(rng.range(-0.002, 0.002), 0.003, 0.018),
                 Vec3::new(0.030, rng.range(-0.008, 0.008), rng.range(-0.012, 0.012)),
+                RIFLE_SQUASH,
+                RIFLE_SQUASH_PEAK,
             ),
             WeaponKind::Pump => (
                 PUMP_KICK,
                 Vec3::new(0.0, 0.010, 0.075),
                 Vec3::new(0.19, rng.range(-0.02, 0.02), rng.range(-0.05, -0.02)),
+                PUMP_SQUASH,
+                PUMP_SQUASH_PEAK,
             ),
         };
         if shot.weapon == WeaponKind::Pump {
@@ -632,6 +903,9 @@ fn animate_viewmodel(
             spring.kick_for_peak(rot_peak.y),
             spring.kick_for_peak(rot_peak.z),
         ) * rot_scale;
+        // In ADS the squash is gentler, so the sights stay readable.
+        st.squash = squash;
+        st.squash_v += squash.kick_for_peak(squash_peak * (1.0 - 0.5 * ads_e));
         st.flash_frames = 2;
         st.flash_kind = shot.weapon;
         st.flash_roll = st.rng.range(0.0, std::f32::consts::TAU);
@@ -653,6 +927,8 @@ fn animate_viewmodel(
     let kick = st.kick;
     kick.step(&mut st.kick_pos, &mut st.kick_pos_v, Vec3::ZERO, dt);
     kick.step(&mut st.kick_rot, &mut st.kick_rot_v, Vec3::ZERO, dt);
+    let squash = st.squash;
+    squash.step(&mut st.squash_x, &mut st.squash_v, dt);
 
     // Sway from look and movement.
     let (dyaw, dpitch) = match st.last_look {
@@ -716,49 +992,60 @@ fn animate_viewmodel(
     st.sprint = approach(st.sprint, flag(sprint_target), dt / 0.16);
     st.slide = approach(st.slide, flag(sliding), dt / 0.12);
 
-    // Reloads and the pump rack.
+    // Reloads, the pump rack and the rings.
     let mut reload = PoseOffset::default();
-    let mut mag = PoseOffset::default();
-    let mut mag_visible = true;
-    let mut shell = pump_shell(0.0);
     let pump_reloading = loadout.pump.is_reloading() && shown == Item::Pump;
     st.pump_reload = approach(
         st.pump_reload,
         flag(pump_reloading),
         dt / if pump_reloading { 0.12 } else { 0.16 },
     );
+    let prev_rack_age = st.rack_age;
     st.rack_age += dt;
-    let rack = if shown == Item::Pump {
+    if prev_rack_age < RACK_START && st.rack_age >= RACK_START {
+        st.rings.kick(RING_RACK_KICK);
+    }
+    let shell = loadout.pump.reload_progress(&combat.pump);
+    if let (Some(p), Some(last)) = (shell, st.last_shell)
+        && last < SHARD_MERGED
+        && p >= SHARD_MERGED
+    {
+        st.rings.kick(RING_SHARD_KICK);
+    }
+    st.last_shell = shell;
+    st.rings.step(dt);
+    st.crystal_spin = (st.crystal_spin + CRYSTAL_IDLE_SPIN * dt) % std::f32::consts::TAU;
+    st.rack = if shown == Item::Pump {
         pump_rack(st.rack_age)
     } else {
         0.0
     };
+    st.rifle_reload = None;
+    st.shard = None;
     match shown {
         Item::Rifle => {
             if let Some(p) = loadout.rifle.reload_progress(&combat.rifle) {
                 let pose = rifle_reload(p);
                 reload = pose.gun;
-                mag = pose.mag;
-                mag_visible = pose.mag_visible;
+                st.rifle_reload = Some(pose);
             }
         }
         Item::Pump => {
             reload = PUMP_RELOAD_STANCE.scaled(smoothstep(st.pump_reload));
-            if pump_reloading && let Some(p) = loadout.pump.reload_progress(&combat.pump) {
-                shell = pump_shell(p);
-                reload.pos.z += shell.gun_push;
-            } else {
-                shell.visible = false;
+            if pump_reloading && let Some(p) = shell {
+                st.shard = Some(pump_shard(p));
             }
             reload = reload
                 + PoseOffset {
                     pos: Vec3::new(0.0, -0.006, 0.02),
                     euler: Vec3::new(0.06, 0.03, -0.09),
                 }
-                .scaled(rack);
+                .scaled(st.rack);
         }
         Item::Blueprint => {}
     }
+    st.pump_loading = smoothstep(st.pump_reload);
+    st.shown = gun;
 
     // Compose the rig pose.
     let hip = PoseOffset {
@@ -768,7 +1055,7 @@ fn animate_viewmodel(
     let base = if gun.is_some() {
         hip.scaled(1.0 - ads_e)
             + PoseOffset {
-                pos: ads_translation(&spec),
+                pos: ads_translation(spec),
                 euler: Vec3::ZERO,
             }
             .scaled(ads_e)
@@ -787,7 +1074,7 @@ fn animate_viewmodel(
         + bob
         + SPRINT_POSE.scaled(smoothstep(st.sprint))
         + SLIDE_POSE.scaled(smoothstep(st.slide) * calm)
-        + reload
+        + reload.scaled(1.0 - 0.5 * ads_e)
         + kick_pose
         + LOWERED.scaled(lowered);
     let rig_tf = Transform {
@@ -806,9 +1093,10 @@ fn animate_viewmodel(
     }
 
     // Where the muzzle appears on screen, placed in the world at the same depth.
+    let squash_tf = squash_transform(st.squash_x, spec.grip_r.translation);
     muzzle.0 = match (gun, main_camera) {
         (Some(_), Some(cam)) if lowered < 0.5 => {
-            let m = rig_tf.transform_point(spec.muzzle);
+            let m = rig_tf.transform_point(squash_tf.transform_point(spec.muzzle));
             let s = (fov.0 * 0.5).tan() / (fov_vm * 0.5).tan();
             Some(cam.transform_point(Vec3::new(m.x * s, m.y * s, m.z)))
         }
@@ -834,19 +1122,11 @@ fn animate_viewmodel(
                 true
             }
             VmPart::Item(it) => it == shown,
-            VmPart::RifleMag => {
-                tf.translation = RIFLE_MAG_SEAT + mag.pos;
-                tf.rotation = euler(Vec3::new(RIFLE_MAG_TILT, 0.0, 0.0) + mag.euler);
-                mag_visible
-            }
-            VmPart::PumpForend => {
-                tf.translation = PUMP_FOREND_REST + forend_offset(rack);
+            VmPart::Kick(kind) => {
+                if Some(kind) == gun {
+                    tf.set_if_neq(squash_tf);
+                }
                 true
-            }
-            VmPart::PumpShell => {
-                tf.translation = shell.pos;
-                tf.rotation = Quat::from_rotation_x(shell.tilt);
-                shell.visible
             }
             VmPart::Flash(kind) => {
                 let on = flash_on && kind == st.flash_kind;
@@ -869,4 +1149,129 @@ fn animate_viewmodel(
     }
     st.flash_frames = st.flash_frames.saturating_sub(1);
     st.prewarm = st.prewarm.saturating_sub(1);
+}
+
+/// Poses the shown gun's named parts and gloves, and sets the crystals' glow.
+fn animate_gun_parts(
+    state: Res<ViewmodelState>,
+    vm_models: Res<ViewmodelModels>,
+    glow: Res<CrystalGlow>,
+    mut toon: ResMut<Assets<ToonMaterial>>,
+    mut transforms: Query<&mut Transform, (Without<VmPart>, Without<MainCamera>)>,
+    mut visibility: Query<&mut Visibility, Without<VmPart>>,
+) {
+    // Crystal glow, written only when it changes.
+    for (handle, level, color) in [
+        (&vm_models.rifle_crystal, glow.rifle, cartoon::CRYSTAL_BLUE),
+        (&vm_models.pump_crystal, glow.pump, cartoon::CRYSTAL_VIOLET),
+    ] {
+        set_emissive(&mut toon, handle.as_ref(), color, level * CRYSTAL_EMISSIVE);
+    }
+    set_emissive(
+        &mut toon,
+        vm_models.glass.as_ref(),
+        cartoon::CRYSTAL_BLUE,
+        glow.rifle * GLASS_EMISSIVE,
+    );
+
+    let Some(kind) = state.shown else { return };
+    let spec = gun_spec(kind);
+    let parts = vm_models.parts(kind);
+    let mut place = |part: Option<AnimPart>, model: Transform| {
+        if let Some(part) = part
+            && let Ok(mut t) = transforms.get_mut(part.entity)
+        {
+            t.set_if_neq(model_to_node(model));
+        }
+    };
+    let mut show = |part: Option<AnimPart>, visible: bool| {
+        if let Some(part) = part
+            && let Ok(mut v) = visibility.get_mut(part.entity)
+        {
+            v.set_if_neq(if visible {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            });
+        }
+    };
+    let idle = CrystalPose {
+        spin: state.crystal_spin,
+        ..CrystalPose::SEATED
+    };
+    let squash = squash_transform(state.squash_x, spec.grip_r.translation);
+    let mut glove_l = spec.grip_l;
+    match kind {
+        WeaponKind::Rifle => {
+            let (crystal, open) = match state.rifle_reload {
+                Some(r) => (r.crystal, r.chamber_open),
+                None => (idle, 0.0),
+            };
+            place(parts.crystal, crystal.transform(spec.socket));
+            show(parts.crystal, crystal.visible());
+            // The left glove fetches the fresh crystal and carries it in.
+            if let Some(r) = state.rifle_reload
+                && r.hand > 0.0
+            {
+                glove_l = hand_hold(r.hand, glove_l, spec.socket + r.hand_at);
+            }
+            if let Some(chamber) = parts.chamber {
+                place(
+                    Some(chamber),
+                    chamber_transform(chamber.rest, CHAMBER_HALF_LENGTH, open),
+                );
+            }
+        }
+        WeaponKind::Pump => {
+            place(parts.crystal, idle.transform(spec.socket));
+            if let Some(rings) = parts.rings {
+                place(Some(rings), state.rings.transform(rings.rest));
+            }
+            let grip = pump_grip_offset(state.rack);
+            if let Some(g) = parts.pump_grip {
+                place(Some(g), g.rest.with_translation(g.rest.translation + grip));
+            }
+            glove_l.translation += grip;
+            // While loading, the left glove carries each shard down through
+            // the rings.
+            if state.pump_loading > 0.0 {
+                let at = state.shard.map_or(SHARD_START, |s| s.hand_at);
+                glove_l = hand_hold(state.pump_loading, glove_l, spec.socket + at);
+            }
+            let shard = state.shard.map(|s| s.crystal);
+            if let Some(pose) = shard {
+                place(parts.shard, pose.transform(spec.socket));
+            }
+            show(parts.shard, shard.is_some_and(|p| p.visible()));
+        }
+    }
+    // The gloves stay unsquashed, but the left one follows its grip as the gun
+    // squashes into the right hand.
+    glove_l.translation = squash.transform_point(glove_l.translation);
+    for (glove, grip) in [(parts.glove_r, spec.grip_r), (parts.glove_l, glove_l)] {
+        if let Some(glove) = glove
+            && let Ok(mut t) = transforms.get_mut(glove)
+        {
+            t.set_if_neq(model_to_node(grip));
+        }
+    }
+}
+
+fn set_emissive(
+    toon: &mut Assets<ToonMaterial>,
+    handle: Option<&Handle<ToonMaterial>>,
+    color: Color,
+    strength: f32,
+) {
+    let Some(handle) = handle else { return };
+    let unchanged = toon
+        .get(handle)
+        .is_some_and(|m| (m.emissive_strength - strength).abs() < 1e-3 && m.emissive == color);
+    if unchanged {
+        return;
+    }
+    if let Some(mut m) = toon.get_mut(handle) {
+        m.emissive = color;
+        m.emissive_strength = strength;
+    }
 }

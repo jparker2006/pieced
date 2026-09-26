@@ -1,0 +1,249 @@
+{
+  "name": "pump",
+  "kind": "gun",
+  "source": "art/blender/assets/guns.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 5604,
+  "triangle_budget": 6000,
+  "bounds": {
+    "min": [
+      -0.09,
+      0.0,
+      -0.62
+    ],
+    "max": [
+      0.09,
+      0.3847,
+      0.355
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "pump",
+      "bounds": {
+        "min": [
+          -0.0601,
+          0.0,
+          -0.504
+        ],
+        "max": [
+          0.0601,
+          0.3847,
+          0.1405
+        ]
+      },
+      "triangles": 2544,
+      "colors": [
+        "brass",
+        "gun_iron",
+        "stock"
+      ]
+    },
+    "Crystal": {
+      "parent": "pump",
+      "bounds": {
+        "min": [
+          -0.0225,
+          0.2372,
+          -0.087
+        ],
+        "max": [
+          0.0225,
+          0.2892,
+          0.063
+        ]
+      },
+      "triangles": 24,
+      "colors": [
+        "crystal_violet",
+        "glass_violet"
+      ]
+    },
+    "Muzzle": {
+      "parent": "pump",
+      "bounds": {
+        "min": [
+          -0.09,
+          0.1738,
+          -0.62
+        ],
+        "max": [
+          0.09,
+          0.3525,
+          -0.5
+        ]
+      },
+      "triangles": 752,
+      "colors": [
+        "brass",
+        "crystal_violet",
+        "gun_iron"
+      ]
+    },
+    "PumpGrip": {
+      "parent": "pump",
+      "bounds": {
+        "min": [
+          -0.043,
+          0.1772,
+          -0.427
+        ],
+        "max": [
+          0.043,
+          0.2872,
+          -0.233
+        ]
+      },
+      "triangles": 956,
+      "colors": [
+        "brass",
+        "stock"
+      ]
+    },
+    "Rings": {
+      "parent": "pump",
+      "bounds": {
+        "min": [
+          -0.0565,
+          0.207,
+          -0.0877
+        ],
+        "max": [
+          0.0565,
+          0.3193,
+          0.0637
+        ]
+      },
+      "triangles": 720,
+      "colors": [
+        "gold_rings"
+      ]
+    },
+    "Shard": {
+      "parent": "pump",
+      "bounds": {
+        "min": [
+          -0.0105,
+          0.2541,
+          -0.031
+        ],
+        "max": [
+          0.0105,
+          0.2723,
+          0.007
+        ]
+      },
+      "triangles": 24,
+      "colors": [
+        "crystal_violet",
+        "glass_violet"
+      ]
+    },
+    "Stock": {
+      "parent": "pump",
+      "bounds": {
+        "min": [
+          -0.044,
+          0.1392,
+          0.1
+        ],
+        "max": [
+          0.044,
+          0.3204,
+          0.355
+        ]
+      },
+      "triangles": 584,
+      "colors": [
+        "gun_iron",
+        "stock"
+      ]
+    }
+  },
+  "attach": {
+    "CrystalSocket": {
+      "parent": "pump",
+      "position": [
+        0.0,
+        0.2632,
+        -0.012
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "GripL": {
+      "parent": "PumpGrip",
+      "position": [
+        0.0,
+        0.2162,
+        -0.33
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "GripR": {
+      "parent": "pump",
+      "position": [
+        0.0,
+        0.0763,
+        0.0883
+      ],
+      "rotation": [
+        -0.156434,
+        0.0,
+        0.0,
+        0.987688
+      ]
+    },
+    "MuzzleTip": {
+      "parent": "pump",
+      "position": [
+        0.0,
+        0.2632,
+        -0.62
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "Sight": {
+      "parent": "pump",
+      "position": [
+        0.0,
+        0.3752,
+        0.089
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "SightFront": {
+      "parent": "pump",
+      "position": [
+        0.0,
+        0.3752,
+        -0.47
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

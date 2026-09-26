@@ -8,6 +8,18 @@
     "file": "brick_chunk.glb"
   },
   {
+    "name": "far_island_a",
+    "file": "far_island_a.glb"
+  },
+  {
+    "name": "far_island_b",
+    "file": "far_island_b.glb"
+  },
+  {
+    "name": "far_island_c",
+    "file": "far_island_c.glb"
+  },
+  {
     "name": "floor_plank",
     "file": "floor_plank.glb"
   },
@@ -20,8 +32,24 @@
     "file": "floor_plank_crack2.glb"
   },
   {
+    "name": "gloves",
+    "file": "gloves.glb"
+  },
+  {
+    "name": "knight",
+    "file": "knight.glb"
+  },
+  {
+    "name": "planet",
+    "file": "planet.glb"
+  },
+  {
     "name": "plank_splinter",
     "file": "plank_splinter.glb"
+  },
+  {
+    "name": "pump",
+    "file": "pump.glb"
   },
   {
     "name": "ramp_plank",
@@ -36,12 +64,24 @@
     "file": "ramp_plank_crack2.glb"
   },
   {
+    "name": "rifle",
+    "file": "rifle.glb"
+  },
+  {
     "name": "rock_a",
     "file": "rock_a.glb"
   },
   {
     "name": "rock_b",
     "file": "rock_b.glb"
+  },
+  {
+    "name": "ship",
+    "file": "ship.glb"
+  },
+  {
+    "name": "station",
+    "file": "station.glb"
   },
   {
     "name": "stump_a",

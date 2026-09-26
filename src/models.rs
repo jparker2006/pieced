@@ -72,10 +72,14 @@ pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "floor_plank",
     "floor_plank_crack1",
     "floor_plank_crack2",
+    "gloves",
+    "knight",
     "plank_splinter",
+    "pump",
     "ramp_plank",
     "ramp_plank_crack1",
     "ramp_plank_crack2",
+    "rifle",
     "rock_a",
     "rock_b",
     "stump_a",
@@ -83,6 +87,13 @@ pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "wall_brick",
     "wall_brick_crack1",
     "wall_brick_crack2",
+    // The far view (src/far, art/blender/assets/far.py).
+    "far_island_a",
+    "far_island_b",
+    "far_island_c",
+    "planet",
+    "ship",
+    "station",
 ];
 
 /// `assets/models/manifest.json`, as compiled in.

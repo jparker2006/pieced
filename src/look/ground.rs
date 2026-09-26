@@ -66,16 +66,16 @@ impl Default for GroundMaterial {
         Self {
             base_color: Color::WHITE,
             grid_color: crate::palette::cartoon::GRID_LINE,
-            grid_strength: 0.5,
-            glow_strength: 0.13,
+            grid_strength: 0.26,
+            glow_strength: 0.08,
             cell: CELL_SIZE,
             origin: Vec2::splat(-ARENA_HALF),
             grid_min: Vec2::splat(-ARENA_HALF),
             grid_max: Vec2::splat(ARENA_HALF),
-            line_half_width: 0.024,
-            glow_width: 0.16,
-            fade_start: 22.0,
-            fade_end: 52.0,
+            line_half_width: 0.016,
+            glow_width: 0.12,
+            fade_start: 12.0,
+            fade_end: 40.0,
             lighting: ToonLight::default(),
         }
     }
