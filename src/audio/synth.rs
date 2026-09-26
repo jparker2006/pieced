@@ -1,11 +1,24 @@
-//! A tiny deterministic synthesizer: noise, oscillators, filters, envelopes and a
-//! 16-bit PCM WAV encoder. Every sound in the game is built from these at startup,
-//! so there are no audio asset files and no third-party sounds.
+//! A tiny deterministic synthesizer: noise, oscillators, filters, envelopes, a
+//! mastering stage and a 16-bit PCM WAV encoder. Every sound in the game is built
+//! from these at startup, so there are no audio asset files and no third-party
+//! sounds.
 
 use std::f32::consts::{PI, TAU};
 
 pub const SAMPLE_RATE: u32 = 44_100;
 const SR: f32 = SAMPLE_RATE as f32;
+
+/// Loudest sample any cue may reach: −1 dBFS.
+pub const PEAK_CEILING: f32 = 0.891_250_9;
+/// Where the mastering limiter starts to bend peaks toward [`PEAK_CEILING`]
+/// (−3 dBFS). Below it the signal passes untouched.
+pub const LIMITER_KNEE: f32 = 0.708;
+/// Every cue is high-passed here (Hz) when mastered: laptop speakers can't play
+/// below it, and sub-bass would only eat headroom the audible range could use.
+pub const MASTER_HIGH_PASS: f32 = 100.0;
+/// Window for short-term loudness (s): long enough to span a transient's body,
+/// short enough that a long quiet tail doesn't dilute a short, loud cue.
+pub const LOUDNESS_WINDOW: f32 = 0.05;
 
 /// Number of samples covering `seconds`.
 pub fn samples_for(seconds: f32) -> usize {
@@ -16,6 +29,55 @@ pub fn samples_for(seconds: f32) -> usize {
 #[inline]
 pub fn time_of(i: usize) -> f32 {
     i as f32 / SR
+}
+
+/// Equal-tempered pitch of a MIDI note number (69 = A4 = 440 Hz).
+pub fn note(midi: f32) -> f32 {
+    440.0 * 2f32.powf((midi - 69.0) / 12.0)
+}
+
+pub fn db_to_gain(db: f32) -> f32 {
+    10f32.powf(db / 20.0)
+}
+
+pub fn gain_to_db(gain: f32) -> f32 {
+    20.0 * gain.max(1e-9).log10()
+}
+
+/// Loudest absolute sample.
+pub fn peak(samples: &[f32]) -> f32 {
+    samples.iter().fold(0.0f32, |m, s| m.max(s.abs()))
+}
+
+/// Short-term loudness: the RMS of the loudest [`LOUDNESS_WINDOW`] stretch, in dBFS
+/// (a full-scale square wave reads 0 dBFS, a full-scale sine −3 dBFS). Cues shorter
+/// than the window are measured whole.
+pub fn short_term_rms_db(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return gain_to_db(0.0);
+    }
+    let w = samples_for(LOUDNESS_WINDOW).clamp(1, samples.len());
+    // Running sum of squares in f64 so long buffers don't drift.
+    let mut sum: f64 = samples[..w].iter().map(|s| (*s as f64).powi(2)).sum();
+    let mut best = sum;
+    for i in w..samples.len() {
+        sum += (samples[i] as f64).powi(2) - (samples[i - w] as f64).powi(2);
+        best = best.max(sum);
+    }
+    gain_to_db((best.max(0.0) / w as f64).sqrt() as f32)
+}
+
+/// The mastering limiter's transfer curve: identity below [`LIMITER_KNEE`], then a
+/// tanh shoulder that approaches (and never reaches) [`PEAK_CEILING`].
+#[inline]
+pub fn soft_limit(x: f32) -> f32 {
+    let a = x.abs();
+    if a <= LIMITER_KNEE {
+        x
+    } else {
+        let room = PEAK_CEILING - LIMITER_KNEE;
+        x.signum() * (LIMITER_KNEE + room * ((a - LIMITER_KNEE) / room).tanh())
+    }
 }
 
 /// Deterministic white noise (xorshift64*), seeded per sound.
@@ -47,11 +109,14 @@ impl Noise {
 }
 
 /// Topology-preserving state-variable filter (Simper). Stable while the cutoff
-/// moves every sample, which the sweeps below rely on.
+/// moves every sample, which the sweeps below rely on. The prewarped coefficient
+/// is cached, so a fixed cutoff costs no `tan` per sample.
 #[derive(Debug, Clone, Default)]
 pub struct Svf {
     ic1: f32,
     ic2: f32,
+    cutoff: f32,
+    g: f32,
 }
 
 pub struct SvfOut {
@@ -63,7 +128,11 @@ pub struct SvfOut {
 impl Svf {
     pub fn process(&mut self, x: f32, cutoff: f32, q: f32) -> SvfOut {
         let fc = cutoff.clamp(10.0, SR * 0.45);
-        let g = (PI * fc / SR).tan();
+        if fc != self.cutoff {
+            self.cutoff = fc;
+            self.g = (PI * fc / SR).tan();
+        }
+        let g = self.g;
         let k = 1.0 / q.max(0.05);
         let a1 = 1.0 / (1.0 + g * (g + k));
         let a2 = g * a1;
@@ -94,16 +163,37 @@ impl Svf {
     }
 }
 
-/// Phase-accumulating sine oscillator (for pitch sweeps).
+/// Phase-accumulating oscillator (for pitch sweeps).
 #[derive(Debug, Clone, Default)]
 pub struct Osc {
     phase: f32,
 }
 
 impl Osc {
+    /// Starts at a phase in cycles (0..1).
+    pub fn at(phase: f32) -> Self {
+        Self {
+            phase: phase.rem_euclid(1.0),
+        }
+    }
+
+    #[inline]
+    fn advance(&mut self, freq: f32) {
+        self.phase = (self.phase + freq / SR).fract();
+    }
+
     pub fn sine(&mut self, freq: f32) -> f32 {
         let out = (self.phase * TAU).sin();
-        self.phase = (self.phase + freq / SR).fract();
+        self.advance(freq);
+        out
+    }
+
+    /// A sine pushed toward a square by `drive` (≥ 0.1), level-matched. High drive
+    /// is buzzy and bright ("zap"); low drive is round.
+    pub fn soft_square(&mut self, freq: f32, drive: f32) -> f32 {
+        let d = drive.max(0.1);
+        let out = (d * (self.phase * TAU).sin()).tanh() / d.tanh();
+        self.advance(freq);
         out
     }
 
@@ -115,7 +205,7 @@ impl Osc {
         for h in 1..=harmonics.max(1) {
             out += (p * h as f32).sin() / h as f32;
         }
-        self.phase = (self.phase + freq / SR).fract();
+        self.advance(freq);
         out * 0.6
     }
 }
@@ -138,10 +228,24 @@ pub fn attack(t: f32, a: f32) -> f32 {
     }
 }
 
-/// Attack then exponential decay.
+/// A linear attack over `a` seconds, then exponential decay with time constant
+/// `tau`. (The decay holds at 1 during the attack: `decay` is 0 before time 0, so
+/// the attack would otherwise be silent and then jump to full level.)
 #[inline]
 pub fn ad(t: f32, a: f32, tau: f32) -> f32 {
-    attack(t, a) * decay(t - a, tau).min(1.0)
+    attack(t, a) * decay((t - a).max(0.0), tau)
+}
+
+/// 1 until `end - release`, then a linear fade to 0 at `end`.
+#[inline]
+pub fn release(t: f32, end: f32, release: f32) -> f32 {
+    if t >= end {
+        0.0
+    } else if release <= 0.0 {
+        1.0
+    } else {
+        ((end - t) / release).min(1.0)
+    }
 }
 
 /// A mono buffer being assembled from layers.
@@ -176,6 +280,13 @@ impl Buffer {
         }
     }
 
+    /// Mixes another buffer in at `gain` (from the start; extra length is cut).
+    pub fn mix(&mut self, other: &Buffer, gain: f32) {
+        for (s, o) in self.samples.iter_mut().zip(&other.samples) {
+            *s += gain * o;
+        }
+    }
+
     /// Soft saturation for punch (tanh with drive, level-compensated).
     pub fn saturate(&mut self, drive: f32) {
         let norm = drive.tanh();
@@ -184,31 +295,54 @@ impl Buffer {
         }
     }
 
-    /// Removes DC so tails settle on zero.
-    pub fn remove_dc(&mut self) {
-        let mut hp = Svf::default();
+    /// Low-passes at `cutoff` Hz (12 dB/octave).
+    pub fn low_pass(&mut self, cutoff: f32) {
+        let mut lp = Svf::default();
         for s in &mut self.samples {
-            *s = hp.high(*s, 25.0);
+            *s = lp.low(*s, cutoff);
         }
     }
 
-    /// Scales so the loudest sample is `peak`, then fades the last few ms to zero
-    /// so no sound ends in a click.
-    pub fn finish(mut self, peak: f32) -> Vec<f32> {
-        self.remove_dc();
-        let max = self.samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
-        if max > 1e-6 {
-            let k = peak / max;
-            for s in &mut self.samples {
-                *s *= k;
-            }
+    /// High-passes at `cutoff` Hz (12 dB/octave). Also removes DC, so tails settle
+    /// on zero.
+    pub fn high_pass(&mut self, cutoff: f32) {
+        let mut hp = Svf::default();
+        for s in &mut self.samples {
+            *s = hp.high(*s, cutoff);
         }
+    }
+
+    /// Masters the cue to a short-term loudness of `rms_db` dBFS (see
+    /// [`short_term_rms_db`]): high-passes at [`MASTER_HIGH_PASS`], sets the gain,
+    /// bends any peak above [`LIMITER_KNEE`] under [`PEAK_CEILING`], makes up the
+    /// loudness the limiter took, and fades the tail so the cue never ends in a
+    /// click.
+    pub fn master(mut self, rms_db: f32) -> Vec<f32> {
+        self.high_pass(MASTER_HIGH_PASS);
+        let dry = std::mem::take(&mut self.samples);
+        let measured = short_term_rms_db(&dry);
+        let mut gain = db_to_gain(rms_db - measured);
+        let mut out = Vec::new();
+        // The limiter only ever lowers loudness, so a few make-up passes converge.
+        for _ in 0..4 {
+            out = dry.iter().map(|s| soft_limit(s * gain)).collect();
+            let short_by = rms_db - short_term_rms_db(&out);
+            if short_by.abs() < 0.05 {
+                break;
+            }
+            gain *= db_to_gain(short_by);
+        }
+        self.samples = out;
+        self.fade_out();
+        self.samples
+    }
+
+    fn fade_out(&mut self) {
         let fade = samples_for(0.006).min(self.samples.len());
         let n = self.samples.len();
         for j in 0..fade {
             self.samples[n - 1 - j] *= j as f32 / fade as f32;
         }
-        self.samples
     }
 }
 

@@ -5,16 +5,23 @@
 //! messages: the player's own sounds are non-spatial; everything happening in the
 //! world (the dummy's steps, pieces) is spatial, heard through a
 //! [`SpatialListener`] on the main camera. A voice cap keeps the mixer cheap.
+//!
+//! Milestone 2 ("Spellbound") replaced the bank with magical, cartoony cues: spell
+//! zaps, bonks and sparkles, brick clunks and plank thocks, glassy shield crashes
+//! and a poof-and-slide-whistle elimination. Every cue is mastered to a documented
+//! loudness target (see [`bank`]) and mixed by [`Sfx::mix_db`]; hit confirmation
+//! sits above the player's own casts and ducks them on the frame it lands.
 
 pub mod bank;
 pub mod synth;
 
 use crate::{
+    building::Piece,
     hud::{FrameStartTick, HitFeedbackStats},
     render::MainCamera,
     shared::{
-        DamageDealt, DamageTarget, Eliminated, GameCue, PieceChange, PieceChanged, Player,
-        ShotFired, WeaponKind,
+        DamageDealt, DamageTarget, Eliminated, GameCue, PieceChange, PieceChanged, PieceKind,
+        Player, ShotFired, WeaponKind,
     },
     tuning::Tuning,
 };
@@ -40,6 +47,9 @@ pub struct AudioTuning {
     pub movement_volume: f32,
     /// Delay from a pump shot to its rack (s).
     pub pump_rack_delay: f32,
+    /// Gain on the player's own weapon sounds that start on the same frame as one
+    /// of their hit confirmations, so the hit cuts through (0.7 ≈ −3 dB).
+    pub hit_duck: f32,
 }
 
 impl Default for AudioTuning {
@@ -54,6 +64,7 @@ impl Default for AudioTuning {
             building_volume: 1.0,
             movement_volume: 1.0,
             pump_rack_delay: 0.34,
+            hit_duck: 0.7,
         }
     }
 }
@@ -86,25 +97,49 @@ impl AudioTuning {
 /// Every sound effect in the game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Sfx {
+    /// Rifle spell: a bright falling zap with a sparkle shimmer.
     RifleShot,
+    /// Pump spell: "whoomp-zap" with a chime burst.
     PumpShot,
+    /// Gold-ring whirr and metallic tick.
     PumpRack,
+    /// Crystal clink as the dim crystal pops out.
     RifleMagOut,
+    /// Rising hum as the fresh crystal slots in.
     RifleMagIn,
+    /// Crystal-shard tink.
     PumpShell,
+    /// Soft magical swish.
     WeaponSwitch,
+    /// Body hit: bonk plus sparkle.
     HitTick,
+    /// Headshot: bonk plus a bright ding.
     HeadshotDing,
+    /// Glassy tick.
     ShieldHit,
+    /// Glass crash plus chime.
     ShieldBreak,
+    /// Cartoon poof plus a slide whistle going down.
     Elimination,
-    PiecePlace,
-    PieceCrack,
-    PieceBreak,
+    /// Wall placed: brick clunk.
+    BrickPlace,
+    /// Floor or ramp placed: wooden thock.
+    PlankPlace,
+    BrickCrack,
+    PlankCrack,
+    /// Wall broken: brick crumble.
+    BrickBreak,
+    /// Floor or ramp broken: wood splinter.
+    PlankBreak,
+    /// Invalid placement: soft cartoon bwomp.
     Rejected,
+    /// Soft grass step.
     Footstep,
+    /// Light "boing".
     Jump,
+    /// Soft thud.
     Land,
+    /// Swish.
     Slide,
 }
 
@@ -117,7 +152,7 @@ pub enum SfxCategory {
 }
 
 impl Sfx {
-    pub const ALL: [Sfx; 20] = [
+    pub const ALL: [Sfx; 23] = [
         Sfx::RifleShot,
         Sfx::PumpShot,
         Sfx::PumpRack,
@@ -130,9 +165,12 @@ impl Sfx {
         Sfx::ShieldHit,
         Sfx::ShieldBreak,
         Sfx::Elimination,
-        Sfx::PiecePlace,
-        Sfx::PieceCrack,
-        Sfx::PieceBreak,
+        Sfx::BrickPlace,
+        Sfx::PlankPlace,
+        Sfx::BrickCrack,
+        Sfx::PlankCrack,
+        Sfx::BrickBreak,
+        Sfx::PlankBreak,
         Sfx::Rejected,
         Sfx::Footstep,
         Sfx::Jump,
@@ -140,10 +178,29 @@ impl Sfx {
         Sfx::Slide,
     ];
 
-    /// Renders the sound's samples (mono, [`synth::SAMPLE_RATE`]).
+    /// The cue for a piece event: walls are brick (clunk, crack, crumble); floors
+    /// and ramps are wooden planks (thock, crack, splinter).
+    pub fn for_piece(kind: PieceKind, change: PieceChange) -> Sfx {
+        let brick = matches!(kind, PieceKind::Wall);
+        match (change, brick) {
+            (PieceChange::Placed, true) => Sfx::BrickPlace,
+            (PieceChange::Placed, false) => Sfx::PlankPlace,
+            (PieceChange::Cracked(_), true) => Sfx::BrickCrack,
+            (PieceChange::Cracked(_), false) => Sfx::PlankCrack,
+            (PieceChange::Destroyed, true) => Sfx::BrickBreak,
+            (PieceChange::Destroyed, false) => Sfx::PlankBreak,
+        }
+    }
+
+    /// Renders the sound's first take (mono, [`synth::SAMPLE_RATE`]).
     pub fn synthesize(self) -> Vec<f32> {
+        self.synthesize_take(0)
+    }
+
+    /// Renders round-robin take `take` (wrapping at [`Sfx::takes`]).
+    pub fn synthesize_take(self, take: u32) -> Vec<f32> {
         match self {
-            Sfx::RifleShot => bank::rifle_shot(),
+            Sfx::RifleShot => bank::rifle_shot(take),
             Sfx::PumpShot => bank::pump_shot(),
             Sfx::PumpRack => bank::pump_rack(),
             Sfx::RifleMagOut => bank::rifle_mag_out(),
@@ -155,20 +212,62 @@ impl Sfx {
             Sfx::ShieldHit => bank::shield_hit(),
             Sfx::ShieldBreak => bank::shield_break(),
             Sfx::Elimination => bank::elimination(),
-            Sfx::PiecePlace => bank::piece_place(),
-            Sfx::PieceCrack => bank::piece_crack(),
-            Sfx::PieceBreak => bank::piece_break(),
+            Sfx::BrickPlace => bank::brick_place(),
+            Sfx::PlankPlace => bank::plank_place(),
+            Sfx::BrickCrack => bank::brick_crack(),
+            Sfx::PlankCrack => bank::plank_crack(),
+            Sfx::BrickBreak => bank::brick_break(),
+            Sfx::PlankBreak => bank::plank_break(),
             Sfx::Rejected => bank::rejected(),
-            Sfx::Footstep => bank::footstep(),
+            Sfx::Footstep => bank::footstep(take),
             Sfx::Jump => bank::jump(),
             Sfx::Land => bank::land(),
             Sfx::Slide => bank::slide(),
         }
     }
 
-    /// The sound as a WAV file.
+    /// Round-robin takes in the bank (the fastest-repeating cues get several).
+    pub fn takes(self) -> u32 {
+        match self {
+            Sfx::RifleShot => bank::RIFLE_VARIANTS,
+            Sfx::Footstep => bank::FOOTSTEP_VARIANTS,
+            _ => 1,
+        }
+    }
+
+    /// The sound's first take as a WAV file.
     pub fn wav(self) -> Vec<u8> {
         synth::encode_wav(&self.synthesize())
+    }
+
+    /// Length budget and loudness target (see [`bank`]).
+    pub fn spec(self) -> bank::CueSpec {
+        use Sfx::*;
+        match self {
+            RifleShot => bank::RIFLE_CAST,
+            PumpShot => bank::PUMP_CAST,
+            PumpRack => bank::PUMP_RACK,
+            RifleMagOut => bank::RIFLE_MAG_OUT,
+            RifleMagIn => bank::RIFLE_MAG_IN,
+            PumpShell => bank::PUMP_SHELL,
+            WeaponSwitch => bank::WEAPON_SWITCH,
+            HitTick => bank::BODY_HIT,
+            HeadshotDing => bank::HEADSHOT,
+            ShieldHit => bank::SHIELD_HIT,
+            ShieldBreak => bank::SHIELD_BREAK,
+            Elimination => bank::ELIMINATION,
+            BrickPlace => bank::BRICK_PLACE,
+            PlankPlace => bank::PLANK_PLACE,
+            BrickCrack => bank::BRICK_CRACK,
+            PlankCrack => bank::PLANK_CRACK,
+            BrickBreak => bank::BRICK_BREAK,
+            PlankBreak => bank::PLANK_BREAK,
+            Rejected => bank::REJECTED,
+            Footstep => bank::FOOTSTEP,
+            Jump => bank::JUMP,
+            Land => bank::LAND,
+            Slide => bank::SLIDE,
+        }
     }
 
     pub fn category(self) -> SfxCategory {
@@ -177,35 +276,51 @@ impl Sfx {
             RifleShot | PumpShot | PumpRack | RifleMagOut | RifleMagIn | PumpShell
             | WeaponSwitch => SfxCategory::Weapons,
             HitTick | HeadshotDing | ShieldHit | ShieldBreak | Elimination => SfxCategory::Hits,
-            PiecePlace | PieceCrack | PieceBreak | Rejected => SfxCategory::Building,
+            BrickPlace | PlankPlace | BrickCrack | PlankCrack | BrickBreak | PlankBreak
+            | Rejected => SfxCategory::Building,
             Footstep | Jump | Land | Slide => SfxCategory::Movement,
         }
     }
 
-    /// Mix level before master and category volume.
-    pub fn base_volume(self) -> f32 {
+    /// The mix: how loud the cue plays in game (short-term RMS, dBFS) before master
+    /// volume, category volume and distance. Hit confirmation sits 4–5 dB above
+    /// the rifle (which fires six times a second) and 1–2 dB above the pump, and
+    /// the player's own casts also dip by `hit_duck` on the frame a hit lands;
+    /// building sits with the rifle; handling sounds and movement sit well under.
+    ///
+    /// | Cues | Mix (dBFS) |
+    /// |---|---|
+    /// | headshot, shield break, elimination | −13 |
+    /// | body hit, shield hit | −14 |
+    /// | pump cast | −15 |
+    /// | piece breaks | −16 |
+    /// | rifle cast, piece places and cracks | −18 |
+    /// | pump rack, reload, rejected | −20 |
+    /// | pump shell | −21 |
+    /// | weapon switch | −22 |
+    /// | land, slide | −22 |
+    /// | jump | −26 |
+    /// | footstep | −27 |
+    pub fn mix_db(self) -> f32 {
         use Sfx::*;
         match self {
-            RifleShot => 0.5,
-            PumpShot => 0.7,
-            PumpRack => 0.4,
-            RifleMagOut | RifleMagIn => 0.42,
-            PumpShell => 0.42,
-            WeaponSwitch => 0.3,
-            HitTick => 0.5,
-            HeadshotDing => 0.5,
-            ShieldHit => 0.42,
-            ShieldBreak => 0.6,
-            Elimination => 0.6,
-            PiecePlace => 0.42,
-            PieceCrack => 0.45,
-            PieceBreak => 0.6,
-            Rejected => 0.35,
-            Footstep => 0.22,
-            Jump => 0.22,
-            Land => 0.32,
-            Slide => 0.32,
+            HeadshotDing | ShieldBreak | Elimination => -13.0,
+            HitTick | ShieldHit => -14.0,
+            PumpShot => -15.0,
+            BrickBreak | PlankBreak => -16.0,
+            RifleShot | BrickPlace | PlankPlace | BrickCrack | PlankCrack => -18.0,
+            PumpRack | RifleMagOut | RifleMagIn | Rejected => -20.0,
+            PumpShell => -21.0,
+            WeaponSwitch | Land | Slide => -22.0,
+            Jump => -26.0,
+            Footstep => -27.0,
         }
+    }
+
+    /// Mix gain before master and category volume: what takes the cue from its
+    /// mastered loudness to its [`Sfx::mix_db`].
+    pub fn base_volume(self) -> f32 {
+        synth::db_to_gain(self.mix_db() - self.spec().rms_db).min(1.0)
     }
 
     /// Voice-stealing priority: higher survives. Hit confirmation matters most.
@@ -218,15 +333,45 @@ impl Sfx {
     }
 }
 
-/// Handles to every synthesized sound, indexed by [`Sfx`].
+/// Gain for a sound starting this frame: the player's own weapon sounds dip to
+/// `duck` when one of the player's hit confirmations starts on the same frame
+/// (hitscan hits land with their shot), so the bonk and sparkle cut through.
+pub fn duck_gain(sfx: Sfx, own: bool, own_hit_this_frame: bool, duck: f32) -> f32 {
+    if own && own_hit_this_frame && sfx.category() == SfxCategory::Weapons {
+        duck.clamp(0.0, 1.0)
+    } else {
+        1.0
+    }
+}
+
+/// Every cue's takes as WAV files, indexed by [`Sfx`] and then take. This is all
+/// the synthesis work done at startup.
+pub fn render_bank() -> Vec<Vec<Vec<u8>>> {
+    Sfx::ALL
+        .iter()
+        .map(|sfx| {
+            (0..sfx.takes())
+                .map(|take| synth::encode_wav(&sfx.synthesize_take(take)))
+                .collect()
+        })
+        .collect()
+}
+
+/// Handles to every synthesized sound, indexed by [`Sfx`] and then take.
 #[derive(Resource, Debug, Clone)]
 pub struct SoundBank {
-    handles: Vec<Handle<AudioSource>>,
+    handles: Vec<Vec<Handle<AudioSource>>>,
 }
 
 impl SoundBank {
     pub fn get(&self, sfx: Sfx) -> Handle<AudioSource> {
-        self.handles[sfx as usize].clone()
+        self.take(sfx, 0)
+    }
+
+    /// Round-robin take `take` of `sfx` (wraps).
+    pub fn take(&self, sfx: Sfx, take: u32) -> Handle<AudioSource> {
+        let takes = &self.handles[sfx as usize];
+        takes[take as usize % takes.len()].clone()
     }
 }
 
@@ -304,6 +449,8 @@ struct PlayRequest {
     at: Option<Vec3>,
     gain: f32,
     speed: f32,
+    /// Round-robin take.
+    take: u32,
     /// Real time (s) at which to start.
     when: f64,
 }
@@ -313,6 +460,8 @@ struct PlayQueue {
     pending: Vec<PlayRequest>,
     /// Counter for deterministic pitch variation.
     variation: u32,
+    /// Next round-robin take per [`Sfx`].
+    takes: [u32; Sfx::ALL.len()],
 }
 
 impl PlayQueue {
@@ -330,25 +479,27 @@ impl PlayQueue {
             SfxCategory::Hits => 0.0,
         };
         let speed = 1.0 + spread * ((h % 1000) as f32 / 500.0 - 1.0);
+        let take = self.takes[sfx as usize];
+        self.takes[sfx as usize] = (take + 1) % sfx.takes().max(1);
         self.pending.push(PlayRequest {
             sfx,
             at,
             gain,
             speed,
+            take,
             when: now + delay,
         });
     }
 }
 
 fn build_sound_bank(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>) {
-    let handles = Sfx::ALL
-        .iter()
-        .enumerate()
-        .map(|(i, sfx)| {
-            debug_assert_eq!(*sfx as usize, i);
-            sources.add(AudioSource {
-                bytes: sfx.wav().into(),
-            })
+    let handles = render_bank()
+        .into_iter()
+        .map(|takes| {
+            takes
+                .into_iter()
+                .map(|wav| sources.add(AudioSource { bytes: wav.into() }))
+                .collect()
         })
         .collect();
     commands.insert_resource(SoundBank { handles });
@@ -366,6 +517,7 @@ fn queue_combat_sounds(
     player: Option<Single<Entity, With<Player>>>,
     start_tick: Option<Res<FrameStartTick>>,
     mut stats: Option<ResMut<HitFeedbackStats>>,
+    pieces: Query<&Piece>,
     mut shots: MessageReader<ShotFired>,
     mut damage: MessageReader<DamageDealt>,
     mut eliminated: MessageReader<Eliminated>,
@@ -411,9 +563,14 @@ fn queue_combat_sounds(
                 }
             }
             DamageTarget::Piece if !piece_knock => {
-                // A quiet, quick knock so shooting a wall has weight.
-                piece_knock = true;
-                queue.push_with(Sfx::PiecePlace, Some(hit.point), 0.35, 0.0, now);
+                // A quiet, quick knock in the piece's material so shooting it has
+                // weight. A piece this shot destroyed is already gone; its break
+                // sound covers it.
+                if let Ok(piece) = pieces.get(hit.target) {
+                    piece_knock = true;
+                    let knock = Sfx::for_piece(piece.kind, PieceChange::Placed);
+                    queue.push_with(knock, Some(hit.point), 0.35, 0.0, now);
+                }
             }
             DamageTarget::Piece => {}
         }
@@ -432,12 +589,11 @@ fn queue_piece_sounds(
 ) {
     let now = time.elapsed_secs_f64();
     for change in changes.read() {
-        let sfx = match change.change {
-            PieceChange::Placed => Sfx::PiecePlace,
-            PieceChange::Cracked(_) => Sfx::PieceCrack,
-            PieceChange::Destroyed => Sfx::PieceBreak,
-        };
-        queue.push(sfx, Some(change.center), now);
+        queue.push(
+            Sfx::for_piece(change.kind, change.change),
+            Some(change.center),
+            now,
+        );
     }
 }
 
@@ -526,6 +682,9 @@ fn play_queued(
     // One of each non-spatial sound per frame is enough (two hits on one frame
     // shouldn't double the volume).
     let mut played_own: Vec<Sfx> = Vec::new();
+    let own_hit = due
+        .iter()
+        .any(|r| r.at.is_none() && r.sfx.category() == SfxCategory::Hits);
     for request in due {
         if request.at.is_none() {
             if played_own.contains(&request.sfx) {
@@ -542,14 +701,17 @@ fn play_queued(
             }
             VoiceDecision::Drop => continue,
         }
-        let level =
-            request.sfx.base_volume() * audio.category_gain(request.sfx.category()) * request.gain;
+        let duck = duck_gain(request.sfx, request.at.is_none(), own_hit, audio.hit_duck);
+        let level = request.sfx.base_volume()
+            * audio.category_gain(request.sfx.category())
+            * request.gain
+            * duck;
         let mut settings = PlaybackSettings::DESPAWN
             .with_volume(Volume::Linear(level * master))
             .with_speed(request.speed);
         let mut entity = commands.spawn((
             Name::new("Sfx"),
-            AudioPlayer::new(bank.get(request.sfx)),
+            AudioPlayer::new(bank.take(request.sfx, request.take)),
             Voice {
                 priority,
                 started: now,
