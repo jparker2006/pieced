@@ -1,7 +1,8 @@
 //! Stylized sky: a dome that rides on the main camera, shading a zenith → horizon
-//! gradient, a warm glow and an anti-aliased sun disc. At and below the horizon it
-//! returns exactly the distance-fog color (read from the same view bindings the
-//! fog uses), so distant terrain melts into the sky without a seam.
+//! gradient, a warm glow and an anti-aliased sun disc toward the toon key light.
+//! At and below the horizon it returns exactly the far layer's haze color, so
+//! distant terrain melts into the sky without a seam. (The Milestone 2 sky slice
+//! replaces this with a galaxy `Skybox`.)
 
 use super::geo::Geo;
 use bevy::{
@@ -28,6 +29,12 @@ pub struct SkyMaterial {
     pub horizon: LinearRgba,
     #[uniform(0)]
     pub sun: LinearRgba,
+    /// Horizon haze (the far layer's haze color).
+    #[uniform(0)]
+    pub haze: LinearRgba,
+    /// xyz: unit vector toward the sun (the toon key light).
+    #[uniform(0)]
+    pub sun_direction: Vec4,
     /// x: cosine of the sun disc's angular radius, y: glow exponent,
     /// z: glow strength, w: gradient exponent (smaller = more blue overhead).
     #[uniform(0)]

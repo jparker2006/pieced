@@ -1,10 +1,10 @@
 // Pieced sky dome: zenith → horizon gradient, sun glow and an anti-aliased sun
-// disc. At and below the horizon it returns the distance-fog color exactly (same
-// view bindings the PBR fog reads), so distant terrain melts into the sky.
+// disc toward the toon key light. At and below the horizon it returns the far
+// layer's haze color exactly, so distant terrain melts into the sky.
 
 #import bevy_pbr::{
     forward_io::VertexOutput,
-    mesh_view_bindings::{view, lights, fog},
+    mesh_view_bindings::view,
 }
 
 #ifdef TONEMAP_IN_SHADER
@@ -17,6 +17,9 @@ struct Sky {
     mid: vec4<f32>,
     horizon: vec4<f32>,
     sun: vec4<f32>,
+    haze: vec4<f32>,
+    // xyz: unit vector toward the sun.
+    sun_direction: vec4<f32>,
     // x: cos(sun disc radius), y: glow exponent, z: glow strength, w: gradient exponent
     params: vec4<f32>,
 }
@@ -26,38 +29,19 @@ struct Sky {
 @fragment
 fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let dir = normalize(in.world_position.xyz - view.world_position.xyz);
-
-    // The sun is the shadow-casting directional light (a skylight fill may exist).
-    var sun_dir = vec3<f32>(0.0, 1.0, 0.0);
-    var sun_light = vec3<f32>(0.0);
-    for (var i = 0u; i < lights.n_directional_lights; i = i + 1u) {
-        let light = lights.directional_lights[i];
-        if ((light.flags & 1u) != 0u) {
-            sun_dir = light.direction_to_light;
-            sun_light = light.color.rgb * view.exposure;
-        }
-    }
-    let cos_sun = dot(dir, sun_dir);
+    let cos_sun = dot(dir, sky.sun_direction.xyz);
 
     // Three-stop gradient: gold horizon, pale clear blue, deep blue overhead.
     let t = pow(clamp(dir.y, 0.0, 1.0), sky.params.w);
     var color = mix(sky.horizon.rgb, sky.mid.rgb, smoothstep(0.0, 0.35, t));
     color = mix(color, sky.zenith.rgb, smoothstep(0.3, 1.0, t));
 
-    // Warm glow around the sun, strongest low in the sky.
+    // Warm glow around the sun.
     color += sky.sun.rgb * pow(max(cos_sun, 0.0), sky.params.y) * sky.params.z;
 
-    // Horizon haze: blend to the exact fog color at and below the horizon.
-    var fog_color = sky.horizon.rgb;
-#ifdef DISTANCE_FOG
-    fog_color = fog.base_color.rgb;
-    if (fog.directional_light_color.a > 0.0) {
-        let scattering = pow(max(cos_sun, 0.0), fog.directional_light_exponent) * sun_light;
-        fog_color += scattering * fog.directional_light_color.rgb * fog.directional_light_color.a;
-    }
-#endif
+    // Horizon haze: blend to the exact far-layer haze at and below the horizon.
     let haze = 1.0 - smoothstep(-0.015, 0.16, dir.y);
-    color = mix(color, fog_color, haze);
+    color = mix(color, sky.haze.rgb, haze);
 
     // Sun disc with a pixel-wide soft edge (MSAA doesn't smooth shader edges).
     let edge = max(fwidth(cos_sun), 1e-6);

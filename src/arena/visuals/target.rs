@@ -1,57 +1,19 @@
 //! The target look: a chunky low-poly training-dummy figure for every non-player
-//! character, with a bullseye plate and a fresnel rim light so it pops against any
-//! background and still reads in greyscale. The figure fits the gameplay hitboxes
-//! (body capsule r 0.33 from y 0.05 to 1.45, head sphere r 0.2 at y 1.62).
+//! character, with a bullseye plate, drawn with the toon material, a doubled rim
+//! light and an ink outline so it pops against any background and still reads in
+//! greyscale. The figure fits the gameplay hitboxes (body capsule r 0.33 from
+//! y 0.05 to 1.45, head sphere r 0.2 at y 1.62). The knight slice replaces it.
 
 use super::geo::{Geo, Rgba, blob, lin, mix, ring, shade};
-use crate::palette;
-use bevy::{
-    pbr::{ExtendedMaterial, MaterialExtension},
-    prelude::*,
-    render::render_resource::AsBindGroup,
-    shader::ShaderRef,
-};
+use crate::{look::ToonMaterial, palette};
+use bevy::prelude::*;
 
-pub const TARGET_SHADER_PATH: &str = "embedded://pieced/shaders/target_rim.wgsl";
+/// Rim multiplier for characters: they must read against the sky.
+pub const FIGURE_RIM: f32 = 2.0;
 
-/// The dummy material: `StandardMaterial` lighting plus a fresnel rim.
-pub type TargetMaterial = ExtendedMaterial<StandardMaterial, TargetRim>;
-
-#[derive(Asset, AsBindGroup, Reflect, Debug, Clone)]
-pub struct TargetRim {
-    #[uniform(100)]
-    pub color: LinearRgba,
-    /// x: rim exponent, y: rim strength, z: self-light lift (keeps the shadow side
-    /// saturated), w: unused.
-    #[uniform(100)]
-    pub params: Vec4,
-}
-
-impl Default for TargetRim {
-    fn default() -> Self {
-        Self {
-            color: palette::TARGET_RIM.to_linear(),
-            params: Vec4::new(2.0, 1.5, 0.12, 0.0),
-        }
-    }
-}
-
-impl MaterialExtension for TargetRim {
-    fn fragment_shader() -> ShaderRef {
-        TARGET_SHADER_PATH.into()
-    }
-}
-
-pub fn target_material() -> TargetMaterial {
-    ExtendedMaterial {
-        base: StandardMaterial {
-            base_color: Color::WHITE,
-            perceptual_roughness: 0.55,
-            reflectance: 0.35,
-            ..default()
-        },
-        extension: TargetRim::default(),
-    }
+/// The figure's material: vertex colors under toon lighting, strong rim.
+pub fn target_material() -> ToonMaterial {
+    ToonMaterial::vertex_colored().with_rim(FIGURE_RIM)
 }
 
 /// Octagonal prism/loft through `(y, radius_x, radius_z)` stations, face toward -Z.
