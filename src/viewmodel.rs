@@ -18,6 +18,7 @@ pub mod models;
 use crate::{
     combat::Loadout,
     fx::sim::{FxRng, Spring},
+    look::{Outline, ToonMaterial, with_outline_normals},
     movement::Motor,
     palette,
     render::{
@@ -209,6 +210,7 @@ fn spawn_viewmodel(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut toon: ResMut<Assets<ToonMaterial>>,
     target: Option<Res<WorldTarget>>,
     main: Option<Single<Entity, With<MainCamera>>>,
     tuning: Res<Tuning>,
@@ -217,12 +219,9 @@ fn spawn_viewmodel(
         return;
     };
     let layer = RenderLayers::layer(VIEWMODEL_LAYER);
-    let gun_mat = materials.add(StandardMaterial {
-        base_color: Color::WHITE,
-        perceptual_roughness: 0.48,
-        reflectance: 0.45,
-        ..default()
-    });
+    // Guns and the blueprint: toon-shaded vertex colors with ink outlines. The
+    // reticle dot and the muzzle flash stay unlit effect materials.
+    let gun_mat = toon.add(ToonMaterial::vertex_colored());
     let glow_mat = materials.add(StandardMaterial {
         base_color: mesh::shade(palette::GUN_ACCENT, 1.35),
         unlit: true,
@@ -307,13 +306,12 @@ fn spawn_viewmodel(
     let part = |commands: &mut Commands,
                 parent: Entity,
                 mesh: Handle<Mesh>,
-                material: &Handle<StandardMaterial>,
+                material: &dyn VmMaterial,
                 transform: Transform,
                 role: Option<VmPart>,
                 visible: bool| {
         let mut e = commands.spawn((
             Mesh3d(mesh),
-            MeshMaterial3d(material.clone()),
             transform,
             if visible {
                 Visibility::Inherited
@@ -325,6 +323,7 @@ fn spawn_viewmodel(
             NotShadowReceiver,
             ChildOf(parent),
         ));
+        material.insert_into(&mut e);
         if let Some(role) = role {
             e.insert(role);
         }
@@ -333,7 +332,7 @@ fn spawn_viewmodel(
     let flash = meshes.add(models::muzzle_flash().build());
 
     let rifle = models::rifle();
-    let body = meshes.add(rifle.body.build());
+    let body = meshes.add(with_outline_normals(rifle.body.build()));
     part(
         &mut commands,
         rifle_item,
@@ -343,7 +342,7 @@ fn spawn_viewmodel(
         None,
         true,
     );
-    let mag = meshes.add(rifle.mag.build());
+    let mag = meshes.add(with_outline_normals(rifle.mag.build()));
     part(
         &mut commands,
         rifle_item,
@@ -375,7 +374,7 @@ fn spawn_viewmodel(
     );
 
     let pump = models::pump();
-    let body = meshes.add(pump.body.build());
+    let body = meshes.add(with_outline_normals(pump.body.build()));
     part(
         &mut commands,
         pump_item,
@@ -385,7 +384,7 @@ fn spawn_viewmodel(
         None,
         true,
     );
-    let forend = meshes.add(pump.forend.build());
+    let forend = meshes.add(with_outline_normals(pump.forend.build()));
     part(
         &mut commands,
         pump_item,
@@ -395,7 +394,7 @@ fn spawn_viewmodel(
         Some(VmPart::PumpForend),
         true,
     );
-    let shell = meshes.add(pump.shell.build());
+    let shell = meshes.add(with_outline_normals(pump.shell.build()));
     part(
         &mut commands,
         pump_item,
@@ -415,7 +414,7 @@ fn spawn_viewmodel(
         false,
     );
 
-    let tablet = meshes.add(models::blueprint().build());
+    let tablet = meshes.add(with_outline_normals(models::blueprint().build()));
     part(
         &mut commands,
         blueprint_item,
@@ -426,7 +425,7 @@ fn spawn_viewmodel(
         true,
     );
     for kind in [PieceKind::Wall, PieceKind::Floor, PieceKind::Ramp] {
-        let mini = meshes.add(models::mini_piece(kind).build());
+        let mini = meshes.add(with_outline_normals(models::mini_piece(kind).build()));
         part(
             &mut commands,
             blueprint_item,
@@ -436,6 +435,24 @@ fn spawn_viewmodel(
             Some(VmPart::Mini(kind)),
             false,
         );
+    }
+}
+
+/// A viewmodel part's material: toon parts also get an ink outline (on the
+/// viewmodel layer, like the part).
+trait VmMaterial {
+    fn insert_into(&self, entity: &mut EntityCommands);
+}
+
+impl VmMaterial for Handle<ToonMaterial> {
+    fn insert_into(&self, entity: &mut EntityCommands) {
+        entity.insert((MeshMaterial3d(self.clone()), Outline::default()));
+    }
+}
+
+impl VmMaterial for Handle<StandardMaterial> {
+    fn insert_into(&self, entity: &mut EntityCommands) {
+        entity.insert(MeshMaterial3d(self.clone()));
     }
 }
 

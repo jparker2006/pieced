@@ -2,8 +2,9 @@
 //! quick pop when a piece lands, a small shudder when it's hit, and the
 //! translucent ghost preview at the player's build target.
 //!
-//! Every mesh is built once at startup; per frame this only swaps handles and
-//! writes a few transforms.
+//! Pieces are toon-shaded with ink outlines; the ghost is a translucent, glowing
+//! toon surface without one. Every mesh is built once at startup; per frame this
+//! only swaps handles and writes a few transforms.
 
 use super::{
     BuildTarget, InitialCover, Piece,
@@ -13,6 +14,7 @@ use super::{
     },
 };
 use crate::{
+    look::{Outline, ToonMaterial, with_outline_normals},
     palette,
     shared::{ActiveTool, DamageDealt, DamageTarget, Facing, PieceKind, Player},
     tuning::Tuning,
@@ -48,15 +50,17 @@ const STAGE_TINT: [f32; 3] = [1.0, 0.84, 0.68];
 /// East/west walls are lifted this much so their tops never share a plane with
 /// north/south walls at a corner (no z-fighting when crack stages differ).
 const EW_WALL_LIFT: f32 = 0.004;
+/// Emissive strength of the ghost preview (× its own color).
+const GHOST_GLOW: f32 = 0.7;
 
 #[derive(Resource)]
 struct PieceAssets {
     /// `[kind][stage]`, kind in [`kind_index`] order.
     meshes: [[Handle<Mesh>; 3]; 3],
-    materials: [Handle<StandardMaterial>; 3],
+    materials: [Handle<ToonMaterial>; 3],
     ghost_meshes: [Handle<Mesh>; 3],
-    ghost_valid: Handle<StandardMaterial>,
-    ghost_invalid: Handle<StandardMaterial>,
+    ghost_valid: Handle<ToonMaterial>,
+    ghost_invalid: Handle<ToonMaterial>,
 }
 
 fn kind_index(kind: PieceKind) -> usize {
@@ -88,10 +92,11 @@ struct Ghost;
 fn create_piece_assets(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    mut materials: ResMut<Assets<ToonMaterial>>,
     tuning: Res<Tuning>,
 ) {
-    let mut add = |m: MeshBuilder| meshes.add(m.build());
+    // Piece meshes carry smooth outline normals for their ink outline.
+    let mut add = |m: MeshBuilder| meshes.add(with_outline_normals(m.build()));
     let per_stage = |f: fn(u8) -> MeshBuilder, add: &mut dyn FnMut(MeshBuilder) -> Handle<Mesh>| {
         [add(f(0)), add(f(1)), add(f(2))]
     };
@@ -103,21 +108,15 @@ fn create_piece_assets(
         add(ghost_floor_mesh(tuning.building.floor_thickness)),
         add(ghost_ramp_mesh()),
     ];
-    let piece_material = |tint: f32| StandardMaterial {
-        base_color: Color::srgb(tint, tint, tint),
-        perceptual_roughness: 0.82,
-        metallic: 0.0,
-        reflectance: 0.35,
-        ..default()
-    };
+    let piece_material = |tint: f32| ToonMaterial::new(Color::srgb(tint, tint, tint));
+    // Translucency comes from the ghost mesh's vertex alpha; the emissive makes
+    // it glow on both bands.
     let ghost_material = |color: Color| {
         let c = color.to_srgba();
-        StandardMaterial {
-            base_color: Color::srgba(c.red, c.green, c.blue, 1.0),
-            unlit: true,
-            alpha_mode: AlphaMode::Blend,
-            ..default()
-        }
+        let rgb = Color::srgb(c.red, c.green, c.blue);
+        ToonMaterial::new(rgb)
+            .with_emissive(rgb, GHOST_GLOW)
+            .with_alpha(AlphaMode::Blend)
     };
     commands.insert_resource(PieceAssets {
         meshes: [wall, floor, ramp],
@@ -165,6 +164,7 @@ fn attach_piece_visuals(
                 },
                 Mesh3d(assets.meshes[kind_index(piece.kind)][stage as usize].clone()),
                 MeshMaterial3d(assets.materials[stage as usize].clone()),
+                Outline::default(),
                 Transform::from_translation(base).with_scale(if pop.is_some() {
                     Vec3::splat(0.8)
                 } else {
@@ -185,7 +185,7 @@ fn update_crack_visuals(
     mut visuals: Query<(
         &mut PieceVisual,
         &mut Mesh3d,
-        &mut MeshMaterial3d<StandardMaterial>,
+        &mut MeshMaterial3d<ToonMaterial>,
     )>,
 ) {
     for (piece, link) in &pieces {
@@ -262,7 +262,7 @@ fn update_ghost(
                 &mut Transform,
                 &mut Visibility,
                 &mut Mesh3d,
-                &mut MeshMaterial3d<StandardMaterial>,
+                &mut MeshMaterial3d<ToonMaterial>,
             ),
             With<Ghost>,
         >,
