@@ -4,6 +4,18 @@
     "file": "axis_probe.glb"
   },
   {
+    "name": "gloves",
+    "file": "gloves.glb"
+  },
+  {
+    "name": "pump",
+    "file": "pump.glb"
+  },
+  {
+    "name": "rifle",
+    "file": "rifle.glb"
+  },
+  {
     "name": "rock_a",
     "file": "rock_a.glb"
   },

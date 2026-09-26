@@ -1,0 +1,232 @@
+{
+  "name": "rifle",
+  "kind": "gun",
+  "source": "art/blender/assets/guns.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 5036,
+  "triangle_budget": 6000,
+  "bounds": {
+    "min": [
+      -0.0612,
+      0.0,
+      -0.618
+    ],
+    "max": [
+      0.0612,
+      0.3882,
+      0.468
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "rifle",
+      "bounds": {
+        "min": [
+          -0.0612,
+          0.0158,
+          -0.552
+        ],
+        "max": [
+          0.0612,
+          0.3882,
+          0.142
+        ]
+      },
+      "triangles": 3556,
+      "colors": [
+        "barrier_cyan",
+        "brass",
+        "crystal_blue",
+        "gun_iron",
+        "stock"
+      ]
+    },
+    "Chamber": {
+      "parent": "rifle",
+      "bounds": {
+        "min": [
+          -0.055,
+          0.22,
+          -0.115
+        ],
+        "max": [
+          0.055,
+          0.33,
+          0.103
+        ]
+      },
+      "triangles": 48,
+      "colors": [
+        "glass_cyan"
+      ]
+    },
+    "Crystal": {
+      "parent": "rifle",
+      "bounds": {
+        "min": [
+          -0.0327,
+          0.2422,
+          -0.0405
+        ],
+        "max": [
+          0.0327,
+          0.3078,
+          0.0305
+        ]
+      },
+      "triangles": 20,
+      "colors": [
+        "barrier_cyan",
+        "crystal_blue"
+      ]
+    },
+    "Mag": {
+      "parent": "rifle",
+      "bounds": {
+        "min": [
+          -0.029,
+          0.0,
+          -0.1526
+        ],
+        "max": [
+          0.029,
+          0.1706,
+          -0.0561
+        ]
+      },
+      "triangles": 332,
+      "colors": [
+        "brass",
+        "crystal_blue",
+        "gun_iron"
+      ]
+    },
+    "Muzzle": {
+      "parent": "rifle",
+      "bounds": {
+        "min": [
+          -0.0465,
+          0.2285,
+          -0.618
+        ],
+        "max": [
+          0.0465,
+          0.3215,
+          -0.548
+        ]
+      },
+      "triangles": 496,
+      "colors": [
+        "brass",
+        "crystal_blue",
+        "gun_iron"
+      ]
+    },
+    "Stock": {
+      "parent": "rifle",
+      "bounds": {
+        "min": [
+          -0.042,
+          0.139,
+          0.118
+        ],
+        "max": [
+          0.042,
+          0.3284,
+          0.468
+        ]
+      },
+      "triangles": 584,
+      "colors": [
+        "gun_iron",
+        "stock"
+      ]
+    }
+  },
+  "attach": {
+    "CrystalSocket": {
+      "parent": "rifle",
+      "position": [
+        0.0,
+        0.275,
+        -0.005
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "GripL": {
+      "parent": "rifle",
+      "position": [
+        0.0,
+        0.244,
+        -0.2
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "GripR": {
+      "parent": "rifle",
+      "position": [
+        0.0,
+        0.0922,
+        0.0883
+      ],
+      "rotation": [
+        -0.156434,
+        0.0,
+        0.0,
+        0.987688
+      ]
+    },
+    "MuzzleTip": {
+      "parent": "rifle",
+      "position": [
+        0.0,
+        0.275,
+        -0.618
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "Sight": {
+      "parent": "rifle",
+      "position": [
+        0.0,
+        0.369,
+        0.12
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "SightFront": {
+      "parent": "rifle",
+      "position": [
+        0.0,
+        0.369,
+        -0.392
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}
