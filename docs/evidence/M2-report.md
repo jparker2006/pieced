@@ -88,3 +88,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
   3. Then Phase 3 (spells, HUD, gallery) and Phase 4.
 
   The Phase 0 baseline still needs a "go" window.
+- 2026-09-26: **knight merged** (`2bdfbd6`), with 238 tests passing:
+  - the model at 7,824 triangles, with four eye states and joint pivots;
+  - in game: toon, outline, a warm rim and a blob shadow that sits exactly under the boots;
+  - blinking, wide and X eyes; idle, run, air, squash, wobble, hat bounce, the respawn pop;
+  - **S5 evidence:** `tests/knight.rs`. Worst vertex outside its hitbox: Helmet +3.8 cm, Hat +4.2, Gauntlets +3.9, Boots +4.1, Torso +1.0 (the limit is 5). From the front the capsule sticks out at most 9.2 cm past the model, the head sphere 1.4 cm.
+  - **Rules the builder set, accepted by the orchestrator:** below 0.12 m the capsule counts as a cylinder, so the boots stand on the ground as in M1. The 10 cm fill rule is applied from the front, because the dummy always faces the player; the side fill is held to ≤ 21 cm.
+  - **Art-review notes:** the arms read thin, and the helmet could be rounder and chunkier, closer to T05.
