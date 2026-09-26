@@ -1,0 +1,95 @@
+{
+  "name": "ship",
+  "kind": "ship",
+  "source": "art/blender/assets/far.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 220,
+  "triangle_budget": 500,
+  "bounds": {
+    "min": [
+      -10.0,
+      -0.3999,
+      -11.0017
+    ],
+    "max": [
+      10.0,
+      7.6,
+      45.2
+    ]
+  },
+  "parts": {
+    "Hull": {
+      "parent": "ship",
+      "bounds": {
+        "min": [
+          -10.0,
+          -0.3999,
+          -11.0017
+        ],
+        "max": [
+          10.0,
+          7.6,
+          9.0
+        ]
+      },
+      "triangles": 196,
+      "colors": [
+        "crystal_blue",
+        "ghost_red",
+        "glove_white",
+        "gun_iron",
+        "knight_steel"
+      ]
+    },
+    "Trail": {
+      "parent": "ship",
+      "bounds": {
+        "min": [
+          -3.9,
+          0.2,
+          9.2
+        ],
+        "max": [
+          3.9,
+          2.0,
+          45.2
+        ]
+      },
+      "triangles": 24,
+      "colors": [
+        "crystal_blue",
+        "spell_blue"
+      ]
+    }
+  },
+  "attach": {
+    "Center": {
+      "parent": "ship",
+      "position": [
+        0.0,
+        1.4,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "Engine": {
+      "parent": "ship",
+      "position": [
+        0.0,
+        1.1,
+        9.6
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "name": "far_island_a",
+  "kind": "far_island",
+  "source": "art/blender/assets/far.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 734,
+  "triangle_budget": 1500,
+  "bounds": {
+    "min": [
+      -20.7222,
+      0.0,
+      -20.5164
+    ],
+    "max": [
+      19.8454,
+      68.1362,
+      18.5885
+    ]
+  },
+  "parts": {
+    "Island": {
+      "parent": "far_island_a",
+      "bounds": {
+        "min": [
+          -20.7222,
+          20.6,
+          -20.5053
+        ],
+        "max": [
+          19.8454,
+          68.1362,
+          18.5885
+        ]
+      },
+      "triangles": 704,
+      "colors": [
+        "cliff_dirt",
+        "cliff_dirt_shadow",
+        "foliage",
+        "foliage_shadow",
+        "grass",
+        "grass_shadow",
+        "rock",
+        "rock_shadow",
+        "trunk",
+        "trunk_shadow"
+      ]
+    },
+    "Waterfall": {
+      "parent": "far_island_a",
+      "bounds": {
+        "min": [
+          -3.2467,
+          0.0,
+          -20.5164
+        ],
+        "max": [
+          2.7775,
+          46.0,
+          -19.4439
+        ]
+      },
+      "triangles": 30,
+      "colors": [
+        "waterfall_blue"
+      ]
+    }
+  },
+  "attach": {
+    "Mist": {
+      "parent": "far_island_a",
+      "position": [
+        -0.1928,
+        0.0,
+        -20.4525
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "Top": {
+      "parent": "far_island_a",
+      "position": [
+        0.0,
+        46.6,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

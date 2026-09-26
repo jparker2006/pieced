@@ -75,7 +75,14 @@ pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "rock_a",
     "rock_b",
     "stump_a",
-    "tree_a"
+    "tree_a",
+    // The far view (src/far, art/blender/assets/far.py).
+    "far_island_a",
+    "far_island_b",
+    "far_island_c",
+    "planet",
+    "ship",
+    "station",
 ];
 
 /// `assets/models/manifest.json`, as compiled in.

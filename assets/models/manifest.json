@@ -4,12 +4,28 @@
     "file": "axis_probe.glb"
   },
   {
+    "name": "far_island_a",
+    "file": "far_island_a.glb"
+  },
+  {
+    "name": "far_island_b",
+    "file": "far_island_b.glb"
+  },
+  {
+    "name": "far_island_c",
+    "file": "far_island_c.glb"
+  },
+  {
     "name": "gloves",
     "file": "gloves.glb"
   },
   {
     "name": "knight",
     "file": "knight.glb"
+  },
+  {
+    "name": "planet",
+    "file": "planet.glb"
   },
   {
     "name": "pump",
@@ -26,6 +42,14 @@
   {
     "name": "rock_b",
     "file": "rock_b.glb"
+  },
+  {
+    "name": "ship",
+    "file": "ship.glb"
+  },
+  {
+    "name": "station",
+    "file": "station.glb"
   },
   {
     "name": "stump_a",

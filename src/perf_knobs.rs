@@ -5,7 +5,8 @@
 //! Milestone 1 knobs: `shadows=off`, `msaa=1|2|4`, `viewmodel=off`,
 //! `scale=<f32>`, `fog=off`, `sky=off`, `vmmsaa=1|2|4` (viewmodel camera only).
 //! Since Milestone 2 the world has no shadow maps and no fog, so `shadows` and
-//! `fog` are accepted but change nothing.
+//! `fog` are accepted but change nothing; `sky=off` leaves out the galaxy
+//! skybox (read by `crate::far`).
 //!
 //! Milestone 2 knobs (read through [`crate::look::LookSettings`]):
 //! `outline=mod|hull|off`, `far=off`, `halos=off`, `particles=<cap>`,
@@ -105,7 +106,6 @@ fn apply_knobs(
     mut lights: Query<&mut DirectionalLight>,
     mut viewmodel: Query<&mut Camera, With<ViewmodelCamera>>,
     fog: Query<Entity, With<DistanceFog>>,
-    mut sky: Query<&mut Visibility, With<crate::arena::visuals::SkyDome>>,
 ) {
     if let Some(scale) = knobs.scale
         && tuning.graphics.render_scale != scale
@@ -129,11 +129,6 @@ fn apply_knobs(
     if knobs.fog == Some(false) {
         for entity in &fog {
             commands.entity(entity).remove::<DistanceFog>();
-        }
-    }
-    if knobs.sky == Some(false) {
-        for mut visibility in &mut sky {
-            visibility.set_if_neq(Visibility::Hidden);
         }
     }
 }

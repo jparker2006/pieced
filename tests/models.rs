@@ -245,6 +245,8 @@ fn spec_budget(kind: &str) -> u32 {
         "rock" | "stump" => 300,
         "station" => 25000,
         "ship" => 500,
+        // Not in the spec's table: a ringed sphere (the far slice's choice).
+        "planet" => 2000,
         "probe" => 100,
         other => panic!("unknown asset kind {other}: add its budget from the spec"),
     }

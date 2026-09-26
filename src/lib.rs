@@ -13,6 +13,7 @@ pub mod audio;
 pub mod building;
 pub mod combat;
 pub mod dummy;
+pub mod far;
 pub mod fx;
 pub mod hud;
 pub mod input;
