@@ -11,6 +11,7 @@ pub mod gallery;
 pub mod hud_check;
 pub mod latency;
 pub mod perf;
+pub mod sky_check;
 pub mod smoke;
 pub mod ttk;
 
@@ -94,6 +95,11 @@ pub trait Director: Send + Sync + 'static {
     fn summary(&mut self, _world: &mut World) -> Value {
         Value::Null
     }
+    /// Keep updating while the game is paused (a director that pauses it to
+    /// capture the pause menu). Paused frames run no fixed ticks.
+    fn runs_while_paused(&self) -> bool {
+        false
+    }
 }
 
 /// Returns the director for a scenario name.
@@ -105,6 +111,7 @@ pub fn director_for(name: &str) -> Option<Box<dyn Director>> {
         .or_else(|| latency::director(name))
         .or_else(|| hud_check::director(name))
         .or_else(|| fx_check::director(name))
+        .or_else(|| sky_check::director(name))
 }
 
 /// Present while a scenario controls the game.
@@ -146,6 +153,9 @@ pub struct ScenarioPlugin;
 
 impl Plugin for ScenarioPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<gallery::GalleryPlugin>() {
+            app.add_plugins(gallery::GalleryPlugin);
+        }
         app.add_systems(Startup, enable_frame_log).add_systems(
             PreUpdate,
             drive
@@ -162,8 +172,15 @@ fn enable_frame_log(mut log: ResMut<FrameLog>, run: Option<Res<ScenarioRun>>) {
 }
 
 fn drive(world: &mut World) {
-    if *world.resource::<State<AppState>>().get() != AppState::Playing {
-        return;
+    let paused_ok = world
+        .resource::<ScenarioRun>()
+        .director
+        .as_ref()
+        .is_some_and(|d| d.runs_while_paused());
+    match *world.resource::<State<AppState>>().get() {
+        AppState::Playing => {}
+        AppState::Paused if paused_ok => {}
+        _ => return,
     }
     let tick = world.resource::<SimTick>().0;
     let (mut director, clock, countdown) = {

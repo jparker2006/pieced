@@ -2,7 +2,7 @@
 //! fields or variants additively, but never rename or repurpose existing ones.
 
 use avian3d::prelude::PhysicsLayer;
-use bevy::prelude::*;
+use bevy::{ecs::system::SystemParam, prelude::*};
 
 /// Top-level game flow. Gameplay fixed-step systems run only in [`AppState::Playing`].
 #[derive(States, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -259,6 +259,59 @@ pub fn tick_duration() -> std::time::Duration {
 }
 
 pub const TICK_SECONDS: f32 = 1.0 / 60.0;
+
+// ---------------------------------------------------------------------------
+// Gallery freeze (scenario-only presentation hook)
+// ---------------------------------------------------------------------------
+
+/// Scenario-only: while this resource exists, every presentation clock stands
+/// still, so a gallery capture lands on the exact spell or hit moment
+/// (docs/M2-SPEC.md → The target board and gallery). Only the `gallery`
+/// scenario (`scenario::gallery`) and tests insert it; the game never does, so
+/// it changes nothing in play.
+///
+/// **Honor it in every presentation clock you own**: effects, spells, damage
+/// numbers, anything with a lifetime, a phase or a spring. Read the frame delta
+/// through [`FreezableTime`] instead of `Res<Time>`; it reads zero while frozen:
+///
+/// ```ignore
+/// fn simulate_spells(time: FreezableTime, ...) {
+///     let dt = time.delta_secs(); // 0 while the gallery holds a moment
+/// ```
+///
+/// While it is set:
+/// - the knight's animation clock and eye timers stop (`knight::freeze_knights`
+///   calls `KnightAnim::set_frozen`; the respawn sparkle reads [`FreezableTime`]);
+/// - the dummy stops moving: no strafing, no respawn, and its feet are held where
+///   the freeze found them, mid-jump included (`dummy.rs`);
+/// - effect lifetimes stop (`fx.rs`: particles, debris, tracers, shimmer, shake).
+///
+/// Gameplay itself (the player, combat, building) keeps running.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct GalleryFreeze;
+
+/// `Res<Time>` for presentation clocks that honor [`GalleryFreeze`]: the delta
+/// reads zero while the gallery holds a moment.
+#[derive(SystemParam)]
+pub struct FreezableTime<'w> {
+    time: Res<'w, Time>,
+    freeze: Option<Res<'w, GalleryFreeze>>,
+}
+
+impl FreezableTime<'_> {
+    /// Seconds to advance this frame: `Time::delta_secs`, or 0 while frozen.
+    pub fn delta_secs(&self) -> f32 {
+        if self.is_frozen() {
+            0.0
+        } else {
+            self.time.delta_secs()
+        }
+    }
+
+    pub fn is_frozen(&self) -> bool {
+        self.freeze.is_some()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // World grid (meters)

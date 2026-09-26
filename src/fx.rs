@@ -8,6 +8,11 @@
 //! (`max_particles`, `max_debris`). When a pool is full the oldest effect is
 //! recycled, so the frame cost is bounded no matter how much is going on.
 //! Per frame this only moves transforms and swaps handles.
+//!
+//! Every effect clock reads [`FreezableTime`](crate::shared::FreezableTime), so
+//! lifetimes, fades and shake stand still while the gallery holds a moment
+//! ([`GalleryFreeze`](crate::shared::GalleryFreeze)). Spells that replace these
+//! effects must keep reading their delta the same way.
 
 pub mod sim;
 
@@ -941,7 +946,7 @@ impl Emitter<'_> {
 /// Camera shake on your own pump shots and nearby piece breaks, as a small
 /// rotation offset applied after the camera has followed the eye.
 fn shake_camera(
-    time: Res<Time>,
+    time: crate::shared::FreezableTime,
     tuning: Res<Tuning>,
     mut state: ResMut<FxState>,
     mut shots: MessageReader<ShotFired>,
@@ -1078,7 +1083,7 @@ fn emit_fx(
 }
 
 fn simulate_fx(
-    time: Res<Time>,
+    time: crate::shared::FreezableTime,
     assets: Option<Res<FxAssets>>,
     pools: Option<ResMut<FxPools>>,
     mut q: Query<

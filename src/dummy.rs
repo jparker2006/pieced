@@ -6,19 +6,23 @@
 //! dummy's [`PlayerIntent`] and [`LookAngles`]; movement applies them like the
 //! player's. Combat marks it [`Downed`] when eliminated; [`SimSet::Resolve`]
 //! respawns it after `respawn_delay` somewhere away from the player.
+//!
+//! While the gallery's [`GalleryFreeze`] is set the dummy stops moving: it
+//! neither strafes nor respawns, and [`hold_frozen_dummies`] keeps its feet
+//! where the freeze found them (mid-jump included).
 
 use crate::{
     arena::ArenaLayout,
     player,
     rng::{Rng, SimRng},
     shared::{
-        Character, EyeHeight, GameCue, Health, Layer, LookAngles, Player, PlayerIntent,
-        PreviousFeet, SimSet, SimTick, TICK_SECONDS,
+        Character, EyeHeight, GalleryFreeze, GameCue, Health, Layer, LookAngles, Player,
+        PlayerIntent, PreviousFeet, SimSet, SimTick, TICK_SECONDS,
     },
     tuning::Tuning,
 };
 use avian3d::prelude::*;
-use bevy::prelude::*;
+use bevy::{platform::collections::HashMap, prelude::*};
 use serde::{Deserialize, Serialize};
 
 pub use crate::combat::Downed;
@@ -99,7 +103,12 @@ impl Plugin for DummyPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_dummy)
             .add_systems(FixedUpdate, drive_dummies.in_set(SimSet::Control))
-            .add_systems(FixedUpdate, respawn_dummies.in_set(SimSet::Resolve));
+            .add_systems(
+                FixedUpdate,
+                (respawn_dummies, hold_frozen_dummies)
+                    .chain()
+                    .in_set(SimSet::Resolve),
+            );
     }
 }
 
@@ -145,6 +154,7 @@ fn outside_by(point: Vec2, min: Vec2, max: Vec2) -> f32 {
 fn drive_dummies(
     tuning: Res<Tuning>,
     layout: Res<ArenaLayout>,
+    freeze: Option<Res<GalleryFreeze>>,
     players: Query<(&Transform, &EyeHeight), (With<Player>, Without<Dummy>)>,
     mut dummies: Query<
         (
@@ -162,7 +172,7 @@ fn drive_dummies(
     let dt_tuning = &tuning.dummy;
     let player = players.iter().next();
     for (transform, eye, mut look, mut intent, mut brain, downed) in &mut dummies {
-        if downed {
+        if downed || freeze.is_some() {
             *intent = PlayerIntent::default();
             continue;
         }
@@ -255,6 +265,7 @@ pub fn pick_respawn_spot(
 
 fn respawn_dummies(
     mut commands: Commands,
+    freeze: Option<Res<GalleryFreeze>>,
     tick: Res<SimTick>,
     tuning: Res<Tuning>,
     layout: Res<ArenaLayout>,
@@ -276,6 +287,9 @@ fn respawn_dummies(
     >,
     mut cues: MessageWriter<GameCue>,
 ) {
+    if freeze.is_some() {
+        return;
+    }
     let delay_ticks = (tuning.dummy.respawn_delay / TICK_SECONDS).round().max(0.0) as u64;
     let player = players
         .iter()
@@ -322,5 +336,26 @@ fn respawn_dummies(
         brain.jump_hold = 0.0;
         commands.entity(entity).remove::<Downed>();
         cues.write(GameCue::Respawned { who: entity });
+    }
+}
+
+/// While [`GalleryFreeze`] is set, puts every dummy's feet back where the freeze
+/// found them (their position at the start of the first frozen tick) after
+/// movement has run, so the figure holds still for the capture, mid-jump
+/// included. Its velocity is left to movement; it resumes when thawed.
+pub fn hold_frozen_dummies(
+    freeze: Option<Res<GalleryFreeze>>,
+    mut pins: Local<HashMap<Entity, Vec3>>,
+    mut dummies: Query<(Entity, &mut Transform, &PreviousFeet), With<Dummy>>,
+) {
+    if freeze.is_none() {
+        pins.clear();
+        return;
+    }
+    for (entity, mut transform, previous) in &mut dummies {
+        let pin = *pins.entry(entity).or_insert(previous.0);
+        if transform.translation != pin {
+            transform.translation = pin;
+        }
     }
 }
