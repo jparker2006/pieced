@@ -29,3 +29,14 @@ Every number here names its run folder, the commit, and the power and Low Power 
 ## Log
 
 - 2026-09-25: goal launched. The baseline was tagged, and the shared foundations (`BootGate`, the `look` and `models` plugin skeletons) were added. Phase 1 builders were dispatched.
+- 2026-09-25: fonts downloaded with Jake's OK. Luckiest Guy (Apache 2.0) and Lilita One (OFL) are in `assets/fonts/`, with their licenses.
+- 2026-09-25: **audio merged** (`d586c29`): the new synthesized bank, with 12 audio tests; 171 tests pass on the merge. Open item: the rifle reload's last click lands about 0.12 s after the gun is ready.
+- 2026-09-25: **art pipeline merged** (`d7e9bdd`):
+  - the headless Blender pipeline, deterministic (`build-art.sh --check`);
+  - a 66-color palette sampled from the targets;
+  - `rock_a`, `rock_b`, `stump_a` and `tree_a`;
+  - `ModelsPlugin` (embedded glbs, the BootGate hold, part lookup, the forward fix);
+  - the asset audit.
+
+  181 tests pass. Colors ship as vertex colors (the spec was updated). Art-review notes for Phase 4: the rock is a little boxy and its shadow too saturated blue; the foliage shadow is teal where the targets show a darker green.
+- 2026-09-25: Phase 2 **guns** and **knight** builders dispatched (models first; their in-game integration waits for the look slice).
