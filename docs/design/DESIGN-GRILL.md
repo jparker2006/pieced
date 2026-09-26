@@ -34,6 +34,23 @@ The next step for Pieced is the look: cartoon up close ("Family Guy / Looney Tun
 | D16 | **Audio.** | Magical zaps and shimmer for spells. A cartoon "bonk" plus sparkle on hits. A brick "clunk" for building. A glassy crash when a shield breaks. All still synthesized in code. |
 | D17 | **Process.** | After this grill, Jake compacts the conversation. Then another grill round and more images, then a spec and a `/goal` brief with a sharply defined done state. |
 
+## Round 4: asked 2026-09-25, waiting on Jake
+
+Q16–Q26 are asked, each with a recommendation:
+- **Q16:** building material (rec: (a) brick walls, wooden floors and ramps).
+- **Q17:** outlines and shading (rec: outlines on near objects only, two-tone shading, no shadow maps, blob shadows).
+- **Q18:** the knight's look (rec: Looney proportions, visor eyes, a short hat inside the head hitbox, cartoon reactions).
+- **Q19:** knight animation (rec: rigid armor parts animated in code).
+- **Q20:** gloves and guns (rec: white cartoon gloves, crystals colored to match each spell, crystal-swap reload, crystal dims as ammo runs down).
+- **Q21:** far-view layout (rec: station on one side, galaxy opposite and overhead, a ring of bobbing islands, magic barrier at the edge, galaxy generated in code).
+- **Q22:** font (rec: an openly licensed cartoon font).
+- **Q23:** arena (rec: keep the M1 layout and reskin it; the dummy becomes the knight).
+- **Q24:** done state as a target board (12 gallery views, each scored 1–5, all ≥ 4).
+- **Q25:** done state for performance and feel (G2 bar with the full look, launch < 5 s, motion check, Jake's 10-minute feel check, no regressions).
+- **Q26:** order of work (rec: fix the G2 baseline first).
+
+The material comparison images are in `docs/design/concepts/R4-M{1,2,3}-*.png`: (a) brick walls with wooden floors and ramps, (b) wood vs. brick tiers, (c) brick-and-timber. The prompts are in `concept-prompts.md`.
+
 ## Handoff: where to pick up after compaction
 
 - **Next:** grill round 4, then a new image round, then the spec and `/goal` brief.
@@ -43,7 +60,7 @@ The next step for Pieced is the look: cartoon up close ("Family Guy / Looney Tun
   - Stdin **must** be `/dev/null`, or the job hangs.
   - Run **one at a time**. Parallel runs can copy each other's outputs.
   - Generated images stay local and are git-ignored.
-- **Tools:** Blender 5.2.2 is being installed with Homebrew (`/Applications/Blender.app`), approved by Jake. Free disk is about 23 GB.
+- **Tools:** Blender 5.2.2 LTS is installed (`/Applications/Blender.app`, CLI `blender`). Free disk is about 21 GB.
 - **Milestone 1:**
   - **Parked.** G1 and G6 PASS; the rest are pending (see `docs/evidence/M1-report.md`).
   - **G2 blocker:** battery performance. The UI-MSAA-off and 1.4 MP cap fixes (`0420120`) haven't been measured on screen. The viewmodel camera's MSAA writeback is the top suspect for the rest.

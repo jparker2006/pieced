@@ -34,6 +34,21 @@ Near things are cartoon. Far things are "Harry Potter × Star Wars" magical.
 1. Fortnite-like cartoon proportions with a glossy stylized finish. The wall is a crystal-reinforced metal panel. The enemy is a stylized robot duelist with a floating spellbook. Far vista: a cathedral space station with stained-glass solar sails, over a swirling galaxy.
 2. The same style at dusk. A spellcasting arena ring floats in space, with portals glowing on the rim and ships silhouetted against the nebula.
 
+## Round 4: building-material comparison (generated 2026-09-25)
+
+All three use the combined direction as the base:
+- flat TV-cartoon close-up with thin outlines and two-tone cel shading;
+- a white cartoon glove holding a brass-and-crystal rifle;
+- a grassy floating island;
+- a galaxy sky with a stained-glass cathedral station, waterfall islands and small ships;
+- a cartoon HUD.
+
+The enemy is a goofy knight-wizard: bucket helmet, visor eyes, floppy purple hat, oversized gauntlets and boots, and a cape.
+
+- **R4-M1:** a fort with two cartoon brick walls, plus a floor and ramp of warped wooden planks.
+- **R4-M2:** a wooden plank wall next to a sturdier brick wall, with a wooden ramp behind them.
+- **R4-M3:** every piece in one storybook brick-and-timber style.
+
 ## Notes
 
 - Nothing will be copied from real franchises. "Harry Potter × Star Wars" and "Family Guy / Looney Tunes" describe the mood, and the prompts avoid named characters, logos and copyrighted designs.
