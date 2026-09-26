@@ -15,6 +15,8 @@
 //! ```sh
 //! PIECED_GALLERY_OUT=/some/dir cargo test --locked --test gallery_offscreen -- --ignored --nocapture
 //! ```
+//!
+//! `PIECED_GALLERY_ONLY=T06,T11` renders only the listed views.
 
 use avian3d::prelude::PhysicsPlugins;
 use bevy::{
@@ -214,8 +216,17 @@ fn render_the_gallery_offscreen() {
     }
     println!("Boot ended after {boot} frames");
     let image = composite_ui(&mut app);
+    let only = std::env::var("PIECED_GALLERY_ONLY").unwrap_or_default();
+    let table: Vec<_> = views()
+        .into_iter()
+        .filter(|v| only.is_empty() || only.split(',').any(|id| id.trim() == v.id))
+        .collect();
+    assert!(
+        !table.is_empty(),
+        "no view matches PIECED_GALLERY_ONLY={only}"
+    );
     app.insert_resource(Driver {
-        runner: GalleryRunner::new(views(), LEAD_IN),
+        runner: GalleryRunner::new(table, LEAD_IN),
         out: out.clone(),
         image,
         written: Vec::new(),
