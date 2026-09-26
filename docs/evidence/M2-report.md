@@ -116,3 +116,17 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - the grass top with a faint world-space build grid (fading between 12 and 40 m), a margin of 46 trees, cliffs, and the rune barrier.
 
   This is the first time the whole look is together offscreen (spawn view against T01). The **HUD and menu** builder was dispatched.
+- 2026-09-26: **gallery merged** (`1c3e59e`), with 303 tests passing:
+  - one table of 12 views drives both the native `gallery` scenario and `tests/gallery_offscreen.rs`;
+  - `shared::GalleryFreeze` and `FreezableTime` freeze the knight, the dummy and effects for exact captures;
+  - the `sky_check` scenario (frames every 5 s, with a frame-difference measure, S4);
+  - `scripts/board.py`: the S1 scoring page, with side-by-side views, a greyscale toggle, 1–5 scores, notes and a copy button.
+
+  The orchestrator added the far view to the offscreen gallery app (`be0adff`).
+- 2026-09-26: a network outage stopped the spells and HUD builders mid-work. Both were resumed from their worktrees.
+- **Art-review round 1 notes** (offscreen board on `be0adff`):
+  - T10 matches its target well.
+  - T01 composition is close.
+  - The knight reads **smaller than in the paintings** in T03–T08, because the targets paint him 2–3× closer than the planned distances. Move him closer to match the painted framing.
+  - The HUD and spells are still M1 style (their slices are in flight).
+  - Offscreen damage numbers render top-left (no window), which is an artifact of the offscreen setup.
