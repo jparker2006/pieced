@@ -143,7 +143,7 @@ pub(super) const INK_OFFSETS: [(Vec2, Vec2); INK_LAYERS as usize] = [
 /// Damage numbers in the pool. Every text entity they need is spawned once at
 /// startup; hits reuse them.
 pub const NUMBER_POOL: usize = 24;
-pub(super) const NUMBER_BOX: Vec2 = Vec2::new(170.0, 60.0);
+pub(super) const NUMBER_BOX: Vec2 = Vec2::new(190.0, 72.0);
 
 /// The tick lengths of the crosshair (px at scale 1).
 pub(super) const TICK_LEN: f32 = 7.0;
@@ -629,7 +629,7 @@ fn spawn_hotbar(root: &mut ChildSpawnerCommands, art: &UiArt) {
             bottom: px(anchors::HOTBAR_BOTTOM),
             flex_direction: FlexDirection::Column,
             align_items: AlignItems::Center,
-            row_gap: px(8),
+            row_gap: px(14),
             ..abs()
         },
     ))

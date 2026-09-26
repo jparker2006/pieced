@@ -145,9 +145,9 @@ impl NumberKind {
     /// Font size (px).
     pub fn size(self) -> f32 {
         match self {
-            Self::Body | Self::Shield => 32.0,
-            Self::Headshot => 40.0,
-            Self::Structure => 21.0,
+            Self::Body | Self::Shield => 38.0,
+            Self::Headshot => 48.0,
+            Self::Structure => 24.0,
         }
     }
 
