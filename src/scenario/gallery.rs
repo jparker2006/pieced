@@ -18,9 +18,10 @@
 //! target pixel.
 //!
 //! The targets paint the knight two to three times closer than the distances
-//! Jake approved (T05 "at 10 m" is drawn about 4 m away at the game's 70° FOV).
-//! The views keep the approved distances and match where the knight sits in the
-//! frame; the distances are one-line changes in the table.
+//! first planned (T05 "at 10 m" is drawn about 4 m away at the game's 70° FOV),
+//! and from a low eye, with his chest near the horizon. Polish round 1 moved him
+//! in (T03 8 m, T04 4 m, T05 5 m, T06 6 m, T07 4.5 m, T08 5 m) and crouches the
+//! player in those views; the distances are one-line changes in the table.
 
 use super::{
     Director, DirectorStatus, ScenarioClock, capture, player_entity, teleport, with_intent,
@@ -38,7 +39,7 @@ use crate::{
         WeaponKind,
     },
     tuning::Tuning,
-    viewmodel::ViewmodelSet,
+    viewmodel::{ViewmodelInspect, ViewmodelSet},
 };
 use bevy::{ecs::message::MessageCursor, prelude::*};
 use serde::Serialize;
@@ -262,9 +263,15 @@ pub struct GalleryView {
     pub title: &'static str,
     /// The player's feet.
     pub feet: Vec3,
+    /// The player crouches (eye at the tuning's crouch height, about 1.05 m):
+    /// the targets paint the knight's chest at eye level, from a low eye.
+    pub crouch: bool,
     pub aim: Aim,
     pub framing: Framing,
     pub tool: ActiveTool,
+    /// The held rifle shows in its gallery-only inspect pose
+    /// ([`crate::viewmodel::ViewmodelInspect`], T02).
+    pub inspect: bool,
     /// `None` parks him out of view, behind the player.
     pub knight: Option<KnightSpot>,
     /// Pieces built for this view, removed after it.
@@ -321,28 +328,31 @@ pub fn views() -> Vec<GalleryView> {
     };
     let fire = vec![(FIRE_AT, Act::Fire)];
 
-    // T03: across the arena toward the station (upper left), the knight 20 m
-    // out running to the left and a little toward us.
+    // T03: across the arena toward the station (upper left), the knight 8 m
+    // out running to the left and toward us, a rock right of him.
     let t03_feet = Vec3::new(-14.0, 0.0, 14.0);
-    let t03_knight = out(t03_feet, 36.0, 20.0);
-    // T04: a built platform on the left, the knight 5 m out in front of it,
-    // the station upper right.
-    let t04_feet = Vec3::new(-1.0, 0.0, 18.5);
-    let t04_knight = out(t04_feet, -21.0, 5.0);
-    // T05: the knight 10 m out on open ground, a wall close on the right.
+    let t03_knight = out(t03_feet, 36.0, 8.0);
+    // T04: a built platform on the left, the knight 4 m out in front of it,
+    // the station upper right. The pellets that miss him fly on clear of the
+    // arena's cover.
+    let t04_feet = Vec3::new(-2.15, 0.0, 22.95);
+    let t04_knight = out(t04_feet, -10.0, 4.0);
+    // T05: the knight 5 m out on open ground, a wall close on the right.
     let t05_feet = Vec3::new(4.0, 0.0, 19.0);
-    let t05_knight = out(t05_feet, 6.0, 10.0);
-    // T06: the knight dead ahead at 12 m, the station upper left.
-    let t06_feet = Vec3::new(-10.0, 0.0, 12.0);
-    let t06_knight = out(t06_feet, 52.0, 12.0);
-    // T07: the knight 8 m out, a wall very close on the left.
+    let t05_knight = out(t05_feet, 6.0, 5.0);
+    // T06: the knight dead ahead at 6 m, a ramp against a wall on the left, the
+    // station upper left.
+    let t06_feet = Vec3::new(-6.5, 0.0, 12.0);
+    let t06_knight = out(t06_feet, 50.0, 6.0);
+    // T07: the knight 4.5 m out in front of a ramp, a wall very close on the left.
     let t07_feet = Vec3::new(-2.0, 0.0, 10.0);
-    let t07_knight = out(t07_feet, 12.0, 8.0);
-    // T08: the knight 8 m out beside the south-east ramp, roofed and walled.
-    let t08_feet = Vec3::new(19.0, 0.0, 16.0);
-    let t08_knight = out(t08_feet, -12.0, 8.0);
+    let t07_knight = out(t07_feet, 12.0, 4.5);
+    // T08: the knight 5 m out beside a walled, roofed ramp on the left, a stump
+    // on the right.
+    let t08_feet = Vec3::new(1.1, 0.0, 16.8);
+    let t08_knight = out(t08_feet, 0.0, 5.0);
     // T10: out over the void toward the station, low, looking up at it.
-    let t10_eye = (SPAWN_EYE + azimuth_dir(30.0) * 250.0).with_y(15.0);
+    let t10_eye = (SPAWN_EYE + azimuth_dir(30.0) * 300.0).with_y(35.0);
 
     vec![
         GalleryView {
@@ -350,12 +360,14 @@ pub fn views() -> Vec<GalleryView> {
             name: "T01-spawn-vista",
             title: "Spawn vista",
             feet: spawn,
+            crouch: false,
             aim: Aim::Look {
                 yaw: 0.0,
                 pitch: deg(-5.0),
             },
             framing: Framing::Eye,
             tool: RIFLE,
+            inspect: false,
             knight: Some(KnightSpot {
                 feet: Vec3::new(2.0, 0.0, -6.0),
                 motion: KnightMotion::Idle,
@@ -372,16 +384,19 @@ pub fn views() -> Vec<GalleryView> {
             id: "T02",
             name: "T02-rifle-idle",
             title: "Rifle idle, gun tilted toward the viewer",
-            feet: Vec3::new(0.0, 0.0, 4.3),
+            // South-east of a brick wall, so its face and right end show at
+            // the left.
+            feet: Vec3::new(2.6, 0.0, 6.5),
+            crouch: false,
             aim: Aim::Look {
                 yaw: 0.0,
-                pitch: deg(-2.0),
+                pitch: deg(1.0),
             },
             framing: Framing::Eye,
             tool: RIFLE,
+            inspect: true,
             knight: None,
-            // The brick wall at the left, seen along its face.
-            pieces: vec![wall(5, 5, 0, West)],
+            pieces: vec![wall(5, 5, 0, South)],
             script: vec![],
             moment: Moment::Settled(SETTLE),
             expect: Expect::Still,
@@ -389,28 +404,31 @@ pub fn views() -> Vec<GalleryView> {
         GalleryView {
             id: "T03",
             name: "T03-rifle-bolt",
-            title: "Rifle bolt in flight; the knight running at about 20 m",
+            title: "Rifle bolt in flight; the knight running at about 8 m",
             feet: t03_feet,
+            crouch: true,
             aim: chest,
             framing: Framing::Offset {
                 screen: target_screen(590.0, 490.0),
             },
             tool: RIFLE,
+            inspect: false,
             knight: Some(KnightSpot {
                 feet: t03_knight,
+                // Left and toward us, clear of the rock beside his path.
                 motion: KnightMotion::Run {
-                    azimuth: -60.0,
+                    azimuth: -70.0,
                     lead: 6.3,
                 },
                 hp: 100.0,
                 shield: 0.0,
                 screen: target_screen(590.0, 490.0),
             }),
-            // A wall with a ramp against it at the left edge; a wall end and a
-            // raised floor at the right.
+            // A ramp rising left against a wall at the left edge; a wall end
+            // and a raised floor at the right.
             pieces: vec![
-                wall(2, 7, 0, East),
-                ramp(2, 7, 0, East),
+                wall(2, 7, 0, North),
+                ramp(2, 7, 0, West),
                 wall(4, 9, 0, South),
                 wall(5, 9, 0, East),
                 floor(5, 9, 1),
@@ -422,17 +440,20 @@ pub fn views() -> Vec<GalleryView> {
         GalleryView {
             id: "T04",
             name: "T04-pump-fan",
-            title: "Pump spark fan; the knight at about 5 m",
+            title: "Pump spark fan; the knight at about 4 m",
             feet: t04_feet,
+            crouch: true,
             // Some pellets catch his side; the rest fan past him.
             aim: Aim::Knight {
                 up: 1.0,
                 right: 0.4,
             },
+            // The aim point, 0.4 m right of his chest, sits right of him.
             framing: Framing::Offset {
-                screen: Vec2::new(-0.39, -0.105),
+                screen: Vec2::new(-0.357, -0.105),
             },
             tool: PUMP,
+            inspect: false,
             knight: Some(KnightSpot {
                 feet: t04_knight,
                 motion: KnightMotion::Idle,
@@ -454,20 +475,25 @@ pub fn views() -> Vec<GalleryView> {
         GalleryView {
             id: "T05",
             name: "T05-knight-hit",
-            title: "Knight body hit at about 10 m: wide eyes, damage number",
+            title: "Knight body hit at about 5 m: wide eyes, damage number",
             feet: t05_feet,
-            aim: chest,
-            // The target paints him higher; a level-ish camera keeps its sky.
+            crouch: true,
+            // High on his chest, where the target's starburst is.
+            aim: Aim::Knight {
+                up: 1.25,
+                right: 0.0,
+            },
             framing: Framing::Offset {
-                screen: Vec2::new(-0.26, 0.0),
+                screen: target_screen(720.0, 430.0),
             },
             tool: RIFLE,
+            inspect: false,
             knight: Some(KnightSpot {
                 feet: t05_knight,
                 motion: KnightMotion::Idle,
                 hp: 100.0,
                 shield: 0.0,
-                screen: target_screen(715.0, 430.0),
+                screen: target_screen(690.0, 450.0),
             }),
             // A wall with a ramp up to it, close on the right.
             pieces: vec![wall(8, 9, 0, South), ramp(8, 10, 0, North)],
@@ -478,41 +504,48 @@ pub fn views() -> Vec<GalleryView> {
         GalleryView {
             id: "T06",
             name: "T06-headshot",
-            title: "Headshot at about 12 m: hat bouncing, gold number",
+            title: "Headshot at about 6 m: hat bouncing, gold number",
             feet: t06_feet,
+            crouch: true,
             aim: Aim::Knight {
                 up: 1.62,
                 right: 0.0,
             },
             framing: Framing::Eye,
             tool: RIFLE,
+            inspect: false,
             knight: Some(KnightSpot {
                 feet: t06_knight,
                 motion: KnightMotion::Idle,
                 hp: 100.0,
                 shield: 0.0,
-                screen: target_screen(790.0, 500.0),
+                // The crosshair on his helmet puts his chest just below it.
+                screen: Vec2::new(0.0, -0.15),
             }),
-            // A ramp against a wall on the left, a wall end close on the right.
+            // A ramp rising left against a wall on the left, a wall end close
+            // on the right.
             pieces: vec![
-                wall(3, 7, 0, North),
-                ramp(3, 7, 0, North),
+                wall(4, 7, 0, North),
+                ramp(4, 7, 0, West),
                 wall(4, 9, 0, East),
             ],
             script: fire.clone(),
-            moment: Moment::AfterShot(7),
+            // The hat near the top of its bounce.
+            moment: Moment::AfterShot(9),
             expect: Expect::Headshot,
         },
         GalleryView {
             id: "T07",
             name: "T07-shield-break",
-            title: "Shield break at about 8 m, stars",
+            title: "Shield break at about 4.5 m, stars",
             feet: t07_feet,
+            crouch: true,
             aim: chest,
             framing: Framing::Offset {
-                screen: Vec2::new(-0.25, 0.0),
+                screen: target_screen(720.0, 440.0),
             },
             tool: RIFLE,
+            inspect: false,
             knight: Some(KnightSpot {
                 feet: t07_knight,
                 motion: KnightMotion::Idle,
@@ -520,8 +553,13 @@ pub fn views() -> Vec<GalleryView> {
                 shield: 10.0,
                 screen: target_screen(720.0, 440.0),
             }),
-            // A wall very close on the left.
-            pieces: vec![wall(5, 7, 0, West)],
+            // A wall very close on the left, and further along it a ramp
+            // rising to the left behind the knight.
+            pieces: vec![
+                wall(5, 7, 0, West),
+                wall(5, 6, 0, West),
+                ramp(5, 6, 0, West),
+            ],
             script: fire.clone(),
             moment: Moment::AfterShot(9),
             expect: Expect::ShieldBreak,
@@ -529,23 +567,25 @@ pub fn views() -> Vec<GalleryView> {
         GalleryView {
             id: "T08",
             name: "T08-elimination",
-            title: "Elimination poof at about 8 m, hat spinning on the grass",
+            title: "Elimination poof at about 5 m, hat spinning on the grass",
             feet: t08_feet,
+            crouch: true,
             aim: chest,
             framing: Framing::Offset {
-                screen: Vec2::new(-0.37, 0.05),
+                screen: target_screen(650.0, 420.0),
             },
             tool: RIFLE,
+            inspect: false,
             knight: Some(KnightSpot {
                 feet: t08_knight,
                 motion: KnightMotion::Idle,
                 hp: 20.0,
                 shield: 0.0,
-                screen: target_screen(660.0, 400.0),
+                screen: target_screen(650.0, 420.0),
             }),
-            // The south-east ramp (initial cover), walled and roofed: the
-            // structure on the left.
-            pieces: vec![wall(9, 8, 0, West), floor(9, 8, 1)],
+            // A ramp rising left against a wall, roofed over: the structure on
+            // the left.
+            pieces: vec![wall(5, 8, 0, North), ramp(5, 8, 0, West), floor(5, 8, 1)],
             script: fire,
             moment: Moment::AfterShot(28),
             expect: Expect::Kill,
@@ -557,14 +597,20 @@ pub fn views() -> Vec<GalleryView> {
             // Just short of a grid line, so the ghost goes on the next one: the
             // fort's front line, beside it.
             feet: Vec3::new(5.0, 0.0, 12.3),
+            crouch: false,
             aim: Aim::Look {
                 yaw: deg(3.0),
                 pitch: deg(-4.0),
             },
             // The ghost can't go further than the next grid line, so the view
-            // steps back a little to show the fort and the ghost side by side.
-            framing: Framing::Behind { back: 1.2 },
+            // steps off to the fort's front-left to show its open front and
+            // the ghost beside it, as the target does.
+            framing: Framing::Fixed {
+                eye: Vec3::new(-2.3, 1.5, 12.4),
+                look_at: Vec3::new(4.25, 1.2, 7.25),
+            },
             tool: ActiveTool::Build(PieceKind::Wall),
+            inspect: false,
             knight: None,
             pieces: vec![
                 wall(6, 7, 0, West),
@@ -582,15 +628,17 @@ pub fn views() -> Vec<GalleryView> {
             name: "T10-station-up",
             title: "Looking up at the station",
             feet: spawn,
+            crouch: false,
             aim: Aim::Look {
                 yaw: deg(-30.0),
                 pitch: deg(20.0),
             },
             framing: Framing::Fixed {
                 eye: t10_eye,
-                look_at: STATION + Vec3::Y * 45.0,
+                look_at: STATION + Vec3::Y * 60.0,
             },
             tool: RIFLE,
+            inspect: false,
             knight: None,
             pieces: vec![],
             script: vec![],
@@ -601,17 +649,19 @@ pub fn views() -> Vec<GalleryView> {
             id: "T11",
             name: "T11-island-edge",
             title: "The island edge and barrier",
-            // Beside the east barrier, looking north along the edge: the land
-            // on the left, the east cover walls at the far left.
+            // Beside the east barrier, looking north-east along the edge and
+            // out over the void: the land and a wall with a ramp on the left.
             feet: Vec3::new(22.5, 0.0, 14.0),
+            crouch: false,
             aim: Aim::Look {
-                yaw: deg(-15.0),
-                pitch: deg(-8.0),
+                yaw: deg(-35.0),
+                pitch: deg(-9.0),
             },
             framing: Framing::Eye,
             tool: RIFLE,
+            inspect: false,
             knight: None,
-            pieces: vec![],
+            pieces: vec![wall(11, 7, 0, North), ramp(11, 7, 0, West)],
             script: vec![],
             moment: Moment::Settled(SETTLE),
             expect: Expect::Still,
@@ -621,12 +671,14 @@ pub fn views() -> Vec<GalleryView> {
             name: "T12-pause-menu",
             title: "The pause menu",
             feet: spawn,
+            crouch: false,
             aim: Aim::Look {
                 yaw: 0.0,
                 pitch: deg(4.0),
             },
             framing: Framing::Eye,
             tool: RIFLE,
+            inspect: false,
             knight: None,
             pieces: vec![],
             script: vec![(24, Act::Pause(true))],
@@ -924,9 +976,15 @@ impl GalleryRunner {
         with_intent(world, |i| {
             *i = PlayerIntent {
                 select: Some(view.tool),
+                crouch: view.crouch,
                 ..default()
             };
         });
+        if view.inspect {
+            world.insert_resource(ViewmodelInspect);
+        } else {
+            world.remove_resource::<ViewmodelInspect>();
+        }
         teleport(world, view.feet);
         self.place_knight(world, view);
         for slot in &view.pieces {
@@ -1107,6 +1165,7 @@ impl GalleryRunner {
     fn teardown(&mut self, world: &mut World) {
         world.remove_resource::<GalleryFreeze>();
         world.remove_resource::<GalleryCamera>();
+        world.remove_resource::<ViewmodelInspect>();
         if *world.resource::<State<AppState>>().get() == AppState::Paused {
             set_paused(world, false);
         }
