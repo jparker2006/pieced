@@ -137,3 +137,22 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **Damage numbers:** white for health, cyan for shield, gold for headshots, with an ink outline and a squash pop. Pooled at 24, they show on the hit frame and run on `FreezableTime`.
   - **Pause menu:** logo buttons, with the HUD hidden, as in T12.
   - **Accepted extras:** hotbar slots 66×60 without text labels, and bigger numbers.
+- 2026-09-26: **spells merged** (`afddf0f`), with 326 tests passing:
+  - the rifle starburst bolt landing ≤ 2 frames after the hit frame;
+  - the pump fan with 10 sparks on the real pellet paths;
+  - impacts by type: body, head, shield hex, shield break with stars, brick chips and wood splinters;
+  - the poof and the `knight_hat` prop;
+  - fixed pools, warm-up and `FreezableTime`;
+  - `fx_check` writes `scenario.s6`.
+
+  `scripts/evidence.py` now has S6 and S4 rows (`a962936`). **All Phase 2 and 3 slices are merged.**
+- **Art-review round 1** (offscreen board, `afddf0f`):
+  - **Close:** T04 and T10 match their targets closely; T01, T09, T11 and T12 are close.
+  - **Gaps:**
+    - the knight is framed too far away in T03–T08;
+    - T02 lacks the tilted close-up;
+    - the T03 bolt is small;
+    - the knight's arms are thin;
+    - the T08 hat is small.
+
+  Polish round 1 was dispatched.
