@@ -29,3 +29,23 @@ Every number here names its run folder, the commit, and the power and Low Power 
 ## Log
 
 - 2026-09-25: goal launched. The baseline was tagged, and the shared foundations (`BootGate`, the `look` and `models` plugin skeletons) were added. Phase 1 builders were dispatched.
+- 2026-09-25: fonts downloaded with Jake's OK. Luckiest Guy (Apache 2.0) and Lilita One (OFL) are in `assets/fonts/`, with their licenses.
+- 2026-09-25: **audio merged** (`d586c29`): the new synthesized bank, with 12 audio tests; 171 tests pass on the merge. Open item: the rifle reload's last click lands about 0.12 s after the gun is ready.
+- 2026-09-25: **art pipeline merged** (`d7e9bdd`):
+  - the headless Blender pipeline, deterministic (`build-art.sh --check`);
+  - a 66-color palette sampled from the targets;
+  - `rock_a`, `rock_b`, `stump_a` and `tree_a`;
+  - `ModelsPlugin` (embedded glbs, the BootGate hold, part lookup, the forward fix);
+  - the asset audit.
+
+  181 tests pass. Colors ship as vertex colors (the spec was updated). Art-review notes for Phase 4: the rock is a little boxy and its shadow too saturated blue; the foliage shadow is teal where the targets show a darker green.
+- 2026-09-25: Phase 2 **guns** and **knight** builders dispatched (models first; their in-game integration waits for the look slice).
+- 2026-09-25: **look foundations merged** (`0bc8a27`):
+  - the toon material (vertex colors, violet shadow band, rim), with `Tonemapping::None`;
+  - inverted-hull ink outlines, the default. `bevy_mod_outline` sits behind `outline=mod`, because offscreen it drew outlines through the ground, couldn't fade merged scenery and adds an MSAA blit;
+  - the far material, halos, blob shadows;
+  - shadow maps and fog removed;
+  - shader warm-up behind a loading overlay, with Boot ending about 1.3 s after start in a debug build with a warm cache.
+
+  The orchestrator added model dressing (`eb2f6cf`): Blender models get toon, far or viewmodel materials on spawn. 227 tests pass. Risk: the first launch after new shaders took about 12 s while Metal's shader cache was cold. S3 measures warm launches.
+- 2026-09-25: Phase 2 **island** (pieces, D29 props, island, barrier, grid) and **sky** (galaxy, station, ships, far islands, planet) builders dispatched. Guns and knight were told to continue into in-game integration.
