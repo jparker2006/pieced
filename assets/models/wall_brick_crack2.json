@@ -1,0 +1,59 @@
+{
+  "name": "wall_brick_crack2",
+  "kind": "wall",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 584,
+  "triangle_budget": 600,
+  "bounds": {
+    "min": [
+      -2.0076,
+      -0.003,
+      -0.218
+    ],
+    "max": [
+      1.9994,
+      2.9985,
+      0.158
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "wall_brick_crack2",
+      "bounds": {
+        "min": [
+          -2.0076,
+          -0.003,
+          -0.218
+        ],
+        "max": [
+          1.9994,
+          2.9985,
+          0.158
+        ]
+      },
+      "triangles": 584,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    }
+  },
+  "attach": {
+    "Top": {
+      "parent": "wall_brick_crack2",
+      "position": [
+        0.0,
+        3.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

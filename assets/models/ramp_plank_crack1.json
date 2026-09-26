@@ -1,0 +1,60 @@
+{
+  "name": "ramp_plank_crack1",
+  "kind": "ramp",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 342,
+  "triangle_budget": 400,
+  "bounds": {
+    "min": [
+      -2.0,
+      -0.074,
+      -2.06
+    ],
+    "max": [
+      2.0,
+      3.0284,
+      2.0262
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "ramp_plank_crack1",
+      "bounds": {
+        "min": [
+          -2.0,
+          -0.074,
+          -2.06
+        ],
+        "max": [
+          2.0,
+          3.0284,
+          2.0262
+        ]
+      },
+      "triangles": 342,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "stump_bark_line"
+      ]
+    }
+  },
+  "attach": {
+    "Top": {
+      "parent": "ramp_plank_crack1",
+      "position": [
+        0.0,
+        3.0,
+        -2.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

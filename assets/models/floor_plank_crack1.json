@@ -1,0 +1,60 @@
+{
+  "name": "floor_plank_crack1",
+  "kind": "floor",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 302,
+  "triangle_budget": 400,
+  "bounds": {
+    "min": [
+      -2.0,
+      -0.1,
+      -2.0
+    ],
+    "max": [
+      2.0,
+      0.1231,
+      2.0
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "floor_plank_crack1",
+      "bounds": {
+        "min": [
+          -2.0,
+          -0.1,
+          -2.0
+        ],
+        "max": [
+          2.0,
+          0.1231,
+          2.0
+        ]
+      },
+      "triangles": 302,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "stump_bark_line"
+      ]
+    }
+  },
+  "attach": {
+    "Top": {
+      "parent": "floor_plank_crack1",
+      "position": [
+        0.0,
+        0.1,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

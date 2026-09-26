@@ -1,0 +1,43 @@
+{
+  "name": "plank_splinter",
+  "kind": "floor",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 31,
+  "triangle_budget": 400,
+  "bounds": {
+    "min": [
+      -0.13,
+      -0.05,
+      -0.32
+    ],
+    "max": [
+      0.13,
+      0.074,
+      0.42
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "plank_splinter",
+      "bounds": {
+        "min": [
+          -0.13,
+          -0.05,
+          -0.32
+        ],
+        "max": [
+          0.13,
+          0.074,
+          0.42
+        ]
+      },
+      "triangles": 31,
+      "colors": [
+        "nail_head",
+        "plank"
+      ]
+    }
+  },
+  "attach": {}
+}
