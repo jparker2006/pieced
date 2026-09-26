@@ -43,8 +43,12 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 
 | File | Made by | Notes |
 |---|---|---|
-| `shaders/sky.wgsl` | hand-written, used by `src/arena/visuals/sky.rs` | Milestone 1 sky dome |
-| `shaders/target_rim.wgsl` | hand-written, used by `src/arena/visuals/target.rs` | Milestone 1 dummy rim light |
+| `shaders/sky.wgsl` | hand-written, used by `src/arena/visuals/sky.rs` | Sky dome (the sky slice replaces it with the galaxy) |
+| `shaders/toon.wgsl` | hand-written, used by `src/look/toon.rs` | Two-band toon shading, rim, emissive, vertex colors |
+| `shaders/ink.wgsl` | hand-written, used by `src/look/outline.rs` | Inverted-hull ink outlines, screen-space width, distance fade |
+| `shaders/far.wgsl` | hand-written, used by `src/look/far.rs` | Unlit far layer with distance haze |
+| `shaders/halo.wgsl` | hand-written, used by `src/look/halo.rs` | Additive camera-facing glow billboards |
+| `shaders/blob.wgsl` | hand-written, used by `src/look/blob.rs` | Soft blob shadows under characters and props |
 
 ## Fonts (`assets/fonts/`)
 

@@ -53,6 +53,16 @@
 //!   ground (world and pieces) below it; it shrinks and fades as the entity
 //!   rises and hides with it.
 //!
+//! ## Blender models
+//!
+//! - Models from `models::spawn_model` are dressed automatically when
+//!   `ModelSpawned` fires: every mesh gets the shared vertex-coloured
+//!   [`ToonMaterial`] and outline normals. Put [`ModelLook`] on the root for
+//!   `Viewmodel` (toon plus the viewmodel render layer) or `Far` (the far
+//!   material), and [`Outline`] on the root to ink it. Override single parts
+//!   (crystals, eyes) after [`ModelDressed`]; the shared handles are in
+//!   [`ModelMaterials`].
+//!
 //! ## Settings and warm-up
 //!
 //! - [`LookSettings`] (resource, read-only): the preset ([`preset_look`])
@@ -69,6 +79,7 @@
 mod blob;
 mod far;
 mod halo;
+mod model_look;
 mod outline;
 mod settings;
 mod toon;
@@ -82,6 +93,7 @@ pub use halo::{
     HALO_MAX_INTENSITY, Halo, HaloAssets, HaloLink, HaloMaterial, HaloSprite, halo_image,
     pack_halo, unpack_halo,
 };
+pub use model_look::{ModelDressed, ModelLook, ModelMaterials};
 pub use outline::{
     ATTRIBUTE_OUTLINE_NORMAL, DEFAULT_WIDTH_PX, FADE_END, FADE_START, InheritedOutline,
     InkMaterial, NoOutline, Outline, OutlineHull, OutlineHullLink, REFERENCE_HEIGHT_PX, ink_color,
@@ -130,6 +142,9 @@ impl Plugin for LookPlugin {
         ))
         .init_resource::<ToonLighting>()
         .init_resource::<FarHaze>()
+        .add_message::<crate::models::ModelSpawned>()
+        .add_message::<ModelDressed>()
+        .init_resource::<ModelMaterials>()
         .init_resource::<LookSettings>()
         .init_resource::<outline::InkMaterials>()
         .init_resource::<warmup::WarmupState>()
@@ -153,6 +168,7 @@ impl Plugin for LookPlugin {
                 apply_far_setting,
                 outline::update_mod_outlines,
                 warmup::run_warmup,
+                model_look::dress_spawned_models,
             ),
         )
         .add_systems(
