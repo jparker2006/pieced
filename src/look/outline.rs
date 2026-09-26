@@ -869,4 +869,137 @@ mod tests {
         assert_ne!(a, c);
         assert_eq!(assets.len(), 2);
     }
+
+    fn hull_app() -> App {
+        let mut app = App::new();
+        app.add_plugins((
+            MinimalPlugins,
+            AssetPlugin::default(),
+            bevy::mesh::MeshPlugin,
+        ))
+        .init_asset::<Image>()
+        .init_asset::<InkMaterial>()
+        .init_asset::<ToonMaterial>()
+        .init_resource::<InkMaterials>()
+        .init_resource::<LookSettings>()
+        .add_systems(
+            Update,
+            (
+                apply_outline_backend,
+                spawn_outline_hulls,
+                sync_outline_hulls,
+            )
+                .chain(),
+        )
+        .add_observer(remove_outline_hull);
+        app
+    }
+
+    fn hull_of(app: &App, owner: Entity) -> Entity {
+        app.world()
+            .get::<OutlineHullLink>(owner)
+            .expect("hull spawned")
+            .0
+    }
+
+    #[test]
+    fn hulls_follow_their_owner_on_any_layer() {
+        let mut app = hull_app();
+        let (mesh_a, mesh_b) = {
+            let mut meshes = app.world_mut().resource_mut::<Assets<Mesh>>();
+            (
+                meshes.add(Cuboid::default()),
+                meshes.add(Cuboid::new(2.0, 1.0, 1.0)),
+            )
+        };
+        let brick = app
+            .world_mut()
+            .resource_mut::<Assets<ToonMaterial>>()
+            .add(ToonMaterial::new(Color::srgb(0.78, 0.35, 0.2)));
+        // A viewmodel part: its outline must render on the viewmodel layer.
+        let gun = app
+            .world_mut()
+            .spawn((
+                Mesh3d(mesh_a.clone()),
+                MeshMaterial3d(brick.clone()),
+                Outline::default(),
+                RenderLayers::layer(VIEWMODEL_LAYER),
+            ))
+            .id();
+        app.update();
+        let hull = hull_of(&app, gun);
+        let world = app.world();
+        assert_eq!(world.get::<ChildOf>(hull).unwrap().parent(), gun);
+        assert_eq!(world.get::<Mesh3d>(hull).unwrap().0, mesh_a);
+        assert_eq!(
+            world.get::<RenderLayers>(hull),
+            Some(&RenderLayers::layer(VIEWMODEL_LAYER))
+        );
+        assert_eq!(world.get::<Visibility>(hull), Some(&Visibility::Inherited));
+        let ink = world
+            .get::<MeshMaterial3d<InkMaterial>>(hull)
+            .unwrap()
+            .0
+            .clone();
+        let ink = world.resource::<Assets<InkMaterial>>().get(&ink).unwrap();
+        assert!(!ink.fixed, "ink derived from the surface");
+        assert_eq!(ink.color, Color::srgb(0.78, 0.35, 0.2));
+
+        // A crack stage swaps the mesh: the hull follows.
+        app.world_mut().get_mut::<Mesh3d>(gun).unwrap().0 = mesh_b.clone();
+        app.update();
+        assert_eq!(app.world().get::<Mesh3d>(hull).unwrap().0, mesh_b);
+
+        // Outlines off: hidden, not despawned (switching back is free).
+        app.world_mut().resource_mut::<LookSettings>().outline = OutlineBackend::Off;
+        app.update();
+        assert_eq!(
+            app.world().get::<Visibility>(hull),
+            Some(&Visibility::Hidden)
+        );
+        app.world_mut().resource_mut::<LookSettings>().outline = OutlineBackend::Hull;
+        app.update();
+        assert_eq!(
+            app.world().get::<Visibility>(hull),
+            Some(&Visibility::Inherited)
+        );
+
+        // Removing the outline removes the hull.
+        app.world_mut().entity_mut(gun).remove::<Outline>();
+        app.update();
+        assert!(app.world().get_entity(hull).is_err());
+        assert!(app.world().get::<OutlineHullLink>(gun).is_none());
+    }
+
+    #[test]
+    fn mod_backend_swaps_hulls_for_bevy_mod_outline_components() {
+        let mut app = hull_app();
+        let mesh = app
+            .world_mut()
+            .resource_mut::<Assets<Mesh>>()
+            .add(Cuboid::default());
+        let piece = app
+            .world_mut()
+            .spawn((Mesh3d(mesh), Outline::ink(Color::BLACK)))
+            .id();
+        app.world_mut().resource_mut::<LookSettings>().outline = OutlineBackend::Mod;
+        app.update();
+        let hull = hull_of(&app, piece);
+        assert_eq!(
+            app.world().get::<Visibility>(hull),
+            Some(&Visibility::Hidden)
+        );
+        assert!(app.world().get::<OutlineVolume>(piece).is_some());
+        assert!(matches!(
+            app.world().get::<OutlineMode>(piece),
+            Some(OutlineMode::ExtrudeReal)
+        ));
+        app.world_mut().resource_mut::<LookSettings>().outline = OutlineBackend::Hull;
+        app.update();
+        assert!(app.world().get::<OutlineVolume>(piece).is_none());
+        assert_eq!(
+            app.world().get::<Visibility>(hull),
+            Some(&Visibility::Inherited)
+        );
+    }
 }

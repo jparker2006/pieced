@@ -228,12 +228,14 @@ fn register_shaders(app: &mut App) {
     }
 }
 
-/// `far=off` hides every far-layer mesh (applied when the setting changes).
+/// `far=off` hides every far-layer mesh: all of them when the setting changes,
+/// and any spawned later while it is off.
 fn apply_far_setting(
     settings: Res<LookSettings>,
-    mut far: Query<&mut Visibility, With<MeshMaterial3d<FarMaterial>>>,
+    mut far: Query<(&mut Visibility, Ref<MeshMaterial3d<FarMaterial>>)>,
 ) {
-    if !settings.is_changed() {
+    let changed = settings.is_changed();
+    if !changed && settings.far {
         return;
     }
     let visibility = if settings.far {
@@ -241,8 +243,10 @@ fn apply_far_setting(
     } else {
         Visibility::Hidden
     };
-    for mut v in &mut far {
-        v.set_if_neq(visibility);
+    for (mut v, material) in &mut far {
+        if changed || material.is_added() {
+            v.set_if_neq(visibility);
+        }
     }
 }
 
@@ -322,6 +326,39 @@ mod tests {
         let plain = builder_layout_cube(false);
         assert!(plain.attribute(ATTRIBUTE_OUTLINE_NORMAL).is_none());
         assert!(plain.attribute(Mesh::ATTRIBUTE_NORMAL).is_some());
+    }
+
+    #[test]
+    fn far_knob_hides_far_meshes_including_later_ones() {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(resolve_look(
+                crate::render::QualityPreset::Battery,
+                Some(&PerfKnobs::parse("far=off")),
+                false,
+            ))
+            .add_systems(Update, apply_far_setting);
+        let far = || {
+            (
+                MeshMaterial3d::<FarMaterial>(Handle::default()),
+                Visibility::Inherited,
+            )
+        };
+        let early = app.world_mut().spawn(far()).id();
+        app.update();
+        let late = app.world_mut().spawn(far()).id();
+        app.update();
+        for e in [early, late] {
+            assert_eq!(app.world().get::<Visibility>(e), Some(&Visibility::Hidden));
+        }
+        app.world_mut().resource_mut::<LookSettings>().far = true;
+        app.update();
+        for e in [early, late] {
+            assert_eq!(
+                app.world().get::<Visibility>(e),
+                Some(&Visibility::Inherited)
+            );
+        }
     }
 
     #[test]
