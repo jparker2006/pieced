@@ -11,12 +11,12 @@ Every number here names its run folder, the commit, and the power and Low Power 
 | S1 Target board (every view ≥ 4 from Jake) | PENDING | — |
 | S2 Performance (battery, Low Power Mode, full look) | PENDING | — |
 | S3 Launch < 5 s ×3 | PENDING | — |
-| S4 Motion | PENDING | — |
-| S5 Knight hitbox fit | PENDING | — |
-| S6 Feedback timing | PENDING | — |
-| S7 No regressions (G1, G3, G6, tests, clippy, fmt) | PENDING | — |
+| S4 Motion | PARTIAL | `tests/far.rs` passes (galaxy angle, ships ≥ 5 m on their loops, islands bob, glass pulse) on `12550d4`. Native `sky_check` frames pending (go window) |
+| S5 Knight hitbox fit | PASS (on `12550d4`; re-run on the final commit) | `tests/knight.rs`. Worst part outside its hitbox: Helmet +4.6 cm (limit 5). Front fill ≤ 9.2 cm (limit 10) |
+| S6 Feedback timing | PARTIAL | `tests/spells.rs`: impact, hitmarker and damage number on the hit tick; bolt ≤ 2 frames, with the real `HudPlugin`. Native `fx_check` `scenario.s6` pending (go window) |
+| S7 No regressions (G1, G3, G6, tests, clippy, fmt) | PARTIAL | `cargo test --locked` 331 passed, 0 failed; clippy `-D warnings` and `fmt --check` clean on `12550d4`. Native G1, G3 and G6 pending (go window) |
 | S8 Jake's feel verdict | PENDING | — |
-| S9 Original and reproducible | PENDING | — |
+| S9 Original and reproducible | PASS (on `12550d4`; re-run on the final commit) | `scripts/build-art.sh --check`: every model and UI image rebuilt headless, byte-identical. `tests/assets.rs` audit passes. `tests/models.rs` loads every glb headless. The only third-party files are Lilita One and its OFL license |
 
 ## Phase 0: performance baseline (Milestone 1 art)
 
