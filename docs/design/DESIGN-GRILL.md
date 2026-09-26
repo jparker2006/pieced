@@ -34,28 +34,31 @@ The next step for Pieced is the look: cartoon up close ("Family Guy / Looney Tun
 | D16 | **Audio.** | Magical zaps and shimmer for spells. A cartoon "bonk" plus sparkle on hits. A brick "clunk" for building. A glassy crash when a shield breaks. All still synthesized in code. |
 | D17 | **Process.** | After this grill, Jake compacts the conversation. Then another grill round and more images, then a spec and a `/goal` brief with a sharply defined done state. |
 
-## Round 4: asked 2026-09-25, waiting on Jake
+## Round 4: settled 2026-09-25 (Jake: "rec on all, go with A for Q16")
 
-Q16–Q26 are asked, each with a recommendation:
-- **Q16:** building material (rec: (a) brick walls, wooden floors and ramps).
-- **Q17:** outlines and shading (rec: outlines on near objects only, two-tone shading, no shadow maps, blob shadows).
-- **Q18:** the knight's look (rec: Looney proportions, visor eyes, a short hat inside the head hitbox, cartoon reactions).
-- **Q19:** knight animation (rec: rigid armor parts animated in code).
-- **Q20:** gloves and guns (rec: white cartoon gloves, crystals colored to match each spell, crystal-swap reload, crystal dims as ammo runs down).
-- **Q21:** far-view layout (rec: station on one side, galaxy opposite and overhead, a ring of bobbing islands, magic barrier at the edge, galaxy generated in code).
-- **Q22:** font (rec: an openly licensed cartoon font).
-- **Q23:** arena (rec: keep the M1 layout and reskin it; the dummy becomes the knight).
-- **Q24:** done state as a target board (12 gallery views, each scored 1–5, all ≥ 4).
-- **Q25:** done state for performance and feel (G2 bar with the full look, launch < 5 s, motion check, Jake's 10-minute feel check, no regressions).
-- **Q26:** order of work (rec: fix the G2 baseline first).
+The base design image is `concepts/R4-M1-brick-walls-wood-floors.png`. It combines D7–D16 in one scene.
 
-The material comparison images are in `docs/design/concepts/R4-M{1,2,3}-*.png`: (a) brick walls with wooden floors and ramps, (b) wood vs. brick tiers, (c) brick-and-timber. The prompts are in `concept-prompts.md`.
+| # | Decision | What it commits us to |
+|---|---|---|
+| D12 | **Building material: (a).** | Walls are chunky cartoon brick. Floors and ramps are warped cartoon wooden planks with big nail heads. One material per piece type, so there's no gameplay change and piece types read at a glance. A faint glowing build grid shows on the grass. |
+| D18 | **Outlines and shading.** | Thin dark outlines (inverted hull) only on near objects: guns, gloves, the knight, built pieces, trees, rocks. The sky, station and far islands get no outlines and stay soft and glowy. Flat two-tone toon shading plus a thin rim light. **No shadow maps**; cartoon blob shadows under characters. |
+| D19 | **The knight.** | As in R4-M1: big steel bucket helmet, visor eyes that blink, go wide on hits and turn to X's on elimination; oversized gauntlets and boots; small body; purple trim and cape. A **short floppy hat that stays inside the head hitbox**, and the silhouette matches the hitboxes. Reactions: a wobble on hits; on shield break, cyan glass shatters and stars circle his head; on elimination, a cartoon poof, and the hat drops and spins on the grass. |
+| D20 | **Knight animation.** | Rigid armor parts (helmet, torso, gauntlets, boots, cape) animated procedurally in code with squash and stretch. No skinned skeleton. Bots reuse it later. |
+| D21 | **Gloves and guns.** | White four-finger cartoon gloves. Rifle: brass SCAR-like body, dark-wood stock, a blue crystal in a glass chamber, an energy-cell magazine. Pump: stubby, with a flared brass bell muzzle, a wooden pump grip, and a violet crystal in gold rings. Code-driven animation: squash-and-stretch kick on firing; reload pops the dim crystal out and slots a glowing one in; the crystal fades as the magazine empties. |
+| D22 | **Far view.** | The station fills one side of the sky. The galaxy swirl sits opposite and overhead, and a ringed planet sits low on the horizon. A ring of 4–6 bobbing waterfall islands circles the arena. Ships loop between the spires. A shimmering magic barrier marks the island edge (no falling). Warm key light from a small star near the station, cool teal fill from the galaxy. The galaxy is generated in code (baked to a cubemap, then rotated). The station and islands are low-poly 3D models. |
+| D23 | **Font.** | One openly licensed (OFL) cartoon display font for the HUD and menu. Everything else (models, textures, sounds) is original. |
+| D24 | **Arena.** | Keep M1's layout and size; reskin only. Cover boxes become rocks, stumps and trees. The dummy becomes the knight, with the same movement. |
+| D25 | **Done, part 1: the target board.** | 12 target images, one per gallery view (`concepts/T01`–`T12`). The in-game gallery captures the same 12 views, and an evidence page shows each one beside its target. Jake scores every view 1–5. Done when **every view scores ≥ 4**. The bar is the same style and composition, not a pixel match. |
+| D26 | **Done, part 2: speed and feel.** | All at once, with the full new look: the G2 bar (5 min on battery with Low Power Mode on, mean 16.4–17.0 ms, 0 frames > 25 ms, ≥ 99% < 18 ms); launch < 5 s; an automated motion check (galaxy, ships, islands and glass actually move); Jake's 10-minute play verdict that the guns, spells and sounds feel sick; M1's G1 and G6 still pass; tests, clippy and fmt clean. |
+| D27 | **Order of work.** | 1. G2 baseline fix on the current art. 2. Toon material and outlines. 3. Guns and gloves. 4. Knight. 5. Island and building materials. 6. Sky and far-view life. 7. Spells and effects. 8. HUD and audio. 9. Gallery, performance run, Jake's scoring and play check. Push after every green step. Heavy or full-screen runs only when Jake says "go". |
+| D28 | **Blender.** | Headless Blender Python scripts in the repo are the source of truth for every model, so assets are reproducible and need no window. Jake wants to use a Blender MCP for live, watchable iteration (installing it needs his OK). |
+
+The M1 `/goal` was cleared by Jake on 2026-09-25.
 
 ## Handoff: where to pick up after compaction
 
-- **Next:** grill round 4, then a new image round, then the spec and `/goal` brief.
-  - Round 4 should settle: D12 (building material); outline technique (proposed: inverted-hull outlines on near objects, none on the far backdrop); enemy details (a cartoon B2 knight with Looney-wizard flavor); gun family details (A1/A2 build, both guns); exact far-view composition; and the done-state specifics (gallery views, performance gate, a "feel" check with Jake).
-- **Images:** generate them with the combined direction (C-style close-up, Looney wizards, a cartoon B2 knight, the A-style gun, B1/C1 spells, D1 sky, a grassy floating island).
+- **Next:** Jake reviews the 12 target images (T01–T12). Regenerate any he rejects. Then write the design spec and the `/goal` brief.
+- **Images:** the target board uses R4-M1 as a style reference (`codex exec ... -i R4-M1-brick-walls-wood-floors.png -- "<prompt>"`; the `--` is required because `-i` takes several values).
   - Use Codex CLI: `codex exec --skip-git-repo-check --ephemeral -m gpt-5.5 -s workspace-write -C docs/design/concepts "<prompt>" < /dev/null`.
   - Stdin **must** be `/dev/null`, or the job hangs.
   - Run **one at a time**. Parallel runs can copy each other's outputs.
