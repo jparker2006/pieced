@@ -1,6 +1,6 @@
 # Pieced — Milestone 2 "Spellbound" spec
 
-**Status:** DRAFT, built from the design grill (`docs/design/DESIGN-GRILL.md`, decisions D1–D28, 2026-09-25). It becomes the build contract when Jake approves the target board (T01–T12) and answers the open questions at the bottom.
+**Status:** AGREED with Jake on 2026-09-25. It's built from the design grill (`docs/design/DESIGN-GRILL.md`, decisions D1–D31). Jake approved all 12 targets (T01–T12) and took the recommendation on Q27–Q29. This is the build contract for Milestone 2.
 
 **Companions:**
 - `docs/SPEC.md`: the Milestone 1 contract. Its gameplay stays in force.
@@ -24,7 +24,7 @@ The risks:
 
 ## Solution
 
-Milestone 2 restyles Pieced end to end **without changing how it plays**. Every feel number, damage number, hitbox, grid rule and control from Milestone 1 stays. What changes:
+Milestone 2 restyles Pieced end to end **without changing how it plays**. Every feel number, damage number, hitbox, grid rule and control from Milestone 1 stays. The one exception, approved by Jake, is a handful of solid cartoon rocks and stumps in the arena, as in the targets. What changes:
 
 - **Rendering:**
   - a custom toon material (flat two-tone shading, a rim light, no PBR);
@@ -152,7 +152,13 @@ Done means all four hold:
   - the grid (4 m cells, 3 m levels, 12 × 12 arena, 6 levels);
   - the initial cover layout (`building::initial_cover`), spawns, controls and the `PlayerIntent` seam.
 - **Models are made to fit the hitboxes, never the reverse.** Any hitbox change is a gameplay change and needs Jake.
-- **The arena stays a flat 48 m square with an invisible boundary.** Anything with collision inside it would be a gameplay change: see open question Q27.
+- **One approved gameplay change (Q27, D29): solid props in the arena.**
+  - **What:** 6–8 cartoon rocks (1.0–1.4 m tall, crouch cover) and stumps (at most 0.7 m, jumpable) stand inside the 48 m square, as in the targets.
+  - **Collision:** static colliders on the World layer, fixed positions listed in `arena/mod.rs` (headless). They block movement and shots.
+  - **Building:** pieces may intersect props, like building through terrain in Fortnite. Placement ignores props.
+  - **Placement rules:** no prop within 3 m of either spawn or an initial cover piece, and none in the dummy's strafe zone.
+  - **Trees** stay on the island margin outside the barrier.
+  - **Otherwise** the arena is unchanged: a flat 48 m square with an invisible boundary.
 
 ### Toolchain and dependencies
 
@@ -239,7 +245,7 @@ Done means all four hold:
   - The one exception is a single openly licensed cartoon display font in `assets/fonts/`, with its license file: **Luckiest Guy** (Apache 2.0) or **Lilita One** (OFL). Pick one from a HUD mockup.
   - `assets/ASSETS.md` lists every file in `assets/` and its source script or license.
   - No external asset services, including Blender MCP's asset-download features, AI 3D generators and CC0 packs, unless Jake approves.
-- **Blender MCP** (if Jake approves installing it) is a live, watchable preview tool only:
+- **Blender MCP** (installed 2026-09-25, D31) is a live, watchable preview tool only:
   - What it builds must be ported into the repo scripts before it counts.
   - It opens a Blender window, so it runs only when Jake wants to watch or has said "go".
 - **Loading:**
@@ -295,7 +301,7 @@ Done means all four hold:
    - **Ghost:** translucent glowing blue when valid, red when invalid.
    - **Build grid:** faint glowing lines drawn by the ground shader in world space. No geometry.
 5. **The island:**
-   - The playable 48 m square becomes the top of a grassy island, with low, non-colliding grass tufts, flowers and pebbles.
+   - The playable 48 m square becomes the top of a grassy island, with low, non-colliding grass tufts, flowers and pebbles, plus the solid rocks and stumps (D29).
    - Beyond the arena bounds, a margin of island carries the puffy trees, big rocks and stumps, then rounded cliffs drop into space.
    - A shimmering, translucent rune barrier stands on the arena boundary. It fades in within about 4 m and brightens where the player touches it.
    - The initial cover pieces render as brick and plank pieces, as in T01.
@@ -314,7 +320,7 @@ Done means all four hold:
      - a green health bar with a heart icon;
      - ammo with a crystal icon;
      - hotbar icons rendered by `icons.py`;
-     - the OFL font.
+     - the chosen open-license font.
    - The pause menu keeps Resume, Settings and Quit, under a PIECED logo rendered by `logo.py`.
 8. **Audio:** a new bank in `audio/synth.rs`, all synthesized:
    - rifle zap (bright sweep plus sparkle);
@@ -369,9 +375,13 @@ Done means all four hold:
 
 ### Working on Jake's Mac
 
-- **Jake's rule (see open question Q28):** full-screen scenario runs, timing runs and Blender windows happen only when Jake has said "go" for that window of time.
+- **Jake's rule:** full-screen scenario runs, timing runs and Blender windows (including Blender MCP) happen only when Jake has said "go" for that window of time.
 - Timing runs are also invalid when the window is covered.
-- Code builds and tests are subject to Jake's answer to Q28.
+- **Code builds and headless tests may run while Jake uses the Mac** (Q28, D30), at low priority:
+  - `scripts/env.sh` runs cargo under `taskpolicy -c utility` and `nice -n 10`, with `CARGO_BUILD_JOBS=6`;
+  - at most two builds run at once across all worktrees;
+  - `PIECED_FULL_SPEED=1` lifts this during a "go" window;
+  - never time a game started through `cargo run`, because it inherits the low priority.
 - Codex image generation (network only) is always fine.
 
 ## Testing Decisions
@@ -387,8 +397,14 @@ Done means all four hold:
   - **Crystal ammo:** crystal emissive follows the magazine fraction, including at empty, full, mid-reload and after reload.
   - **Spell timing:** on a scripted hit, the impact effect, hitmarker and damage number exist on the hit tick, and the bolt reaches its hit point within 2 frames.
   - **Elimination hat:** the hat prop spawns on elimination, settles on the ground within 2 s and despawns on respawn.
+  - **Props (D29):**
+    - the player collides with rocks and can jump onto a stump;
+    - a wall places through a rock;
+    - both spawns and the initial cover are at least 3 m from every prop;
+    - over 5 simulated minutes (seeded), the dummy never stalls on a prop;
+    - a rock blocks a rifle shot.
   - **Asset audit:** every file under `assets/` appears in `assets/ASSETS.md` with a source script or license, and every glb in the manifest loads.
-- **Kept:** every Milestone 1 test, including the TTK contract, building and combat. They must stay green untouched, because this milestone changes no gameplay.
+- **Kept:** every Milestone 1 test, including the TTK contract, building and combat. They must stay green untouched: the only gameplay change is the props, and no Milestone 1 test scenario touches them.
 - **Native scenarios:**
   - `gallery`: the 12 views;
   - `perf`, `latency`, `fx_check` (same-frame feedback) and `ttk`: re-run on the new look;
@@ -410,10 +426,10 @@ Done means all four hold:
 
 ## Out of Scope
 
-- Any gameplay change: numbers, hitboxes, grid, controls, arena collision. Collision props depend on Q27.
+- Any gameplay change beyond the D29 props: numbers, hitboxes, grid, controls, other arena collision.
 - Bots (now Milestone 3), rounds and scoring.
 - Skinned skeletal animation and motion capture.
-- Third-party models, textures, sounds or asset packs. The single OFL font is the only exception.
+- Third-party models, textures, sounds or asset packs. The single open-license font is the only exception.
 - HDR bloom, SSAO, SSR, TAA, volumetrics and real-time shadows in the Battery preset.
 - Character customization, skins and cosmetics.
 - New maps or a map selection.
@@ -428,12 +444,11 @@ Done means all four hold:
 4. **Scripted Blender art** may need several iterations to look as good as the targets. Preview renders let Claude review the art without opening a window.
 5. **Hitbox proportions:** a 40 cm head sphere caps how big the helmet can be. The "big head" look comes from the helmet's shape and the small body, not a bigger hitbox.
 
-**Open questions for Jake** (answers get folded in above):
-- **Q27:** should rocks, stumps and trees inside the arena be solid? That would add a little cover, a small gameplay change. The rec is no: keep them on the margin outside the barrier, as the arena has only the Milestone 1 cover pieces.
-- **Q28:** during the `/goal`, may code builds and headless tests run while you're using the Mac, at low priority? Full-screen and timing runs would still wait for "go".
-- **Q29:** OK to install Blender MCP?
-  - It's `ahujasid/mcp-for-blender`: a Blender add-on plus the `mcp-for-blender` 2.1.0 server from PyPI, about 4 MB.
-  - It's registered with `claude mcp add blender -e DISABLE_TELEMETRY=true -e BLENDER_MCP_SAFE_MODE=1 -- uvx mcp-for-blender`.
-  - The add-on runs a localhost-only socket (port 9876) inside Blender that executes Python sent by Claude.
-  - Its usage telemetry is on by default, so it gets turned off.
-  - Its external asset services (Poly Haven, Sketchfab, Hyper3D and others) are off by default and stay off.
+**Resolved questions** (2026-09-25, Jake: "approve all targets, rec on Q27 Q28 Q29"):
+- **Q27 → D29:** solid rocks and stumps inside the arena (see the scope rule).
+- **Q28 → D30:** builds and headless tests may run at low priority while Jake uses the Mac (see Working on Jake's Mac).
+- **Q29 → D31:** Blender MCP is installed.
+  - It's `ahujasid/mcp-for-blender` (`mcp-for-blender` 2.1.0 via `uvx`).
+  - It's registered in Claude Code's user config with `DISABLE_TELEMETRY=true` and `BLENDER_MCP_SAFE_MODE=1`.
+  - The add-on is `blender_mcp.py`, enabled in Blender 5.2's user add-ons. It listens on localhost:9876 only, when Blender is open.
+  - External asset services stay off.

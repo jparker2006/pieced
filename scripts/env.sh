@@ -20,5 +20,15 @@ cargo() {
     find "$_pieced_root/src" "$_pieced_root/tests" -name '*.rs' -exec touch {} + 2>/dev/null
   fi
   unset _pieced_root
-  command cargo "$@"
+  # Jake uses this Mac while builds run: compile at utility QoS and nice 10 so his apps
+  # stay smooth. Anything started through `cargo run` inherits this, so never time a game
+  # launched that way (scripts/play.sh and gate-runs.sh exec the binary directly).
+  # PIECED_FULL_SPEED=1 opts out during a "go" window.
+  if [ -n "$PIECED_FULL_SPEED" ]; then
+    command cargo "$@"
+  else
+    taskpolicy -c utility nice -n 10 cargo "$@"
+  fi
 }
+# Leave cores free for Jake's apps.
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"

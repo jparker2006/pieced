@@ -55,9 +55,20 @@ The base design image is `concepts/R4-M1-brick-walls-wood-floors.png`. It combin
 
 The M1 `/goal` was cleared by Jake on 2026-09-25.
 
+## Round 5: settled 2026-09-25 (Jake: "approve all targets, rec on Q27 Q28 Q29")
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| — | **Targets approved.** | All 12 of `concepts/T01`–`T12` are the S1 target board. |
+| D29 | **Solid rocks and stumps in the arena.** | 6–8 rocks (1.0–1.4 m) and stumps (≤ 0.7 m) with static collision. Pieces can be built through them. None near the spawns, the initial cover or the dummy's strafe zone. Trees stay on the margin. This is the milestone's only gameplay change. |
+| D30 | **Builds while Jake uses the Mac.** | Cargo runs at utility QoS and nice 10 with 6 jobs (`scripts/env.sh`). At most two builds at once. Full-screen, timing and Blender-window work still waits for "go". |
+| D31 | **Blender MCP installed.** | `mcp-for-blender` 2.1.0 is registered as `blender` in Claude Code's user config with telemetry off and safe mode on. The add-on is enabled in Blender 5.2. It's a live preview tool; the repo scripts are the source of truth. |
+
+The spec (`docs/M2-SPEC.md`) and goal brief (`docs/M2-GOAL.md`) are final.
+
 ## Handoff: where to pick up after compaction
 
-- **Next:** Jake reviews the 12 target images (T01–T12). Regenerate any he rejects. Then write the design spec and the `/goal` brief.
+- **Next:** Jake launches the Milestone 2 `/goal` with the launcher line in `docs/M2-GOAL.md`.
 - **Images:** the target board uses R4-M1 as a style reference (`codex exec ... -i R4-M1-brick-walls-wood-floors.png -- "<prompt>"`; the `--` is required because `-i` takes several values).
   - Use Codex CLI: `codex exec --skip-git-repo-check --ephemeral -m gpt-5.5 -s workspace-write -C docs/design/concepts "<prompt>" < /dev/null`.
   - Stdin **must** be `/dev/null`, or the job hangs.

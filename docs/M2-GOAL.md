@@ -1,6 +1,6 @@
 # Goal brief: Pieced Milestone 2 "Spellbound"
 
-**Status:** DRAFT. Ready to launch with `/goal` once Jake has approved the target board and answered Q27–Q29 in `docs/M2-SPEC.md`.
+**Status:** READY. Jake approved the target board and Q27–Q29 on 2026-09-25. Launch with the launcher line at the bottom.
 
 The **contract is `docs/M2-SPEC.md`**. This brief says how to execute it, what "done" means, and when to stop and ask Jake.
 
@@ -14,7 +14,7 @@ Restyle Pieced as specified in `docs/M2-SPEC.md`:
 - a grassy floating island under a living galaxy sky with a stained-glass station;
 - a cartoon HUD and a new synthesized sound bank.
 
-**Gameplay does not change.**
+**Gameplay does not change**, except for the solid rocks and stumps Jake approved (D29).
 
 The goal is complete only when gates **S1–S9** are all **PASS**, each with recorded evidence. The report `docs/evidence/M2-report.md` lists every gate, its evidence and the exact commit measured, and it must be pushed to `main` on `github.com/jparker2006/pieced`. Any gate that is FAIL or UNVERIFIED means the goal is not done.
 
@@ -31,6 +31,7 @@ The goal is complete only when gates **S1–S9** are all **PASS**, each with rec
 - **Repo:** `outputs/pieced`, public `jparker2006/pieced`, branch `main`. `gh` is authenticated.
 - **Rust:** always `source scripts/env.sh` first. It sets the workspace toolchain and the shared build cache in `~/Library/Caches/pieced-target` (`~/Documents` is iCloud-synced and over quota).
 - **Blender 5.2.2 LTS:** `blender` CLI, run headless only (`-b`), unless Jake has said "go".
+- **Blender MCP:** installed (server `blender` in Claude Code's user config, safe mode on, telemetry off). It needs the Blender GUI open with "Start MCP Server" clicked, so use it only in a "go" window or when Jake wants to watch. Whatever it builds must be ported into `art/blender/` scripts.
 - **Codex images:** `codex exec --skip-git-repo-check --ephemeral -m gpt-5.5 -s workspace-write -C docs/design/concepts [-i <ref.png> --] "<prompt>" < /dev/null`. Run one at a time.
 - **Disk:** about 21 GB free. Stop and ask below 4 GB.
 
@@ -68,11 +69,11 @@ The goal is complete only when gates **S1–S9** are all **PASS**, each with rec
 - **Phase 2** (parallel builders):
   - **A:** guns and gloves: models, crystal ammo glow, reload and rack animation, squash kick.
   - **B:** the knight: model, sidecar bounds, hitbox-fit test, eyes, procedural animation, respawn pop.
-  - **C:** building and island: brick and plank pieces, crack stages, debris, ghost colors, grid lines, the island margin with props, cliffs, barrier.
+  - **C:** building and island: brick and plank pieces, crack stages, debris, ghost colors, grid lines, the solid rocks and stumps in the arena (D29, with their tests), the island margin with trees, cliffs, barrier.
   - **D:** sky and far view: galaxy cubemap, station, ships, far islands and waterfalls, planet, motion systems and their tests.
 - **Phase 3** (parallel builders):
   - **E:** spells and effects: bolts, pump fan, impacts by type, shield shimmer and break, elimination poof and hat prop, cartoon damage numbers, spell-timing tests.
-  - **F:** HUD, menu and audio: cartoon frames, icons, the OFL font, logo, pause menu, the new sound bank.
+  - **F:** HUD, menu and audio: cartoon frames, icons, the open-license font (Luckiest Guy or Lilita One), logo, pause menu, the new sound bank.
   - **G:** scenarios: the 12-view gallery with pose freezing, `sky_check`, the board page, updated perf, fx_check and ttk runs.
 - **Phase 4, integration and gates** (orchestrator):
   1. Art review loop: gallery → compare every view with its target and its greyscale copy → fix → repeat. **At least two rounds before Jake scores.**
@@ -91,7 +92,7 @@ The goal is complete only when gates **S1–S9** are all **PASS**, each with rec
 
 **Jake's Mac rule:**
 - Full-screen scenarios, timing runs and Blender windows run only inside a window Jake has opened by saying "go". Stop the moment he asks.
-- Code builds and headless tests follow his answer to Q28.
+- Code builds and headless tests may run while he uses the Mac, at low priority: `scripts/env.sh`'s cargo wrapper (utility QoS, nice 10, 6 jobs). **At most two builds at once** across all worktrees.
 - Codex image generation is always fine.
 
 ## Gates (definition of done)
@@ -106,7 +107,7 @@ The goal is complete only when gates **S1–S9** are all **PASS**, each with rec
 | **S6 Feedback timing** | The hitmarker, damage number and impact effect appear on the hit frame. The bolt reaches its hit point within 2 frames | Spell-timing tests plus the native `fx_check` frame log |
 | **S7 No regressions** | Milestone 1's G1, G3 (median ≤ 33 ms) and G6 pass on the final commit. `cargo test --locked` has 0 failures, and `cargo clippy --locked --all-targets -- -D warnings` and `cargo fmt --check` are clean | Command output and scenario summaries in the report |
 | **S8 Feel verdict** | Jake plays at least 10 minutes and says the guns, spells and sounds feel sick, **or** names what's off. Fix it, re-verify the affected gates and ask again | Jake's words, quoted from chat |
-| **S9 Original and reproducible** | `scripts/build-art.sh` regenerates every model headless without errors, and the game loads them. The asset audit test passes. The only third-party file is the OFL font and its license | Script output plus the test in the report |
+| **S9 Original and reproducible** | `scripts/build-art.sh` regenerates every model headless without errors, and the game loads them. The asset audit test passes. The only third-party file is the open-license font and its license | Script output plus the test in the report |
 
 ## Stop and ask Jake when
 
