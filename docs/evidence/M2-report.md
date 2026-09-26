@@ -21,7 +21,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
 ## Phase 0: performance baseline (Milestone 1 art)
 
 - **Commit:** tag `m2-baseline` (`5249c9b`).
-- **Status:** waiting for a "go" window from Jake: about 10 minutes on battery with Low Power Mode on and the Mac left alone.
+- **Attempt 1** (2026-09-25 21:50, `evidence/perf-20260925-215019-*`): battery, Low Power Mode on, 57% → 51%. **INVALID.** The window was occluded for the whole run (303 s of 303 s occluded in the full run; 22–68 s of each 60 s knob run), so frames weren't paced by the display. Load averages ran 5.9 → 11.4.
+  - The unpaced means (6–11 ms) only say the frame work fits well inside 16.7 ms when nothing has to present. Two knob runs had the fewest spikes and are worth checking first on the new look: `vmmsaa=1` (4 frames > 25 ms, max 36.7 ms) and `sky=off` (max 103 ms).
+  - An earlier unmuted start at 21:46 was stopped at Jake's request (the sound was annoying). Baseline runs are now muted through the baseline worktree's `userdata/settings.json`.
+- **Next:** rerun with the game window uncovered for the whole run (Jake away from the Mac).
 
 ## Log
 
