@@ -1,0 +1,83 @@
+{
+  "name": "planet",
+  "kind": "planet",
+  "source": "art/blender/assets/far.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 1512,
+  "triangle_budget": 2000,
+  "bounds": {
+    "min": [
+      -169.2174,
+      0.1403,
+      -177.1405
+    ],
+    "max": [
+      169.2174,
+      179.8597,
+      177.1405
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "planet",
+      "bounds": {
+        "min": [
+          -89.6659,
+          0.1403,
+          -89.958
+        ],
+        "max": [
+          89.6659,
+          179.8597,
+          89.958
+        ]
+      },
+      "triangles": 840,
+      "colors": [
+        "galaxy_deep",
+        "galaxy_purple",
+        "glass_pink",
+        "glass_violet",
+        "planet_violet"
+      ]
+    },
+    "Rings": {
+      "parent": "planet",
+      "bounds": {
+        "min": [
+          -169.2174,
+          12.1614,
+          -177.1405
+        ],
+        "max": [
+          169.2174,
+          167.8386,
+          177.1405
+        ]
+      },
+      "triangles": 672,
+      "colors": [
+        "cloud",
+        "galaxy_deep",
+        "galaxy_purple",
+        "glass_violet"
+      ]
+    }
+  },
+  "attach": {
+    "Center": {
+      "parent": "planet",
+      "position": [
+        0.0,
+        90.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

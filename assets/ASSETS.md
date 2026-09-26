@@ -36,6 +36,18 @@ from `art/palette.json`, sampled from the target images by
 | `models/stump_a.json` | `art/blender/assets/props.py` | Sidecar |
 | `models/tree_a.glb` | `art/blender/assets/props.py` | Puffy island-margin tree, about 5.7 m |
 | `models/tree_a.json` | `art/blender/assets/props.py` | Sidecar |
+| `models/far_island_a.glb` | `art/blender/assets/far.py` | Far island: grass top, three trees, waterfall |
+| `models/far_island_a.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/far_island_b.glb` | `art/blender/assets/far.py` | Far island with a gothic chapel tower and a waterfall |
+| `models/far_island_b.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/far_island_c.glb` | `art/blender/assets/far.py` | Small craggy islet with a tree and a thin waterfall |
+| `models/far_island_c.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/planet.glb` | `art/blender/assets/far.py` | Ringed lavender planet, radius 90 m |
+| `models/planet.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/ship.glb` | `art/blender/assets/far.py` | Small starship with an additive engine streak |
+| `models/ship.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/station.glb` | `art/blender/assets/far.py` | Stained-glass cathedral station: spires, four glass sails, ring walkway, floating rock, waterfalls |
+| `models/station.json` | `art/blender/assets/far.py` | Sidecar |
 
 ## Shaders (`assets/shaders/`)
 
@@ -43,12 +55,12 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 
 | File | Made by | Notes |
 |---|---|---|
-| `shaders/sky.wgsl` | hand-written, used by `src/arena/visuals/sky.rs` | Sky dome (the sky slice replaces it with the galaxy) |
 | `shaders/toon.wgsl` | hand-written, used by `src/look/toon.rs` | Two-band toon shading, rim, emissive, vertex colors |
 | `shaders/ink.wgsl` | hand-written, used by `src/look/outline.rs` | Inverted-hull ink outlines, screen-space width, distance fade |
 | `shaders/far.wgsl` | hand-written, used by `src/look/far.rs` | Unlit far layer with distance haze |
 | `shaders/halo.wgsl` | hand-written, used by `src/look/halo.rs` | Additive camera-facing glow billboards |
 | `shaders/blob.wgsl` | hand-written, used by `src/look/blob.rs` | Soft blob shadows under characters and props |
+| `shaders/waterfall.wgsl` | hand-written, used by `src/far/waterfall.rs` | Additive scrolling waterfall streaks for the far models |
 
 ## Fonts (`assets/fonts/`)
 
