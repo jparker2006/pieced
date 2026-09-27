@@ -235,3 +235,12 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **Knob breakdown** (`evidence/perf-20260926-232342-*`, 45–60 s runs), frames > 25 ms: full 22, `outline=off` 31, `far=off` 17, `halos=off` 9, `blobs=off` 29, **`msaa=1` 1** (p99 18.57).
 
   **MSAA 4× is the main spike source**, as in Phase 0. The shading builder is switching the Battery preset to MSAA off plus cheap edge smoothing. The native gallery was captured (`evidence/m2-20260926-231552-gallery`, pre-beauty-pass).
+- 2026-09-27: **beauty B1 (shading) merged**, with 387 tests passing:
+  - 3-tone toon with sky and ground fill;
+  - cartoon specular from `art/surfaces.json` (brass, steel, crystal, glass);
+  - baked per-vertex AO (`art/blender/lib/ao.py`, `COLOR_0` alpha);
+  - 3 px ink tapering to 65% between 8 and 25 m;
+  - a colour grade (`pieced::grade`);
+  - the **Battery preset now uses MSAA off plus one FXAA pass** (the Phase 0 and go-window-1 spike source); Plugged-in keeps MSAA 4×.
+
+  Before/after renders were in the B1 worktree. The environment, knight and guns/spells slices are still in progress.
