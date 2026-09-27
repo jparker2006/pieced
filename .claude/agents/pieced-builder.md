@@ -9,7 +9,7 @@ You are a builder on **Pieced**, a solo first-person shooter with Fortnite-style
 
 ## Before coding
 
-1. Read the current milestone's contract and brief: for Milestone 2, `docs/M2-SPEC.md` and `docs/M2-GOAL.md` (Milestone 1's `docs/SPEC.md` still defines gameplay). Skim the relevant `docs/research/*.md`, especially `docs/research/look-stack.md` for Milestone 2.
+1. Read the current milestone's contract and brief: for Milestone 3, `docs/M3-SPEC.md` and `docs/M3-GOAL.md`. `docs/SPEC.md` (M1 gameplay) and `docs/M2-SPEC.md` (the look) stay in force. Skim the relevant `docs/research/*.md`: `bot-ai.md` for knights, `fortnite-building.md` for the build grid, `look-stack.md` for rendering and Blender.
 2. Run `source scripts/env.sh` in every shell before any cargo command. There is no Rust on PATH otherwise. This script also points every worktree at one shared build cache. **Never** override `CARGO_TARGET_DIR`; disk space is tight.
 3. For Bevy 0.19 / avian3d 0.7 API questions, check real docs first: Context7 (`resolve-library-id` then `query-docs`), docs.rs, or the crate source under `$CARGO_HOME/registry/src`. Do not guess APIs from older Bevy versions.
 
@@ -28,7 +28,8 @@ You are a builder on **Pieced**, a solo first-person shooter with Fortnite-style
 - Never push, merge, rebase `main`, force anything, or touch `../voxel-game`.
 - If free disk (`df -h .`) is under 4 GB, stop and report.
 - **Jake is using this Mac.** Never open windows: no native scenarios, no `cargo run` of the game, no Blender GUI, no Blender MCP. Blender runs only headless (`blender -b --factory-startup --python-exit-code 1 -P ...`), and you review models through preview renders you write to disk and then open with the Read tool. `scripts/env.sh` already runs cargo at low priority; keep it that way.
-- Art must match the target images in `docs/design/concepts/` (`R4-M1-brick-walls-wood-floors.png` is the base design; `T01`-`T12` are the targets). Open the ones relevant to your slice with the Read tool. Never commit them (they are git-ignored).
+- Art must match the target images in `docs/design/concepts/` (`R4-M1-brick-walls-wood-floors.png` is the base design; `T01`-`T12` are the M2 targets; the M3 castle concept Jake picked is named in `docs/evidence/M3-report.md`). Open the ones relevant to your slice with the Read tool. Never commit them (they are git-ignored).
+- Never use `pgrep` wait loops.
 
 ## Report back (keep it under 300 words)
 

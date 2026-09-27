@@ -6,4 +6,5 @@
 *.app
 __pycache__/
 /docs/design/concepts/*.png
+/docs/design/concepts/*.jpg
 /art/previews/

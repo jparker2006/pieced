@@ -202,7 +202,8 @@ Questions only the spec needs and Round 8 doesn't answer. Context from reading t
   - M2 main is `7f8d962` or later; S1 passes (round 3 mean 4.67), and S8 passes per D52.
   - Remaining for M2: S2 (from a logged battery play session, D53), the launch check, and closing the report (`docs/evidence/M2-report.md`).
   - `pieced-play` (`~/Library/Caches/pieced-target/pieced-play`) is built from `bb9c33a`.
-- **Next:** turn Round 8 (D52–D70) into `docs/M3-SPEC.md` and `docs/M3-GOAL.md`, with gates and short play-test loops (D69). Then Jake launches it, maybe from a new session.
+- **Done (2026-09-27):** Round 9 (D71–D93) is settled, and `docs/M3-SPEC.md`, `docs/M3-GOAL.md` and `docs/evidence/M3-report.md` are written. The castle concepts are `concepts/M3-C1`–`C3`; Jake's pick is recorded in the M3 report.
+- **Next:** Jake launches M3 with the launcher line at the bottom of `docs/M3-GOAL.md`, ideally from a new session opened in `outputs/pieced`.
 - **Images (castle concepts, D67):** use Codex CLI, one image at a time:
   ```
   codex exec --skip-git-repo-check --ephemeral -m gpt-5.5 -s workspace-write -C docs/design/concepts [-i ref.png --] "<prompt>" < /dev/null
