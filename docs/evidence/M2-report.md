@@ -260,3 +260,11 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **T08:** the tall hat lands 1.2 m in front of the poof at 1.45×.
 
   **Performance of the extra glow is unmeasured**; the next go window checks S2.
+- 2026-09-27: **beauty B2 (environment) merged** (`caee4ca`), with 405 tests passing and `build-art --check` clean:
+  - a painted grass texture (512², mipmapped) with blade strokes and patches, graded at 0.5;
+  - tufts, flowers, about 110 margin bushes, bushes hugging the props, and framing trees (plus a new `tree_b`);
+  - a cloud sea under the rim, the far islands and the station;
+  - brick shade variation and lit tops, two wood grains, bigger nails;
+  - moss rocks and bark stumps.
+
+  Merged scenery on Battery is 116.7k triangles (130k cap), in 16 culled chunks with 6 shared materials. **All four beauty slices are merged.** The round 2 scoring board (offscreen renders of `caee4ca`) was sent to Jake.
