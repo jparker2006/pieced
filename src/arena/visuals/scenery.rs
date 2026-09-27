@@ -10,12 +10,12 @@
 //! view itself; the clouds only read its island layout.
 //!
 //! Triangle budget (Battery preset; see [`Island::triangles`]): at most
-//! [`ISLAND_TRIANGLE_BUDGET`] for the merged scenery, about 95k today (tufts
-//! about 34k, bushes about 31k, clouds about 17k, flowers, pebbles, ground
-//! and cliffs the rest), plus about 60 margin models (trees ≤ 1.5k each,
-//! rocks and stumps ≤ 300). The Plugged-in preset adds about 18k triangles of
-//! extra tufts. All of it is static: merged meshes, one material per look,
-//! split into chunks so the camera culls what it can't see.
+//! [`ISLAND_TRIANGLE_BUDGET`] for the merged scenery, about 113k today (tufts
+//! about 38k, bushes about 31k, clouds about 22k, flowers about 15k, pebbles,
+//! ground and cliffs the rest), plus about 53 margin models (30 trees ≤ 1.5k
+//! each, rocks and stumps ≤ 300: about 51k). The Plugged-in preset adds about
+//! 18k triangles of extra tufts. All of it is static: merged meshes sharing
+//! six materials, split into chunks so the camera culls what it can't see.
 
 use super::geo::{Geo, Rgba, blob, fbm2, lin, mix, noise2, shade, smoothstep};
 use crate::{palette::cartoon, rng::Rng, shared::ARENA_HALF};
@@ -205,8 +205,9 @@ pub struct Island {
     /// White, yellow and pink flower clusters, per chunk.
     pub flowers: Vec<Geo>,
     pub pebbles: Geo,
-    /// Round cartoon bushes on the margin (outlined).
-    pub bushes: Geo,
+    /// Round cartoon bushes on the margin (outlined), per chunk, so the
+    /// camera culls far chunks and their outline hulls.
+    pub bushes: Vec<Geo>,
     /// Small bushes hugging the solid arena props' feet (outlined; no
     /// collision, and never taller than the prop or far past its footprint).
     pub prop_bushes: Geo,
@@ -240,17 +241,11 @@ impl Island {
 
     /// Triangles drawn on the Battery preset (models aside).
     pub fn triangles(&self) -> usize {
-        [
-            &self.ground,
-            &self.skirt,
-            &self.pebbles,
-            &self.bushes,
-            &self.prop_bushes,
-        ]
-        .iter()
-        .map(|g| g.tri_count())
-        .sum::<usize>()
-            + [&self.tufts, &self.flowers, &self.clouds]
+        [&self.ground, &self.skirt, &self.pebbles, &self.prop_bushes]
+            .iter()
+            .map(|g| g.tri_count())
+            .sum::<usize>()
+            + [&self.tufts, &self.flowers, &self.bushes, &self.clouds]
                 .iter()
                 .flat_map(|v| v.iter())
                 .map(Geo::tri_count)
@@ -787,8 +782,8 @@ fn bush_of(geo: &mut Geo, at: Vec3, size: f32, puffs: usize, rng: &mut Rng) {
     }
 }
 
-fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Geo {
-    let mut geo = Geo::default();
+fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Vec<Geo> {
+    let mut geo = chunks();
     let mut placed: Vec<(Vec2, f32)> = decor
         .iter()
         .filter(|d| !is_tree(d.model))
@@ -825,7 +820,12 @@ fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Geo {
             continue;
         }
         placed.push((p, foot));
-        bush(&mut geo, Vec3::new(p.x, 0.0, p.y), size, rng);
+        bush(
+            &mut geo[chunk(p.x, p.y)],
+            Vec3::new(p.x, 0.0, p.y),
+            size,
+            rng,
+        );
         made += 1;
     }
     geo
@@ -1342,8 +1342,9 @@ mod tests {
     fn bushes_grow_on_the_margin_only() {
         let island = generated();
         let outline = outline();
-        assert!(island.bushes.tri_count() > 1000);
-        for v in island.bushes.vertices() {
+        let tris: usize = island.bushes.iter().map(Geo::tri_count).sum();
+        assert!(tris > 10_000, "{tris}");
+        for v in island.bushes.iter().flat_map(|g| g.vertices()) {
             assert!(
                 edge_distance(v.x, v.z) >= EDGE_CLEARANCE - 1e-3,
                 "a bush reaches the arena at {v}"

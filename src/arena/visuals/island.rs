@@ -148,7 +148,9 @@ fn spawn_island(
     let (c, m) = (&mut commands, &mut *meshes);
     spawn_part(c, m, "Island top", top, &ground, false);
     spawn_part(c, m, "Island cliffs", skirt, &cliffs, true);
-    spawn_part(c, m, "Bushes", bushes, &cliffs, true);
+    for chunk in bushes {
+        spawn_part(c, m, "Bushes", chunk, &cliffs, true);
+    }
     spawn_part(c, m, "Prop bushes", prop_bushes, &cliffs, true);
     spawn_part(c, m, "Pebbles", stones, &pebbles, false);
     for chunk in flowers {
