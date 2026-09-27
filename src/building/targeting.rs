@@ -5,15 +5,41 @@
 //! The rules, in player terms:
 //! - Everything snaps to the nearest of the four yaws you're looking along (`facing`).
 //! - Reach is your own cell plus one cell ahead along `facing`.
-//! - **Wall:** on the first grid line in front of you that is at least a body
-//!   width away: your cell's front edge, or the next cell's front edge when you're
-//!   pressed up to an empty one (up against your own wall, the ghost stays on it).
-//!   It sits on whatever you stand on (the top of a ramp you're climbing), and
-//!   looking up past that level's top builds one level higher.
+//! - **Wall:** on your own cell's edge in front of you, wherever you stand in the
+//!   cell (a wall placed against you pushes you back into the cell; see
+//!   `movement`). It sits on whatever you stand on, and looking up past that
+//!   level's top builds one level higher. Climbing a ramp, the wall goes at the
+//!   high end of the next ramp (the far edge of the cell ahead, one level up), or
+//!   under your own ramp's top when you look below it: never on the edge you step
+//!   across onto the next ramp.
 //! - **Floor / ramp:** in the cell ahead, at the level of the ground there (one up
 //!   while climbing a ramp). Looking down at your own cell targets it instead;
 //!   looking up past the next level's height builds one level higher (above your
-//!   own cell when you look steeply up). Ramps rise away from you.
+//!   own cell when you look steeply up). Looks steeper than [`STEEP_LOOK_DEG`]
+//!   always mean your own cell. Ramps rise away from you. Climbing a ramp, the
+//!   cell above it is never targeted (it would cap the ramp and wedge you under
+//!   it); turn away from its rise and it is (that's how 90s stack up).
+//! - **Cone:** like a floor (D43, research R11): the cell ahead, your own cell
+//!   looking down, or on top of your box looking steeply up. A ramp rush never
+//!   changes it.
+//!
+//! **Ramp rushing** (moving forward with the ramp: `advancing`) swaps the pitch
+//! rules for the chain rule, so holding forward and build runs up an endless ramp
+//! whatever the look pitch:
+//! - on a ramp rising the way you're heading (within [`RUSH_TOLERANCE_DEG`]), the
+//!   next ramp continues it: the cell past its top, one level up, same facing;
+//! - anywhere else, the chain starts in the cell ahead at the level of the ground
+//!   there. Never a level up (you'd run under it and wedge beneath it), and never
+//!   in your own cell (you'd run off it), except when you look steeply down or a
+//!   wall of yours stands across the way: then it goes under you and lifts you.
+//!
+//! While falling (off the top of a finished chain, or off its side) the rush
+//! only continues a ramp you're dropping onto; a new chain waits for your feet,
+//! since a ramp at your level would pass over your head.
+//!
+//! A wall built while rushing, with a ramp to climb ahead (or underfoot), goes on
+//! the far edge of the next ramp's cell at that ramp's level: it shields the
+//! climb instead of blocking the way onto it.
 
 use super::{
     BuildTuning,
@@ -25,6 +51,32 @@ use bevy::prelude::*;
 /// Feet up to this far below a level's height count as standing on that level
 /// (ramp tops, small bumps, floor slabs).
 pub const LEVEL_SNAP: f32 = 0.3;
+
+/// While ramp rushing, a ramp under you whose rise is within this many degrees of
+/// your look keeps the chain going its way, so a wobbly look can't bend the chain.
+pub const RUSH_TOLERANCE_DEG: f32 = 60.0;
+
+/// Floors and ramps go in your own cell when you look at least this far down
+/// (at your level) or up (one level up), wherever you stand in the cell.
+pub const STEEP_LOOK_DEG: f32 = 55.0;
+
+/// How a builder is moving, which ramp rushing depends on.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum Gait {
+    /// Not moving forward: the look pitch picks where pieces go.
+    #[default]
+    Standing,
+    /// Moving forward on the ground (or rising): ramps rush.
+    Advancing,
+    /// Moving forward while falling: the rush waits to land.
+    Falling,
+}
+
+impl Gait {
+    pub fn is_advancing(self) -> bool {
+        self != Gait::Standing
+    }
+}
 
 /// Why a candidate can or can't be placed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -40,6 +92,8 @@ pub enum Placement {
     RebuildLocked,
     /// A wall here would overlap a character's body.
     BlocksCharacter,
+    /// Rushing (ramps and walls) while falling: the rush waits until you land.
+    Falling,
 }
 
 /// A targeted placement plus whether it can be placed.
@@ -60,20 +114,74 @@ pub fn feet_level(y: f32) -> i32 {
     (((y + LEVEL_SNAP) / LEVEL_HEIGHT).floor() as i32).max(0)
 }
 
+/// The ramp the feet are on (its level and the way it rises), if any: the ramp
+/// in the level band the feet are in, or, with the feet a hair across a level
+/// line, the ramp whose foot or top edge they stand on.
+fn ramp_underfoot(feet: Vec3, own: GridCell, map: &PieceMap) -> Option<(i32, Facing)> {
+    let exact = (feet.y / LEVEL_HEIGHT).floor() as i32;
+    let ramp = |level: i32| {
+        map.ramp_at(GridCell::new(own.x, own.z, level))
+            .map(|(_, rise)| (level, rise))
+    };
+    let surface = |(level, rise): (i32, Facing)| {
+        let run = CELL_SIZE - distance_to_front_edge(feet, own, rise);
+        level as f32 * LEVEL_HEIGHT + (run / CELL_SIZE).clamp(0.0, 1.0) * LEVEL_HEIGHT
+    };
+    let line = exact as f32 * LEVEL_HEIGHT;
+    ramp(exact)
+        .or_else(|| {
+            ramp(exact + 1).filter(|&r| {
+                line + LEVEL_HEIGHT - feet.y < LEVEL_SNAP && surface(r) < feet.y + LEVEL_SNAP
+            })
+        })
+        .or_else(|| {
+            ramp(exact - 1)
+                .filter(|&r| feet.y - line < LEVEL_SNAP && surface(r) > feet.y - LEVEL_SNAP)
+        })
+}
+
 /// Level of the ground just across the front edge of the feet's cell: one level
 /// up while climbing a ramp that rises along `facing`, the ramp's base while
 /// descending one, otherwise the feet level.
 fn level_across_front(feet: Vec3, own: GridCell, facing: Facing, map: &PieceMap) -> i32 {
-    let exact = (feet.y / LEVEL_HEIGHT).floor() as i32;
-    if let Some((_, ramp)) = map.ramp_at(GridCell::new(own.x, own.z, exact)) {
-        if ramp == facing {
-            return exact + 1;
+    match ramp_underfoot(feet, own, map) {
+        Some((level, rise)) if rise == facing => level + 1,
+        Some((level, rise)) if rise == facing.opposite() => level.max(0),
+        _ => feet_level(feet.y),
+    }
+}
+
+/// The next ramp of a ramp rush, and whether it continues a ramp we're climbing:
+/// past the top of the ramp underfoot, one level up, when it rises within
+/// [`RUSH_TOLERANCE_DEG`] of `heading`; otherwise the chain's first ramp, in the
+/// cell ahead at the level of the ground there.
+fn rush_ramp(
+    feet: Vec3,
+    own: GridCell,
+    heading: Vec3,
+    facing: Facing,
+    ahead_level: i32,
+    steep_down: bool,
+    map: &PieceMap,
+) -> (PieceSlot, bool) {
+    let tolerance = RUSH_TOLERANCE_DEG.to_radians().cos();
+    match ramp_underfoot(feet, own, map) {
+        Some((level, rise)) if rise.vector().dot(heading) >= tolerance => {
+            let o = rise.offset();
+            let next = GridCell::new(own.x + o.x, own.z + o.y, level + 1);
+            (PieceSlot::ramp(next, rise), true)
         }
-        if ramp == facing.opposite() {
-            return exact.max(0);
+        // Looking steeply down, or up against a wall of ours: under us (the ramp
+        // lifts us onto it and the rush goes on from there).
+        _ if steep_down || map.wall_at(own, facing).is_some() => {
+            (PieceSlot::ramp(own, facing), false)
+        }
+        _ => {
+            let o = facing.offset();
+            let next = GridCell::new(own.x + o.x, own.z + o.y, ahead_level);
+            (PieceSlot::ramp(next, facing), false)
         }
     }
-    feet_level(feet.y)
 }
 
 /// Horizontal distance from `p` to the `facing` edge of `cell`, measured along `facing`.
@@ -88,15 +196,16 @@ fn distance_to_front_edge(p: Vec3, cell: GridCell, facing: Facing) -> f32 {
 }
 
 /// Where a piece of `kind` would go for a character with its eye at `eye`
-/// looking along `look`, feet at `feet`. Never fails: the result may be invalid
+/// looking along `look`, feet at `feet`, `advancing` when it's moving forward
+/// (ramp rushing, see the module docs). Never fails: the result may be invalid
 /// (check it with [`check_placement`]).
 pub fn target_slot(
     eye: Vec3,
     look: Vec3,
     feet: Vec3,
     kind: PieceKind,
+    advancing: bool,
     map: &PieceMap,
-    tuning: &BuildTuning,
 ) -> PieceSlot {
     let dir = look.try_normalize().unwrap_or(Vec3::NEG_Z);
     let flat = Vec2::new(dir.x, dir.z);
@@ -122,31 +231,84 @@ pub fn target_slot(
     let ahead = |level: i32| GridCell::new(own.x + off.x, own.z + off.y, level);
     let d_front = distance_to_front_edge(feet, own, facing);
     let height_at = |meters_along_facing: f32| eye.y + slope * meters_along_facing / along;
+    let steep = STEEP_LOOK_DEG.to_radians().sin();
+    // On a ramp rising straight ahead: its level, if so.
+    let climbing = ramp_underfoot(feet, own, map)
+        .filter(|&(_, rise)| rise == facing)
+        .map(|(level, _)| level);
+
+    if advancing {
+        let heading = Vec3::new(flat.x, 0.0, flat.y) / flat_len;
+        let (next_ramp, continues) = rush_ramp(
+            feet,
+            own,
+            heading,
+            facing,
+            ahead_level,
+            dir.y <= -steep,
+            map,
+        );
+        match kind {
+            PieceKind::Ramp => return next_ramp,
+            // The wall that shields the next ramp's climb: on the far edge of its
+            // cell, at its level (never across the way onto it).
+            PieceKind::Wall
+                if continues
+                    || next_ramp.cell != own
+                        && map
+                            .ramp_at(next_ramp.cell)
+                            .is_some_and(|(_, rise)| rise == next_ramp.facing) =>
+            {
+                return PieceSlot::wall(next_ramp.cell, next_ramp.facing);
+            }
+            _ => {}
+        }
+    }
 
     match kind {
         PieceKind::Wall => {
-            let ground = ahead_level as f32 * LEVEL_HEIGHT;
-            let wall = |cell: GridCell, edge_distance: f32| {
+            // Looking up past the top of the level the wall stands on builds one higher.
+            let wall = |cell: GridCell, level: i32, edge_distance: f32| {
+                let ground = level as f32 * LEVEL_HEIGHT;
                 let up = ((height_at(edge_distance) - ground) / LEVEL_HEIGHT)
                     .floor()
                     .clamp(0.0, 1.0) as i32;
-                PieceSlot::wall(GridCell::new(cell.x, cell.z, ahead_level + up), facing)
+                PieceSlot::wall(GridCell::new(cell.x, cell.z, level + up), facing)
             };
-            let own_wall = wall(own, d_front);
-            // Pressed up to a free grid line, build on the next one; pressed up to
-            // your own wall, keep showing that wall (occupied) rather than
-            // building unseen behind it.
-            if d_front >= tuning.min_wall_distance() || map.get(own_wall.key()).is_some() {
-                own_wall
-            } else {
-                wall(ahead(0), d_front + CELL_SIZE)
+            match climbing {
+                // Aiming below our own ramp's top: the wall under it.
+                Some(level) if height_at(d_front) < (level + 1) as f32 * LEVEL_HEIGHT => {
+                    PieceSlot::wall(GridCell::new(own.x, own.z, level), facing)
+                }
+                // Otherwise the high end of the next ramp.
+                Some(level) => wall(ahead(0), level + 1, d_front + CELL_SIZE),
+                None => wall(own, ahead_level, d_front),
             }
         }
         // Cones target like floors (docs/research/fortnite-building.md, R11).
         PieceKind::Floor | PieceKind::Ramp | PieceKind::Cone => {
             let own_ground = base as f32 * LEVEL_HEIGHT;
             let ahead_ground = ahead_level as f32 * LEVEL_HEIGHT;
-            let cell = if slope < -1e-4 {
+            let cell = if climbing.is_some() {
+                // Climbing a ramp puts the eye just under the next level, so any
+                // look crosses it inside our own cell. Building there would cap
+                // the ramp we're on (and wedge us under it), so while climbing
+                // we build ahead: one level higher only when looking up past the
+                // next level inside the cell ahead (a cover ramp).
+                let next = ahead_ground + LEVEL_HEIGHT;
+                if slope > 1e-4
+                    && eye.y < next
+                    && (next - eye.y) / slope < (d_front + CELL_SIZE) / along
+                {
+                    ahead(ahead_level + 1)
+                } else {
+                    ahead(ahead_level)
+                }
+            } else if dir.y <= -steep {
+                own
+            } else if dir.y >= steep {
+                GridCell::new(own.x, own.z, base + 1)
+            } else if slope < -1e-4 {
                 // Looking down: own cell if the ray reaches our ground before our front edge.
                 let reach = (eye.y - own_ground) / -slope;
                 if reach < d_front / along {
@@ -157,16 +319,7 @@ pub fn target_slot(
             } else {
                 let ceiling = own_ground + LEVEL_HEIGHT;
                 let next = ahead_ground + LEVEL_HEIGHT;
-                // Climbing a ramp puts the eye just under the next level, so any
-                // upward look crosses it inside our own cell. Building there would
-                // cap the ramp we're on (and wedge us under it), so while climbing
-                // the ramp rush always continues ahead.
-                let climbing = ahead_level > base;
-                if !climbing
-                    && slope > 1e-4
-                    && eye.y < ceiling
-                    && (ceiling - eye.y) / slope < d_front / along
-                {
+                if slope > 1e-4 && eye.y < ceiling && (ceiling - eye.y) / slope < d_front / along {
                     // Looking steeply up: above our own cell.
                     GridCell::new(own.x, own.z, base + 1)
                 } else if slope > 1e-4
@@ -223,16 +376,37 @@ pub fn build_target(
     look: Vec3,
     feet: Vec3,
     kind: PieceKind,
+    gait: Gait,
     map: &PieceMap,
     tick: u64,
     character_feet: &[Vec3],
     tuning: &BuildTuning,
 ) -> BuildCandidate {
-    let slot = target_slot(eye, look, feet, kind, map, tuning);
-    BuildCandidate {
-        slot,
-        placement: check_placement(&slot, map, tick, character_feet, tuning),
-    }
+    let slot = target_slot(eye, look, feet, kind, gait.is_advancing(), map);
+    let placement = match check_placement(&slot, map, tick, character_feet, tuning) {
+        // Falling, the rush only continues a ramp we're dropping onto (and walls it).
+        Placement::Valid
+            if gait == Gait::Falling
+                && matches!(kind, PieceKind::Ramp | PieceKind::Wall)
+                && !continues_ramp_underfoot(
+                    &PieceSlot::ramp(slot.cell, slot.facing),
+                    feet,
+                    map,
+                ) =>
+        {
+            Placement::Falling
+        }
+        placement => placement,
+    };
+    BuildCandidate { slot, placement }
+}
+
+/// Whether `slot` is the ramp past the top of the ramp under `feet`.
+fn continues_ramp_underfoot(slot: &PieceSlot, feet: Vec3, map: &PieceMap) -> bool {
+    let own = GridCell::containing(feet);
+    let o = slot.facing.offset();
+    (own.x + o.x, own.z + o.y) == (slot.cell.x, slot.cell.z)
+        && ramp_underfoot(feet, own, map) == Some((slot.cell.level - 1, slot.facing))
 }
 
 /// Does a standing character's body (a vertical capsule from the feet up to

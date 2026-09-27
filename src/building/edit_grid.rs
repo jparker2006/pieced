@@ -17,12 +17,7 @@ use super::{
     edit::{self, tile_count, tile_quad},
     mesh::{KINDS, MeshBuilder, kind_index},
 };
-use crate::{
-    look::ToonMaterial,
-    palette::cartoon,
-    shared::Player,
-    tuning::Tuning,
-};
+use crate::{look::ToonMaterial, palette::cartoon, shared::Player, tuning::Tuning};
 use bevy::{light::NotShadowCaster, prelude::*};
 
 pub(super) fn build(app: &mut App) {
@@ -124,8 +119,8 @@ fn tile_layers(kind: PieceKind, tile: u8, tuning: &Tuning) -> Vec<(Vec<Vec3>, Ve
             lifted(&q, Vec3::NEG_Y, b.floor_thickness / 2.0 + LIFT),
         ],
         PieceKind::Ramp => {
-            let n = Vec3::new(0.0, crate::shared::CELL_SIZE, crate::shared::LEVEL_HEIGHT)
-                .normalize();
+            let n =
+                Vec3::new(0.0, crate::shared::CELL_SIZE, crate::shared::LEVEL_HEIGHT).normalize();
             vec![lifted(&q, n, 0.08 + LIFT)]
         }
         PieceKind::Cone => {
@@ -139,11 +134,7 @@ fn tile_layers(kind: PieceKind, tile: u8, tuning: &Tuning) -> Vec<(Vec<Vec3>, Ve
                 lifted(&[q[0], q[1], q[2]], n1, 0.1 + LIFT),
                 lifted(&[q[0], q[2], q[3]], n2, 0.1 + LIFT),
                 // The base, facing down.
-                lifted(
-                    &[q[0], q[1], Vec3::ZERO, q[3]],
-                    Vec3::NEG_Y,
-                    LIFT,
-                ),
+                lifted(&[q[0], q[1], Vec3::ZERO, q[3]], Vec3::NEG_Y, LIFT),
             ]
         }
     }

@@ -281,7 +281,12 @@ pub fn mini_piece(kind: crate::shared::PieceKind) -> ModelBuilder {
             // A little plank pyramid: four sloped faces meeting at a peak.
             let (w, h) = (0.05, 0.038);
             let apex = v3(0.0, h, 0.0);
-            let base = [v3(-w, 0.0, -w), v3(w, 0.0, -w), v3(w, 0.0, w), v3(-w, 0.0, w)];
+            let base = [
+                v3(-w, 0.0, -w),
+                v3(w, 0.0, -w),
+                v3(w, 0.0, w),
+                v3(-w, 0.0, w),
+            ];
             let inside = v3(0.0, h * 0.3, 0.0);
             for k in 0..4 {
                 let (a, b) = (base[k], base[(k + 1) % 4]);

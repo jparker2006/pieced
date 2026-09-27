@@ -194,3 +194,8 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - `m2-edit-cone`: editing and the cone (78 files).
 
   If their agents stop when the Mac sleeps, resume each from its worktree: commit the work in progress, `git merge main`, finish, run the gates, report. Then merge ramp-rush first, then edit-cone, rebuild the play binary, and ask Jake to test building (S8 fix loop). Jake's gates are still pending: the go window, S1 scores, the S2 battery run, S8.
+- 2026-09-26: **ramp rush merged**, with 348 tests passing.
+  - **Diagnosis:** looking ≥ 40° down targeted your own cell ("behind me"); looking up floated or wedged ramps; landing on a ramp cut speed from 7.5 to 3.25 m/s.
+  - **Fixed:** a forward rush continues the chain at any pitch. Climbing never caps your own ramp. Walls go on your own tile's edge and push you inward. You're lifted onto a ramp built over you. Landing keeps speed.
+  - **Headless results:** every variant builds the full 6-level chain at 100% speed (3.47 s sprinting). Ramp + wall holds speed. A 4-level 90s tower builds in 2.67 s. A 1×1 box builds from every corner.
+  - **Next (same builder):** 3×3 reach, double ramps, and a 12-level height limit so the S10 rush reaches ≥ 10 ramps. Editing + cone is in progress.

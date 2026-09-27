@@ -385,9 +385,7 @@ pub fn cone_corner(tile: u8) -> Vec2 {
 /// cone's height, and the apex, except for a roof-ramp slope (two adjacent
 /// corners raised), which is a plain wedge.
 pub fn cone_points(edit: PieceEdit) -> Vec<Vec3> {
-    let mut pts: Vec<Vec3> = (0..4)
-        .map(|i| cone_corner(i).extend(0.0).xzy())
-        .collect();
+    let mut pts: Vec<Vec3> = (0..4).map(|i| cone_corner(i).extend(0.0).xzy()).collect();
     for i in edit.selected().filter(|&i| i < 4) {
         pts.push(cone_corner(i).extend(CONE_HEIGHT).xzy());
     }
@@ -427,16 +425,29 @@ pub fn edited_collider(slot: &PieceSlot, edit: PieceEdit, tuning: &BuildTuning) 
                     .collect();
                 return Collider::convex_hull(pts).unwrap_or_else(|| slot.collider(tuning));
             }
-            boxes(
-                kept_rects(3, 3, edit.tiles)
-                    .into_iter()
-                    .map(|(c0, r0, c1, r1)| {
-                        let (lo, _) = wall_tile_rect(r1 * 3 + c0);
-                        let (_, hi) = wall_tile_rect(r0 * 3 + c1);
-                        (((lo + hi) / 2.0).extend(0.0), (hi - lo).extend(t * 2.0))
-                    })
-                    .collect(),
-            )
+            // Each kept block is a slab like the full wall's: where it reaches
+            // the wall's top it keeps the full wall's bevelled ridge, so a ramp
+            // still runs straight on over an edited wall.
+            let shoulder = HALF_H - t * LEVEL_HEIGHT / CELL_SIZE;
+            let blocks: Vec<_> = kept_rects(3, 3, edit.tiles)
+                .into_iter()
+                .filter_map(|(c0, r0, c1, r1)| {
+                    let (lo, _) = wall_tile_rect(r1 * 3 + c0);
+                    let (_, hi) = wall_tile_rect(r0 * 3 + c1);
+                    let mut pts = Vec::with_capacity(10);
+                    for x in [lo.x, hi.x] {
+                        for z in [-t, t] {
+                            pts.push(Vec3::new(x, lo.y, z));
+                            pts.push(Vec3::new(x, if r0 == 0 { shoulder } else { hi.y }, z));
+                        }
+                        if r0 == 0 {
+                            pts.push(Vec3::new(x, hi.y, 0.0));
+                        }
+                    }
+                    Collider::convex_hull(pts).map(|c| (Vec3::ZERO, Quat::IDENTITY, c))
+                })
+                .collect();
+            Collider::compound(blocks)
         }
         PieceKind::Floor => {
             let t = tuning.floor_thickness;
@@ -667,7 +678,13 @@ mod tests {
             }
             // Everything selected is never valid.
             let all = (1u16 << tile_count(kind)) - 1;
-            assert!(!is_valid(kind, PieceEdit { tiles: all, start: 0 }));
+            assert!(!is_valid(
+                kind,
+                PieceEdit {
+                    tiles: all,
+                    start: 0
+                }
+            ));
             assert!(is_valid(kind, PieceEdit::FULL));
         }
         let wall = |t: &[u8]| shape_of(PieceKind::Wall, PieceEdit::of(t));
@@ -682,7 +699,11 @@ mod tests {
         assert_eq!(ramp(2, 0), Some(EditShape::HalfRamp));
         assert_eq!(ramp(0, 3), None, "diagonal tiles aren't a path");
         let one = PieceEdit::of(&[1]);
-        assert_eq!(shape_of(PieceKind::Ramp, one), None, "one tile isn't a stair");
+        assert_eq!(
+            shape_of(PieceKind::Ramp, one),
+            None,
+            "one tile isn't a stair"
+        );
         let cone = |t: &[u8]| shape_of(PieceKind::Cone, PieceEdit::of(t));
         assert_eq!(cone(&[0]), Some(EditShape::ConePeak));
         assert_eq!(cone(&[0, 1]), Some(EditShape::ConeSlope));
@@ -696,7 +717,10 @@ mod tests {
         let rects = kept_rects(3, 3, PieceEdit::of(&[4, 7]).tiles);
         assert_eq!(rects, vec![(0, 0, 2, 0), (0, 1, 0, 2), (2, 1, 2, 2)]);
         assert_eq!(kept_rects(3, 3, 0), vec![(0, 0, 2, 2)]);
-        assert_eq!(kept_rects(2, 2, PieceEdit::of(&[0, 1]).tiles), vec![(0, 1, 1, 1)]);
+        assert_eq!(
+            kept_rects(2, 2, PieceEdit::of(&[0, 1]).tiles),
+            vec![(0, 1, 1, 1)]
+        );
     }
 
     #[test]
@@ -732,10 +756,19 @@ mod tests {
         let b = floor.transform().translation;
         let from = b + Vec3::new(0.0, 5.0, 0.0);
         let down_to = |x: f32, z: f32| (b + Vec3::new(x, 0.0, z) - from).normalize();
-        assert_eq!(hovered_tile(&floor, from, down_to(-1.0, -1.0), &tuning), Some(0));
-        assert_eq!(hovered_tile(&floor, from, down_to(1.0, 1.0), &tuning), Some(3));
+        assert_eq!(
+            hovered_tile(&floor, from, down_to(-1.0, -1.0), &tuning),
+            Some(0)
+        );
+        assert_eq!(
+            hovered_tile(&floor, from, down_to(1.0, 1.0), &tuning),
+            Some(3)
+        );
         let cone = PieceSlot::cone(GridCell::new(5, 5, 0));
-        assert_eq!(hovered_tile(&cone, from, down_to(1.0, -1.0), &tuning), Some(1));
+        assert_eq!(
+            hovered_tile(&cone, from, down_to(1.0, -1.0), &tuning),
+            Some(1)
+        );
         // From under the cone (inside a box), its base.
         let under = b - Vec3::Y * 1.5;
         let up_to = (b + Vec3::new(-1.0, 0.0, 1.0) - under).normalize();

@@ -154,8 +154,7 @@ fn render_edits_offscreen() {
     clear_pieces(app.world_mut());
     // Park the player out of the way, looking at nothing in particular.
     let p = player(&mut app);
-    app.world_mut().get_mut::<Transform>(p).unwrap().translation =
-        cell(1, 11, 0).base_center();
+    app.world_mut().get_mut::<Transform>(p).unwrap().translation = cell(1, 11, 0).base_center();
 
     // A row of edited walls along z line 8, seen from the south.
     let walls = [
@@ -171,21 +170,33 @@ fn render_edits_offscreen() {
     }
     frames(&mut app, 20);
     let row = cell(4, 8, 0).base_center();
-    look_from(&mut app, row + Vec3::new(1.5, 2.2, 9.0), row + Vec3::new(1.5, 1.4, -2.0));
+    look_from(
+        &mut app,
+        row + Vec3::new(1.5, 2.2, 9.0),
+        row + Vec3::new(1.5, 1.4, -2.0),
+    );
     capture(&mut app, out.join("01-walls-window-door-arch.png"));
     let right = cell(7, 8, 0).base_center();
-    look_from(&mut app, right + Vec3::new(0.0, 2.0, 8.0), right + Vec3::new(0.0, 1.3, -2.0));
+    look_from(
+        &mut app,
+        right + Vec3::new(0.0, 2.0, 8.0),
+        right + Vec3::new(0.0, 1.3, -2.0),
+    );
     capture(&mut app, out.join("02-walls-triangle-pillar-midwall.png"));
-    look_from(&mut app, row + Vec3::new(-3.0, 1.6, -4.0), row + Vec3::new(1.0, 1.2, 0.0));
+    look_from(
+        &mut app,
+        row + Vec3::new(-3.0, 1.6, -4.0),
+        row + Vec3::new(1.0, 1.2, 0.0),
+    );
     capture(&mut app, out.join("03-walls-back-side.png"));
 
     // The edit grid mid-selection: dragging a door on a fresh wall.
     let slot = PieceSlot::wall(cell(4, 5, 0), Facing::North);
     let wall = put(&mut app, slot, PieceEdit::FULL);
     let feet = cell(4, 5, 0).base_center() + Vec3::Z * 0.5;
-    let tile7 = slot.transform().transform_point(
-        tile_quad(slot.kind, 7).iter().copied().sum::<Vec3>() / 4.0,
-    );
+    let tile7 = slot
+        .transform()
+        .transform_point(tile_quad(slot.kind, 7).iter().copied().sum::<Vec3>() / 4.0);
     {
         let world = app.world_mut();
         world.get_mut::<Transform>(p).unwrap().translation = feet;
@@ -212,7 +223,11 @@ fn render_edits_offscreen() {
     }
     frames(&mut app, 4);
     let c = slot.transform().translation;
-    look_from(&mut app, c + Vec3::new(2.2, 0.4, 4.2), c + Vec3::new(0.0, -0.1, 0.0));
+    look_from(
+        &mut app,
+        c + Vec3::new(2.2, 0.4, 4.2),
+        c + Vec3::new(0.0, -0.1, 0.0),
+    );
     capture(&mut app, out.join("04-edit-grid-mid-selection.png"));
     // An invalid selection turns red.
     app.world_mut()
@@ -253,26 +268,62 @@ fn render_edits_offscreen() {
     }
     frames(&mut app, 20);
     let b = bx.base_center();
-    look_from(&mut app, b + Vec3::new(6.0, 5.5, 8.0), b + Vec3::new(0.0, 2.2, 0.0));
+    look_from(
+        &mut app,
+        b + Vec3::new(6.0, 5.5, 8.0),
+        b + Vec3::new(0.0, 2.2, 0.0),
+    );
     capture(&mut app, out.join("06-cone-on-a-box.png"));
     let roofs = cell(7, 2, 0).base_center() + Vec3::X * 2.0;
-    look_from(&mut app, roofs + Vec3::new(-2.0, 5.0, 10.0), roofs + Vec3::new(0.0, 0.4, 0.0));
+    look_from(
+        &mut app,
+        roofs + Vec3::new(-2.0, 5.0, 10.0),
+        roofs + Vec3::new(0.0, 0.4, 0.0),
+    );
     capture(&mut app, out.join("07-cone-edits.png"));
     // From inside the box, looking up at the cone's underside.
-    look_from(&mut app, b + Vec3::new(0.8, 1.4, 1.2), b + Vec3::new(-0.2, 3.0, -0.5));
+    look_from(
+        &mut app,
+        b + Vec3::new(0.8, 1.4, 1.2),
+        b + Vec3::new(-0.2, 3.0, -0.5),
+    );
     capture(&mut app, out.join("08-cone-from-inside-the-box.png"));
 
     // Half ramps and edited floors.
-    put(&mut app, PieceSlot::ramp(cell(8, 5, 0), Facing::North), PieceEdit::path(2, 0));
-    put(&mut app, PieceSlot::ramp(cell(9, 5, 0), Facing::North), PieceEdit::path(3, 2));
-    put(&mut app, PieceSlot::floor(cell(6, 5, 1)), PieceEdit::of(&[0, 1]));
-    put(&mut app, PieceSlot::floor(cell(7, 5, 1)), PieceEdit::of(&[3]));
+    put(
+        &mut app,
+        PieceSlot::ramp(cell(8, 5, 0), Facing::North),
+        PieceEdit::path(2, 0),
+    );
+    put(
+        &mut app,
+        PieceSlot::ramp(cell(9, 5, 0), Facing::North),
+        PieceEdit::path(3, 2),
+    );
+    put(
+        &mut app,
+        PieceSlot::floor(cell(6, 5, 1)),
+        PieceEdit::of(&[0, 1]),
+    );
+    put(
+        &mut app,
+        PieceSlot::floor(cell(7, 5, 1)),
+        PieceEdit::of(&[3]),
+    );
     frames(&mut app, 20);
     let h = cell(8, 5, 0).base_center();
-    look_from(&mut app, h + Vec3::new(-2.0, 5.0, 9.0), h + Vec3::new(-1.0, 1.0, 0.0));
+    look_from(
+        &mut app,
+        h + Vec3::new(-2.0, 5.0, 9.0),
+        h + Vec3::new(-1.0, 1.0, 0.0),
+    );
     capture(&mut app, out.join("09-half-ramps-and-floors.png"));
     // The turned half ramp from its low side (it rises toward -X).
-    look_from(&mut app, h + Vec3::new(12.0, 4.0, 7.0), h + Vec3::new(3.0, 1.2, 0.5));
+    look_from(
+        &mut app,
+        h + Vec3::new(12.0, 4.0, 7.0),
+        h + Vec3::new(3.0, 1.2, 0.5),
+    );
     capture(&mut app, out.join("10-half-ramp-turned.png"));
     println!("wrote PNGs to {}", out.display());
 }

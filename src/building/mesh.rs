@@ -277,8 +277,10 @@ fn strip_inner_caps(mesh: Mesh, is_inner: impl Fn([Vec3; 3]) -> bool) -> Mesh {
         None => (0..pos.len() as u32).collect(),
     };
     let kept: Vec<u32> = indices
-        .chunks_exact(3)
-        .filter(|t| !is_inner([0, 1, 2].map(|k| pos[t[k] as usize])))
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .filter(|t| !is_inner(t.map(|k| pos[k as usize])))
         .flatten()
         .copied()
         .collect();
@@ -321,15 +323,9 @@ pub(crate) fn compose_wall(edit: PieceEdit, parts: &BTreeMap<String, Mesh>) -> O
     let mut pieces = Vec::new();
     // A triangle: whole tiles on the kept side, halves along the diagonal.
     let triangle: Option<(&str, [u8; 3], &str, f32)> = match edit::wall_triangle(edit) {
-        Some(_) if removed == PieceEdit::of(&[0, 1, 3]).tiles => {
-            Some(("A", [2, 4, 6], "Lo", 1.0))
-        }
-        Some(_) if removed == PieceEdit::of(&[5, 7, 8]).tiles => {
-            Some(("A", [2, 4, 6], "Hi", 1.0))
-        }
-        Some(_) if removed == PieceEdit::of(&[1, 2, 5]).tiles => {
-            Some(("B", [0, 4, 8], "Lo", -1.0))
-        }
+        Some(_) if removed == PieceEdit::of(&[0, 1, 3]).tiles => Some(("A", [2, 4, 6], "Lo", 1.0)),
+        Some(_) if removed == PieceEdit::of(&[5, 7, 8]).tiles => Some(("A", [2, 4, 6], "Hi", 1.0)),
+        Some(_) if removed == PieceEdit::of(&[1, 2, 5]).tiles => Some(("B", [0, 4, 8], "Lo", -1.0)),
         Some(_) => Some(("B", [0, 4, 8], "Hi", -1.0)),
         None => None,
     };
@@ -379,13 +375,18 @@ pub(crate) fn compose_wall(edit: PieceEdit, parts: &BTreeMap<String, Mesh>) -> O
     }
     let merged = merge_all(pieces)?;
     let tile_at = |x: f32, y: f32| -> u8 {
-        let c = ((x + CELL_SIZE / 2.0) / WALL_TILE_W).floor().clamp(0.0, 2.0) as u8;
+        let c = ((x + CELL_SIZE / 2.0) / WALL_TILE_W)
+            .floor()
+            .clamp(0.0, 2.0) as u8;
         let r = ((LEVEL_HEIGHT - y) / WALL_TILE_H).floor().clamp(0.0, 2.0) as u8;
         r * 3 + c
     };
     Some(strip_inner_caps(merged, |tri| {
         let mid = (tri[0] + tri[1] + tri[2]) / 3.0;
-        for xb in [-CELL_SIZE / 2.0 + WALL_TILE_W, CELL_SIZE / 2.0 - WALL_TILE_W] {
+        for xb in [
+            -CELL_SIZE / 2.0 + WALL_TILE_W,
+            CELL_SIZE / 2.0 - WALL_TILE_W,
+        ] {
             if tri.iter().all(|p| (p.x - xb).abs() < EPS) {
                 let (a, b) = (tile_at(xb - 0.1, mid.y), tile_at(xb + 0.1, mid.y));
                 return solid(a) && solid(b);
@@ -703,13 +704,23 @@ pub(crate) fn ghost_cone_mesh() -> MeshBuilder {
         Vec3::new(-w, -0.02, w),
         Vec3::new(0.0, top, 0.0),
     ];
-    let faces: [&[usize]; 5] = [&[0, 1, 2, 3], &[0, 1, 4], &[1, 2, 4], &[2, 3, 4], &[3, 0, 4]];
+    let faces: [&[usize]; 5] = [
+        &[0, 1, 2, 3],
+        &[0, 1, 4],
+        &[1, 2, 4],
+        &[2, 3, 4],
+        &[3, 0, 4],
+    ];
     ghost_convex(&mut m, &corners, &faces);
     let center = Vec3::Y * 0.3;
     for k in 0..4 {
         let (a, b, apex) = (corners[k], corners[(k + 1) % 4], corners[4]);
         let n = (b - a).cross(apex - a).normalize();
-        let n = if n.dot((a + b + apex) / 3.0 - center) < 0.0 { -n } else { n };
+        let n = if n.dot((a + b + apex) / 3.0 - center) < 0.0 {
+            -n
+        } else {
+            n
+        };
         for j in 1..4 {
             let t = j as f32 / 4.0;
             m.line(a.lerp(apex, t), b.lerp(apex, t), n, GHOST_LINE_ALPHA);
@@ -774,7 +785,10 @@ mod tests {
             let turned: Vec<Vec3> = edit::cone_points(canon).iter().map(|p| turn * *p).collect();
             assert!(same(&turned, &edit::cone_points(e)), "{e:?}");
         }
-        assert_eq!(ramp_half(PieceEdit::path(2, 0)), Some(("Left", Quat::IDENTITY)));
+        assert_eq!(
+            ramp_half(PieceEdit::path(2, 0)),
+            Some(("Left", Quat::IDENTITY))
+        );
     }
 
     #[test]

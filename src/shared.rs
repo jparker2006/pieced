@@ -528,21 +528,53 @@ pub struct Eliminated {
 /// Emitted for gameplay-driven sounds and effects that aren't shots, damage or pieces.
 #[derive(Message, Debug, Clone, Copy, PartialEq)]
 pub enum GameCue {
-    Jump { who: Entity },
-    Land { who: Entity, speed: f32 },
-    Footstep { who: Entity },
-    SlideStart { who: Entity },
-    ReloadStart { who: Entity, weapon: WeaponKind },
-    ReloadShell { who: Entity },
-    ReloadDone { who: Entity, weapon: WeaponKind },
-    WeaponSwitch { who: Entity, tool: ActiveTool },
-    AdsChanged { who: Entity, ads: bool },
-    PlacementRejected { who: Entity },
-    Respawned { who: Entity },
+    Jump {
+        who: Entity,
+    },
+    Land {
+        who: Entity,
+        speed: f32,
+    },
+    Footstep {
+        who: Entity,
+    },
+    SlideStart {
+        who: Entity,
+    },
+    ReloadStart {
+        who: Entity,
+        weapon: WeaponKind,
+    },
+    ReloadShell {
+        who: Entity,
+    },
+    ReloadDone {
+        who: Entity,
+        weapon: WeaponKind,
+    },
+    WeaponSwitch {
+        who: Entity,
+        tool: ActiveTool,
+    },
+    AdsChanged {
+        who: Entity,
+        ads: bool,
+    },
+    PlacementRejected {
+        who: Entity,
+    },
+    Respawned {
+        who: Entity,
+    },
     /// An edit was confirmed (or a piece reset) on `piece`.
-    PieceEdited { who: Entity, piece: Entity },
+    PieceEdited {
+        who: Entity,
+        piece: Entity,
+    },
     /// A released edit selection wasn't a valid shape: nothing changed.
-    EditRejected { who: Entity },
+    EditRejected {
+        who: Entity,
+    },
 }
 
 // ---------------------------------------------------------------------------

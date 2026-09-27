@@ -179,8 +179,8 @@ fn piece_models_fit_the_build_grid_in_every_crack_stage() {
                 assert!(lo.y >= -0.01 && hi.y <= 1.72, "{what}: {lo}..{hi}");
                 // Planks and trims sit on the pyramid (1.5 m), never far above it.
                 for p in positions(&mesh) {
-                    let pyramid = pieced::building::CONE_HEIGHT
-                        * (1.0 - p.x.abs().max(p.z.abs()) / 2.0);
+                    let pyramid =
+                        pieced::building::CONE_HEIGHT * (1.0 - p.x.abs().max(p.z.abs()) / 2.0);
                     assert!(p.y <= pyramid + 0.24, "{what}: {p} floats over the cone");
                 }
             }
@@ -476,7 +476,11 @@ fn every_edit_has_shared_meshes_and_edited_pieces_show_them() {
         )
     };
     assert_eq!(visual(&mut app).0, *assets.mesh(PieceKind::Cone, 0));
-    for e in [PieceEdit::of(&[0]), PieceEdit::of(&[3]), PieceEdit::of(&[1, 3])] {
+    for e in [
+        PieceEdit::of(&[0]),
+        PieceEdit::of(&[3]),
+        PieceEdit::of(&[1, 3]),
+    ] {
         *app.world_mut().get_mut::<PieceEdit>(piece).unwrap() = e;
         app.update();
         let (mesh, turn) = visual(&mut app);
@@ -485,13 +489,18 @@ fn every_edit_has_shared_meshes_and_edited_pieces_show_them() {
     }
     *app.world_mut().get_mut::<PieceEdit>(piece).unwrap() = PieceEdit::FULL;
     app.update();
-    assert_eq!(visual(&mut app), (assets.mesh(PieceKind::Cone, 0).clone(), Quat::IDENTITY));
+    assert_eq!(
+        visual(&mut app),
+        (assets.mesh(PieceKind::Cone, 0).clone(), Quat::IDENTITY)
+    );
 }
 
 #[test]
 fn editing_and_resetting_fifty_times_creates_no_assets() {
     use pieced::{
-        building::{PieceEdit, clear_pieces, damage_piece, edit::valid_edits, edit_piece, place_piece},
+        building::{
+            PieceEdit, clear_pieces, damage_piece, edit::valid_edits, edit_piece, place_piece,
+        },
         shared::AppState,
     };
     let mut app = game_with_visuals();

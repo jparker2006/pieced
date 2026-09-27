@@ -139,7 +139,13 @@ fn samples(kind: PieceKind, edit: PieceEdit) -> Vec<(Vec3, bool)> {
             PieceKind::Wall => (Vec3::X * 0.35, Vec3::Y * 0.25),
             _ => (Vec3::X * 0.5, Vec3::Z * 0.5),
         };
-        for (su, sv) in [(0.0, 0.0), (-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+        for (su, sv) in [
+            (0.0, 0.0),
+            (-1.0, -1.0),
+            (1.0, -1.0),
+            (-1.0, 1.0),
+            (1.0, 1.0),
+        ] {
             let p = c + du * su + dv * sv;
             let expect = match kind {
                 PieceKind::Wall => match edit::wall_triangle(edit) {
@@ -252,8 +258,8 @@ fn every_valid_edit_changes_collision_as_its_shape_and_reset_restores_it() {
                         }
                         PieceKind::Cone => {
                             let tile = (p.x >= 0.0) as u8 + 2 * (p.z >= 0.0) as u8;
-                            let at_center = (p.x.abs() - 1.0).abs() < 0.01
-                                && (p.z.abs() - 1.0).abs() < 0.01;
+                            let at_center =
+                                (p.x.abs() - 1.0).abs() < 0.01 && (p.z.abs() - 1.0).abs() < 0.01;
                             if at_center {
                                 if e.has(tile) {
                                     assert!(h > 0.95, "{shape:?} {e:?} raised {tile}: {h}");
@@ -267,11 +273,7 @@ fn every_valid_edit_changes_collision_as_its_shape_and_reset_restores_it() {
                 }
             }
             // The piece map knows the edit; reset restores every ray.
-            let entry = sim
-                .world()
-                .resource::<PieceMap>()
-                .get(slot.key())
-                .unwrap();
+            let entry = sim.world().resource::<PieceMap>().get(slot.key()).unwrap();
             assert_eq!((entry.entity, entry.edit), (piece, e));
             assert!(edit_piece(sim.world_mut(), piece, PieceEdit::FULL));
             sim.tick();
@@ -303,13 +305,19 @@ fn half_ramps_rise_one_level_along_their_path() {
     assert!(edit_piece(sim.world_mut(), ramp, PieceEdit::path(2, 0)));
     sim.tick();
     let h = |sim: &mut Sim, x: f32, z: f32| probe(sim, &slot, ramp, Vec3::new(x, 0.0, z));
-    let (foot, top) = (h(&mut sim, -1.0, 1.8).unwrap(), h(&mut sim, -1.0, -1.8).unwrap());
+    let (foot, top) = (
+        h(&mut sim, -1.0, 1.8).unwrap(),
+        h(&mut sim, -1.0, -1.8).unwrap(),
+    );
     assert!(foot < 0.3 && top > 2.7, "{foot} .. {top}");
     assert_eq!(h(&mut sim, 1.0, 0.0), None, "the right half is gone");
     // Turned: the low half (tiles 3 -> 2) rises toward local -X.
     assert!(edit_piece(sim.world_mut(), ramp, PieceEdit::path(3, 2)));
     sim.tick();
-    let (foot, top) = (h(&mut sim, 1.8, 1.0).unwrap(), h(&mut sim, -1.8, 1.0).unwrap());
+    let (foot, top) = (
+        h(&mut sim, 1.8, 1.0).unwrap(),
+        h(&mut sim, -1.8, 1.0).unwrap(),
+    );
     assert!(foot < 0.3 && top > 2.7, "{foot} .. {top}");
     assert_eq!(h(&mut sim, 0.0, -1.0), None, "the high half is gone");
 }
@@ -373,7 +381,11 @@ fn you_shoot_through_a_window() {
     assert_eq!(shoot(&mut sim), Some(wall), "the full wall stops the shot");
     assert!(edit_piece(sim.world_mut(), wall, PieceEdit::of(&[4])));
     sim.tick();
-    assert_ne!(shoot(&mut sim), Some(wall), "the shot goes through the window");
+    assert_ne!(
+        shoot(&mut sim),
+        Some(wall),
+        "the shot goes through the window"
+    );
     // Beside the window the wall still stops shots.
     sim.clear_recorded::<ShotFired>();
     aim_at(&mut sim, tile_point(&slot, 3));
@@ -422,7 +434,11 @@ fn g_drag_release_makes_a_door_at_once_and_leaves_edit_mode() {
     let (slot, wall) = wall_in_front(&mut sim);
     aim_at(&mut sim, tile_point(&slot, 4));
     press_edit(&mut sim);
-    assert_eq!(editing(&mut sim), Some(wall), "G on the wall opens its grid");
+    assert_eq!(
+        editing(&mut sim),
+        Some(wall),
+        "G on the wall opens its grid"
+    );
     let p = sim.player();
     assert_eq!(sim.get::<EditMode>(p).session.unwrap().hovered, Some(4));
     // Press on 4, drag down to 7: selected but not applied while held.
@@ -449,11 +465,17 @@ fn g_drag_release_makes_a_door_at_once_and_leaves_edit_mode() {
     );
     assert_eq!(editing(&mut sim), None, "release confirms and leaves");
     assert_eq!(
-        cues(&sim, |c| matches!(c, GameCue::PieceEdited { piece, .. } if *piece == wall)),
+        cues(
+            &sim,
+            |c| matches!(c, GameCue::PieceEdited { piece, .. } if *piece == wall)
+        ),
         1
     );
     // Clicking tiles never fired the rifle.
-    assert!(sim.recorded::<ShotFired>().is_empty(), "no shots while editing");
+    assert!(
+        sim.recorded::<ShotFired>().is_empty(),
+        "no shots while editing"
+    );
     // The collider already has the doorway.
     sim.tick();
     let door = tile_point(&slot, 7);
@@ -581,7 +603,10 @@ fn an_edit_keeps_the_hp_fraction_and_the_slot() {
     let after = *sim.get::<Piece>(wall);
     assert_eq!(edit_of(&sim, wall), PieceEdit::of(&[4, 7]));
     assert_eq!(after.hp_fraction(), before.hp_fraction());
-    assert_eq!((after.hp, after.max_hp, after.crack_stage), (120.0, 200.0, 1));
+    assert_eq!(
+        (after.hp, after.max_hp, after.crack_stage),
+        (120.0, 200.0, 1)
+    );
     // An edited piece still owns its slot: nothing can be placed there.
     let map = sim.world().resource::<PieceMap>().clone();
     assert_eq!(
@@ -629,7 +654,10 @@ fn the_cone_places_on_v_and_shares_a_cell_with_a_floor_and_a_ramp() {
     sim.player_intent().select = Some(ActiveTool::Build(PieceKind::Cone));
     sim.tick();
     let p = sim.player();
-    assert_eq!(*sim.get::<ActiveTool>(p), ActiveTool::Build(PieceKind::Cone));
+    assert_eq!(
+        *sim.get::<ActiveTool>(p),
+        ActiveTool::Build(PieceKind::Cone)
+    );
     let candidate = sim.get::<BuildTarget>(p).candidate.expect("a cone ghost");
     assert_eq!(candidate.slot.kind, PieceKind::Cone);
     sim.player_intent().fire_pressed = true;
@@ -640,10 +668,15 @@ fn the_cone_places_on_v_and_shares_a_cell_with_a_floor_and_a_ramp() {
         .cone_at(candidate.slot.cell)
         .expect("placed");
     let piece = *sim.get::<Piece>(placed);
-    assert_eq!((piece.kind, piece.hp, piece.max_hp), (PieceKind::Cone, 170.0, 170.0));
-    assert!(sim.recorded::<PieceChanged>().iter().any(|c| c.change
-        == PieceChange::Placed
-        && c.kind == PieceKind::Cone));
+    assert_eq!(
+        (piece.kind, piece.hp, piece.max_hp),
+        (PieceKind::Cone, 170.0, 170.0)
+    );
+    assert!(
+        sim.recorded::<PieceChanged>()
+            .iter()
+            .any(|c| c.change == PieceChange::Placed && c.kind == PieceKind::Cone)
+    );
     // A floor, a ramp and a cone in one cell.
     let c = cell(7, 7, 1);
     for slot in [
@@ -663,7 +696,12 @@ fn the_cone_places_on_v_and_shares_a_cell_with_a_floor_and_a_ramp() {
 fn the_cone_caps_a_box_from_inside() {
     // Looking steeply up inside a box puts the cone on top of it.
     let mut sim = empty_sim();
-    put_player(&mut sim, center(4, 10), Facing::North.yaw(), 70f32.to_radians());
+    put_player(
+        &mut sim,
+        center(4, 10),
+        Facing::North.yaw(),
+        70f32.to_radians(),
+    );
     sim.player_intent().select = Some(ActiveTool::Build(PieceKind::Cone));
     sim.tick();
     let p = sim.player();
@@ -680,7 +718,10 @@ fn the_cone_blocks_shots_and_movement() {
     let base = slot.cell.base_center();
     // Low shots hit it, shots over its peak don't; from above it's there too.
     let from = base + Vec3::new(0.0, 0.5, 4.0);
-    assert_eq!(cast(&mut sim, from, Vec3::NEG_Z, 8.0).map(|h| h.0), Some(cone));
+    assert_eq!(
+        cast(&mut sim, from, Vec3::NEG_Z, 8.0).map(|h| h.0),
+        Some(cone)
+    );
     let over = base + Vec3::new(0.0, CONE_HEIGHT + 0.1, 4.0);
     assert_eq!(cast(&mut sim, over, Vec3::NEG_Z, 8.0), None);
     let (hit, d) = cast(&mut sim, base + Vec3::Y * 4.0, Vec3::NEG_Y, 8.0).unwrap();
@@ -770,6 +811,10 @@ fn an_edited_cone_opens_where_its_corners_rise() {
     let (high, low) = (top(&mut sim, -1.9), top(&mut sim, 1.9));
     assert!(high > 1.4 && low < 0.1, "{high} .. {low}");
     // Every raised set of 4 is refused; any 1 to 3 is a cone variant.
-    assert!(!edit_piece(sim.world_mut(), cone, PieceEdit::of(&[0, 1, 2, 3])));
+    assert!(!edit_piece(
+        sim.world_mut(),
+        cone,
+        PieceEdit::of(&[0, 1, 2, 3])
+    ));
     assert_eq!(edit_of(&sim, cone), edit);
 }

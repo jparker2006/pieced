@@ -244,8 +244,8 @@ pub fn buttons_to_intent_in(
     } else {
         intent.reload_pressed |= r;
     }
-    intent.edit_pressed |= keys.just_pressed(KeyCode::KeyG)
-        || (edit.editing && keys.just_pressed(KeyCode::Escape));
+    intent.edit_pressed |=
+        keys.just_pressed(KeyCode::KeyG) || (edit.editing && keys.just_pressed(KeyCode::Escape));
 
     let selections = [
         (KeyCode::Digit1, ActiveTool::Weapon(WeaponKind::Rifle)),
