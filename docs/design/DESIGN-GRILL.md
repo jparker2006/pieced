@@ -110,20 +110,64 @@ Jake scored the board: T01 2, T02 2, T03 2, T04 2, T05 3, T06 2, T07 3, T08 3, T
 | D50 | **Ornate guns, bigger spells (Q49).** | More ornate brass guns with glowing crystal chambers that spark inside. Spell bursts 2–3× bigger and more saturated. |
 | D51 | **Measure while building (Q50).** | The design pass starts now in the background. Jake gives a 20-minute go window soon for the first native performance numbers on the new look. |
 
-## Handoff: where to pick up after compaction
+## Round 8: closing M2 and planning Milestone 3 "Waves", 2026-09-27
 
-- **Next:** Jake launches the Milestone 2 `/goal` with the launcher line in `docs/M2-GOAL.md`.
-- **Images:** the target board uses R4-M1 as a style reference (`codex exec ... -i R4-M1-brick-walls-wood-floors.png -- "<prompt>"`; the `--` is required because `-i` takes several values).
-  - Use Codex CLI: `codex exec --skip-git-repo-check --ephemeral -m gpt-5.5 -s workspace-write -C docs/design/concepts "<prompt>" < /dev/null`.
+**Context.**
+- S1 passed in round 3: every view ≥ 4, mean 4.67.
+- Jake played for about 4½ minutes with sound on: "OMG ITS AMAZING! IT looks FANTASTIC. The sound is GREAT! When there is an actual game objective this is gonna be so much fun!"
+- Before that session he asked: "Can we skip the shit where I have to be away from my mac".
+
+**Closing M2 (Q51 and the away-from-Mac request):**
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D52 | **S8 passes on today's session (Q51).** | The 4½-minute session with sound on and Jake's verdict count as S8. No separate 10-minute session. |
+| D53 | **No more away-from-the-Mac runs.** | **S2** is measured from a logged real play session on battery with Low Power Mode on. The game gets a frame-timing log for normal play, so any unplugged session becomes the S2 evidence (same thresholds). The native re-runs of S3–S7 are replaced by: <ul><li>the native results already recorded (go window 1);</li><li>headless tests on the final commit;</li><li>the launch time the game prints on every launch.</li></ul> The 8.7 s launch seen on 2026-09-27 (first launch after a rebuild; earlier launches took 1.1–2.6 s) must be checked. |
+
+**Milestone 3: what the game is (Q52–Q58):**
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D54 | **Survive endless waves of knights (Q52).** | Jake: "survive a wave of knights where you get to use building, editing, shooting, etc to defeat them." This replaces the original 1v1 build fight as the first real objective. |
+| D55 | **Knights fight back, with no difficulty settings (Q53, Q54).** | The knight is the enemy. The waves are the difficulty: there's no Easy/Medium/Hard menu. Knights that build (walls, ramps) are wanted, but they come with the later knight types (D60). |
+| D56 | **Match flow (Q55).** | <ul><li>A fixed rifle + pump loadout and unlimited materials.</li><li>A results screen after each run.</li><li>No loot, unlocks or progression yet.</li></ul> |
+| D57 | **Gameplay first; rebinding and menu ride along (Q56).** | "Make the bot and gameplay fun first." Then key rebinding (backlog) and a main menu. A second arena and more weapons wait. |
+| D58 | **Endless random waves, like CoD Zombies (Q57).** | Runs are infinite, with some randomness in each wave. The results screen shows your personal best. New maps and guns later make runs fresher. |
+| D59 | **Nothing bugged Jake; the background could be more magical (Q58).** | See D64 and D67. |
+
+**Milestone 3: the wave mode (Q59–Q69):**
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D60 | **Knight roster, later (Q59).** | A new type unlocks every few waves, and late waves mix all four at random:<ul><li>**Grunt:** runs and shoots bolts.</li><li>**Brute:** bigger and slower; smashes walls.</li><li>**Mage:** lobs spells over walls.</li><li>**Builder knight:** ramps up to you.</li></ul>**M3 starts with the grunt only** (D68). |
+| D61 | **One life per run (Q60).** | Death ends the run; the score is the wave reached. Knights sometimes drop shield potions, and you heal a little between waves. |
+| D62 | **Unlimited ammo and materials, for now (Q61).** | "Lets just make fighting a basic wave fun before adding new things." Limited materials and ammo, knight drops and a Zombies-style points shop are for later. |
+| D63 | **Knights arrive by ship from the station (Q62).** | Ships fly down from the station and drop knights onto the island, "with a good graphic / animation." About a 10 s break between waves to build. Knights can be knocked off the edge into the void. |
+| D64 | **A more magical sky (Q63).** | Shooting stars, drifting glowing motes, and a slow shimmer on the galaxy. The castle in the back is bigger and more magical, "more like Harry Potter" (D67). |
+| D65 | **Run screens (Q64).** | <ul><li>**HUD:** wave number, knights left, score.</li><li>**Results screen:** wave reached, eliminations, accuracy, headshots, best run next to it, and a "Go again" button.</li></ul> |
+| D66 | **The mode is called "Waves" (Q65).** | Real names are picked when the whole game is renamed. |
+| D67 | **A bigger, more magical castle, concepts first (Q66).** | Keep the stained-glass heart and add Hogwarts traits: <ul><li>many towers with pointed cone roofs;</li><li>hundreds of warm, candlelit windows;</li><li>floating lanterns;</li><li>a soft golden glow, with sparkles drifting off it.</li></ul>2–3 concept paintings come from Codex first (see the handoff for the command), and Jake picks one before it's built. |
+| D68 | **Difficulty curve, grunts only to start (Q67).** | Wave 1 is 3 grunts, and each wave adds about 2. Knights get slightly faster and tougher every wave. An average run lasts 10–15 minutes; a good run passes wave 20. Brutes (wave 3), mages (wave 5) and builder knights (wave 8) come in a later step. |
+| D69 | **Short loops (Q68).** | The first chunk is **one basic grunt wave Jake can play**, to check the fun early. Then ship arrivals, the castle and the sky, then rebinding and the menu. Jake play-tests after each chunk. |
+| D70 | **M2 leftovers are step 1 of M3 (Q69).** | <ul><li>Add the frame-timing log for normal play (D53).</li><li>Check the 8.7 s launch.</li><li>Close the M2 report.</li></ul>Jake may start M3 from a new session. |
+
+## Handoff: where to pick up
+
+- **State (2026-09-27):**
+  - M2 main is `7f8d962` or later; S1 passes (round 3 mean 4.67), and S8 passes per D52.
+  - Remaining for M2: S2 (from a logged battery play session, D53), the launch check, and closing the report (`docs/evidence/M2-report.md`).
+  - `pieced-play` (`~/Library/Caches/pieced-target/pieced-play`) is built from `bb9c33a`.
+- **Next:** turn Round 8 (D52–D70) into `docs/M3-SPEC.md` and `docs/M3-GOAL.md`, with gates and short play-test loops (D69). Then Jake launches it, maybe from a new session.
+- **Images (castle concepts, D67):** use Codex CLI, one image at a time:
+  ```
+  codex exec --skip-git-repo-check --ephemeral -m gpt-5.5 -s workspace-write -C docs/design/concepts [-i ref.png --] "<prompt>" < /dev/null
+  ```
+  - The `--` after `-i` is required, because `-i` takes several values.
   - Stdin **must** be `/dev/null`, or the job hangs.
-  - Run **one at a time**. Parallel runs can copy each other's outputs.
+  - If Codex says it saved an image that isn't there, recover it from `~/.codex/generated_images/<session>/`.
   - Generated images stay local and are git-ignored.
-- **Tools:** Blender 5.2.2 LTS is installed (`/Applications/Blender.app`, CLI `blender`). Free disk is about 21 GB.
-- **Milestone 1:**
-  - **Parked.** G1 and G6 PASS; the rest are pending (see `docs/evidence/M1-report.md`).
-  - **G2 blocker:** battery performance. The UI-MSAA-off and 1.4 MP cap fixes (`0420120`) haven't been measured on screen. The viewmodel camera's MSAA writeback is the top suspect for the rest.
-  - **Measurement conditions:** the Mac must be idle and plugged in (or on battery for G2), with no heavy background load.
 - **Environment gotchas:**
-  - `~/Documents` is iCloud-synced and over quota. The build cache now lives in `~/Library/Caches/pieced-target` (`scripts/env.sh`).
-  - Scenario windows get covered whenever Jake uses the Mac. Never run full-screen tests while he's using it.
-  - Jake's background services (a glox Python service, a VM) add CPU load.
+  - `source scripts/env.sh`: builds run at low priority, and the shared cache is `~/Library/Caches/pieced-target`. `~/Documents` is iCloud-synced and over quota.
+  - All worktrees share one build cache. Before trusting a render, check that the cargo output shows `Compiling pieced (<your path>)`.
+  - Never use `pgrep` wait loops. Run `scripts/prune-target.sh` if disk drops below 6 GB.
+  - Never run full-screen or timing work while Jake is on the Mac, and D53 removes the need for it.

@@ -9,13 +9,13 @@ Every number here names its run folder, the commit, and the power and Low Power 
 | Gate | Status | Evidence |
 |---|---|---|
 | S1 Target board (every view ≥ 4 from Jake) | **PASS** (round 3, `bb9c33a`) | Jake's round 3 scores 2026-09-27: every view ≥ 4, mean 4.67 (eight 5s, four 4s). Scored shots in `docs/evidence/m2/s1-round3/`. Rounds 1 (mean 2.5) and 2 (mean 3.4) are in the log |
-| S2 Performance (battery, Low Power Mode, full look) | PENDING | — |
+| S2 Performance (battery, Low Power Mode, full look) | PENDING (method changed, D53) | To be measured from a logged real play session on battery with Low Power Mode on (same thresholds), not an away-from-the-Mac scripted run. Needs the frame-timing log for normal play first |
 | S3 Launch < 5 s ×3 | PASS (native, `f5c36e7`) | `evidence/m2-20260926-231552-launch{1,2,3}`: 2564, 1208, 1396 ms; every other run 1145–2224 ms. Release build, AC, Low Power Mode on. Re-run on the final commit |
 | S4 Motion | PASS (`f5c36e7`) | `tests/far.rs` plus native `evidence/m2-20260926-231552-sky`: 5 frames 5 s apart, 33.6/34.4/33.4/34.9% of sky pixels changed. Re-run on the final commit |
 | S5 Knight hitbox fit | PASS (on the B3 merge; re-run on the final commit) | `tests/knight.rs` (20 tests), with the cosmetic hat excluded per Amendment B. Head: helmet +4.6 cm, eyes +0.6. Body: boots +4.1, gauntlets +3.1, torso +2.2, cape +1.6; the robe is inside by 1.4 cm (limit 5). Fill: front 8.1 / 8.0 cm (limit 10), side 18.0 (limit 21) |
 | S6 Feedback timing | PASS (`f5c36e7`) | `tests/spells.rs` plus native `evidence/m2-20260926-231552-fx`: 13/13 hits with impact, hitmarker and damage number on the hit frame; 18/18 bolts on their hit point within 2 frames (worst 2). Re-run on the final commit |
 | S7 No regressions (G1, G3, G6, tests, clippy, fmt) | PARTIAL | `cargo test --locked` 331 passed, 0 failed; clippy `-D warnings` and `fmt --check` clean on `12550d4`. Native G1, G3 and G6 pending (go window) |
-| S8 Jake's feel verdict | PARTIAL | Positive on look and feel (2026-09-26, quoted in the log). Sessions were about 3 minutes, muted; sound unheard |
+| S8 Jake's feel verdict | **PASS** (2026-09-27, `bb9c33a`, sound on) | "OMG ITS AMAZING! IT looks FANTASTIC. The sound is GREAT!" About 4½ minutes; Jake accepted this session as S8 (D52) |
 | S10 Fortnite building and controls (Amendment A) | PASS (headless, on `4d3faed`; re-run on the final commit) | `tests/building.rs`: ramp rush ≥ 10 ramps at ≥ 97% speed in 8 variants, clean stop at the 12-level limit, double ramps (11 + 11), 90s tower, 1×1 box from every corner, ramp + wall. `tests/editing.rs` (16): every edit shape's collision, invalid selections, reset, HP kept, cone places, blocks and breaks. `tests/controls.rs` (5): hold-Shift ADS, W sprint, slide, inert right click. `tests/pieces.rs`: no asset allocation over 50 edits. M1 G4 building tests green |
 | S9 Original and reproducible | PASS (on `12550d4`; re-run on the final commit) | `scripts/build-art.sh --check`: every model and UI image rebuilt headless, byte-identical. `tests/assets.rs` audit passes. `tests/models.rs` loads every glb headless. The only third-party files are Lilita One and its OFL license |
 
@@ -319,3 +319,12 @@ Every number here names its run folder, the commit, and the power and Low Power 
   **Performance still to be measured:** round 3 raised the far layer to 53.4k triangles, merged scenery to 122.2k, and each gun to about 7k. S2 on battery must be measured on this look.
 
   **Still open:** S2 (the battery run with Low Power Mode on), S8 (10 minutes with sound on), and re-running S3–S10 on the final commit. `pieced-play` is built from `bb9c33a`.
+- 2026-09-27 14:26–14:31: **Jake's play session on `bb9c33a`** (release `pieced-play`, sound on, Battery preset; AC power at 88% charging, Low Power Mode on). About 4½ minutes. Verdict, quoted:
+  > "OMG ITS AMAZING! IT looks FANTASTIC. The sound is GREAT! When there is an actual game objective this is gonna be so much fun!"
+
+  **S8 PASS** (Jake accepted this session in place of 10 minutes, D52). The printed launch time was **8,721 ms**, over the 5 s S3 limit. It was the first launch after a release rebuild; earlier launches took 1.1–2.6 s. It needs checking before the final report.
+- 2026-09-27: **Gate method change (D53, Jake):** "Can we skip the shit where I have to be away from my mac".
+  - **S2:** measured from a logged real play session on battery with Low Power Mode on, with the same thresholds. The game needs a frame-timing log in normal play for this.
+  - **S3–S7:** no native re-runs. They rely on the go-window-1 native results, headless tests on the final commit, and each launch's printed time.
+
+  These leftovers are step 1 of Milestone 3 (D70). The M3 plan is Round 8 of `docs/design/DESIGN-GRILL.md`.
