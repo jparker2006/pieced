@@ -61,6 +61,11 @@ fn vertex(v: Vertex) -> VertexOutput {
     out.position = position_world_to_clip(world);
     out.uv = v.uv;
     out.glow = srgb_to_linear(srgb) * intensity;
+    // A dark or zero-intensity halo adds nothing: collapse its quad to a
+    // point so it costs no fragments (additive overdraw is the halo cost).
+    if max(max(out.glow.r, out.glow.g), out.glow.b) < 1e-3 {
+        out.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
     return out;
 }
 

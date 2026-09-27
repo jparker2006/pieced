@@ -5,7 +5,7 @@ the logo) in `IMAGES`.
 """
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional
 
 # Worst-case triangles per asset kind, before outlines. `probe` is a test fixture.
 BUDGETS = {
@@ -34,16 +34,26 @@ BUDGETS = {
 
 @dataclass(frozen=True)
 class Asset:
-    """One model. `build(root)` adds named parts and attach points under `root`."""
+    """One model. `build(root)` adds named parts and attach points under `root`.
+
+    `ao` overrides the kind's baked ambient-occlusion settings (`lib/ao.py`
+    `KIND_AO`) for this asset, e.g. `ao=AoSettings(radius=0.3, ground=True)`.
+    """
 
     name: str
     kind: str
     build: Callable
     about: str = ""
+    ao: Optional[object] = None
 
     @property
     def budget(self):
         return BUDGETS[self.kind]
+
+    @property
+    def ao_settings(self):
+        from .ao import settings_for
+        return settings_for(self.kind, self.ao)
 
 
 @dataclass(frozen=True)
