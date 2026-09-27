@@ -242,6 +242,18 @@ def finish_canopy(root, canopy, seed):
     painted rather than flat. Makes it the `Canopy` part."""
     bm = bmesh.new()
     bm.from_mesh(canopy.data)
+    # Decimation can leave a doubled face (the same three corners twice) or a
+    # sliver of zero area; the glTF exporter drops those, and the sidecar's
+    # triangle count must match the file's.
+    seen = set()
+    junk = []
+    for f in bm.faces:
+        key = tuple(sorted(v.index for v in f.verts))
+        if key in seen or f.calc_area() < 1e-5:
+            junk.append(f)
+        seen.add(key)
+    if junk:
+        bmesh.ops.delete(bm, geom=junk, context="FACES_ONLY")
     palette.tag_all(bm, "foliage")
     bm.normal_update()
     palette.tag(bm, [f for f in bm.faces
