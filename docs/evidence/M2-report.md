@@ -253,3 +253,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - a bouncy lean on the run and a goofy idle.
 
   S5 was re-verified with the hat excluded.
+- 2026-09-27: **beauty B4 (guns and spells) merged**, with 397 tests passing:
+  - **Guns:** an ornate gold-brass rifle (5,656 triangles) with beaded collars, rivets, scroll ridges, grained wood and a fluted muzzle. The pump is reworked to T04 (5,752): a fluted bell, a ribbed pump grip, a violet glass chamber and gem-studded spinning rings. A `Runes` glow follows `CrystalGlow`.
+  - **Chamber energy** (`src/fx/chamber.rs`): lightning arcs and sparkles that dim with the magazine and freeze under `FreezableTime`.
+  - **Spells 2–3× bigger:** rifle trail 36 sparkles, pump fan 56 sparks plus 20 sparkles, body 22 sparks, headshot 26, shield break 14 shards and 40 chips. The particle cap went from 400 to 600, with fixed pools and nothing allocated per event.
+  - **T08:** the tall hat lands 1.2 m in front of the poof at 1.45×.
+
+  **Performance of the extra glow is unmeasured**; the next go window checks S2.
