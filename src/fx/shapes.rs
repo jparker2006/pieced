@@ -125,8 +125,54 @@ pub fn sparkle(tip: Color, core: Color) -> Mesh {
     m.build()
 }
 
+/// The rifle bolt's head (T03): a big jagged starburst, saturated blue from
+/// its white-hot middle out to deep blue tips, under a crisp white four-point
+/// sparkle. Radius 0.5.
+pub fn bolt_head() -> Mesh {
+    let mut rng = FxRng::new(0xB017);
+    let mut m = ModelBuilder::new();
+    let points = 12;
+    star_fan(
+        &mut m,
+        &StarSpec {
+            points,
+            tip: (0..points)
+                .map(|i| {
+                    if i % 2 == 0 {
+                        rng.range(0.42, 0.5)
+                    } else {
+                        rng.range(0.25, 0.36)
+                    }
+                })
+                .collect(),
+            valley: 0.1,
+            core: lin(BOLT_CORE, 1.0),
+            tip_colors: vec![lin(BOLT_BLUE, 0.85), lin(BOLT_DEEP, 0.8)],
+            valley_color: lin(BOLT_BLUE, 0.95),
+            twist: rng.range(0.0, TAU),
+        },
+    );
+    m.with(Affine3A::from_translation(Vec3::Z * 0.004), |m| {
+        star_fan(
+            m,
+            &StarSpec {
+                points: 4,
+                tip: vec![0.34; 4],
+                valley: 0.05,
+                core: lin(Color::WHITE, 1.0),
+                tip_colors: vec![lin(BOLT_CORE, 0.9)],
+                valley_color: lin(Color::WHITE, 1.0),
+                twist: PI / 2.0,
+            },
+        );
+    });
+    m.build()
+}
+
 /// A jagged starburst (impacts, T03 and T05): `points` spikes of seeded,
-/// uneven length. `tips` cycle around the spikes. Radius 0.5.
+/// uneven length. `tips` cycle around the spikes. Its body is `core` all the
+/// way into the middle (saturated, not washed white), with a small white-hot
+/// star at its heart. Radius 0.5.
 pub fn starburst(points: usize, seed: u64, core: Color, tips: &[Color], valley: f32) -> Mesh {
     let mut rng = FxRng::new(seed);
     let mut m = ModelBuilder::new();
@@ -136,13 +182,32 @@ pub fn starburst(points: usize, seed: u64, core: Color, tips: &[Color], valley: 
             points,
             tip: (0..points).map(|_| rng.range(0.3, 0.5)).collect(),
             valley,
-            core: lin(Color::WHITE, 1.0),
-            tip_colors: tips.iter().map(|c| lin(*c, 0.6)).collect(),
+            core: lin(mix(core, Color::WHITE, 0.35), 1.0),
+            tip_colors: tips.iter().map(|c| lin(*c, 0.75)).collect(),
             valley_color: lin(core, 0.9),
             twist: rng.range(0.0, TAU),
         },
     );
+    white_heart(&mut m, 0.13);
     m.build()
+}
+
+/// A small white-hot six-point star (radius `r`) just in front of a burst.
+fn white_heart(m: &mut ModelBuilder, r: f32) {
+    m.with(Affine3A::from_translation(Vec3::Z * 0.003), |m| {
+        star_fan(
+            m,
+            &StarSpec {
+                points: 6,
+                tip: vec![r; 6],
+                valley: r * 0.45,
+                core: lin(Color::WHITE, 1.0),
+                tip_colors: vec![lin(Color::WHITE, 0.0)],
+                valley_color: lin(Color::WHITE, 0.6),
+                twist: 0.3,
+            },
+        );
+    });
 }
 
 /// A spark: a teardrop in the XZ plane (face +Y), its round head at z = 0 and
@@ -451,7 +516,7 @@ fn cone_spikes(
             m.poly_colored(
                 &[base, mid + w, tip, mid - w],
                 &[
-                    lin(Color::WHITE, 1.0),
+                    lin(mix(color, Color::WHITE, 0.5), 0.95),
                     lin(color, 0.85),
                     lin(color, 0.0),
                     lin(color, 0.85),
@@ -463,8 +528,8 @@ fn cone_spikes(
 }
 
 /// The rifle's muzzle burst at `MuzzleTip` (viewmodel space, the barrel along
-/// -Z): a small jagged blue star facing back at the eye, a smaller sparkle
-/// over it, and a short blue jet out of the barrel.
+/// -Z): a big jagged cyan star facing back at the eye (T03's "pow"), a crisp
+/// sparkle over it, and a spray of blue spikes out of the barrel.
 pub fn rifle_muzzle_burst() -> Mesh {
     let mut m = ModelBuilder::new();
     let mut rng = FxRng::new(0xB1A5);
@@ -475,12 +540,14 @@ pub fn rifle_muzzle_burst() -> Mesh {
         star_fan(
             m,
             &StarSpec {
-                points: 9,
-                tip: vec![0.5, 0.36, 0.46, 0.33, 0.5, 0.38, 0.44, 0.34, 0.48],
-                valley: 0.16,
-                core: lin(Color::WHITE, 1.0),
-                tip_colors: vec![lin(BOLT_BLUE, 0.7), lin(BOLT_DEEP, 0.6)],
-                valley_color: lin(BOLT_CORE, 0.95),
+                points: 13,
+                tip: vec![
+                    0.5, 0.3, 0.44, 0.27, 0.5, 0.33, 0.41, 0.26, 0.48, 0.31, 0.45, 0.28, 0.47,
+                ],
+                valley: 0.12,
+                core: lin(BOLT_CORE, 1.0),
+                tip_colors: vec![lin(BOLT_BLUE, 0.85), lin(BOLT_DEEP, 0.8)],
+                valley_color: lin(BOLT_BLUE, 0.95),
                 twist: 0.2,
             },
         );
@@ -504,11 +571,11 @@ pub fn rifle_muzzle_burst() -> Mesh {
     cone_spikes(
         &mut m,
         &mut rng,
-        5,
-        0.35,
-        (0.05, 0.09),
-        0.018,
-        &[BOLT_BLUE, BOLT_CORE],
+        9,
+        0.45,
+        (0.06, 0.14),
+        0.02,
+        &[BOLT_BLUE, BOLT_CORE, BOLT_DEEP],
     );
     m.build()
 }
@@ -518,18 +585,18 @@ pub fn rifle_muzzle_burst() -> Mesh {
 pub fn pump_muzzle_fan() -> Mesh {
     let mut m = ModelBuilder::new();
     let mut rng = FxRng::new(0xFA11);
-    m.with(Affine3A::from_scale(Vec3::splat(0.12)), |m| {
+    m.with(Affine3A::from_scale(Vec3::splat(0.13)), |m| {
         star_fan(
             m,
             &StarSpec {
-                points: 12,
-                tip: (0..12)
-                    .map(|i| if i % 2 == 0 { 0.5 } else { 0.34 })
+                points: 14,
+                tip: (0..14)
+                    .map(|i| if i % 2 == 0 { 0.5 } else { 0.32 })
                     .collect(),
-                valley: 0.18,
-                core: lin(Color::WHITE, 1.0),
-                tip_colors: vec![lin(VIOLET, 0.75), lin(GOLD, 0.75)],
-                valley_color: lin(VIOLET_CORE, 0.95),
+                valley: 0.15,
+                core: lin(VIOLET_CORE, 1.0),
+                tip_colors: vec![lin(VIOLET, 0.85), lin(GOLD, 0.85)],
+                valley_color: lin(VIOLET, 0.95),
                 twist: 0.1,
             },
         );
@@ -537,12 +604,121 @@ pub fn pump_muzzle_fan() -> Mesh {
     cone_spikes(
         &mut m,
         &mut rng,
-        16,
-        0.62,
-        (0.07, 0.15),
-        0.024,
-        &[VIOLET, GOLD, VIOLET, GOLD_DEEP],
+        26,
+        0.8,
+        (0.08, 0.2),
+        0.026,
+        &[VIOLET, GOLD, VIOLET_DEEP, GOLD_DEEP, VIOLET],
     );
+    m.build()
+}
+
+/// A crackling lightning arc for a gun's crystal chamber (T02, T04), in
+/// chamber space: the gun's axis along Z, the glass about 0.05 m in radius.
+/// Beside one end of the crystal (+Z), it zig-zags round the inside of the
+/// glass through about half a turn, from the wall, bowing in toward the
+/// crystal and back out to the wall, with a short fork off its middle. Two
+/// crossed thin ribbons, so it reads from any side: a white-hot filament down
+/// the middle in a band of `core`, fading to `edge` and to nothing at the
+/// sides, dimmer toward both ends. Seeded, so each seed is one arc shape; the
+/// game rolls, flips and swaps them.
+pub fn lightning_arc(seed: u64, core: Color, edge: Color) -> Mesh {
+    let mut rng = FxRng::new(seed);
+    let mut m = ModelBuilder::new();
+    let steps = 11;
+    let span = rng.range(2.0, 2.9);
+    let a0 = rng.range(-0.4, 0.4) - span * 0.5;
+    let z0 = rng.range(0.035, 0.06);
+    let drift = rng.range(-0.02, 0.02);
+    let point = |t: f32, rng: &mut FxRng| -> Vec3 {
+        let a = a0 + span * t;
+        // Hugging the glass at the ends, bowing in toward the crystal between.
+        let r = 0.046 - 0.012 * (t * PI).sin() + rng.range(-0.005, 0.005);
+        let z = z0 + drift * t + rng.range(-0.011, 0.011);
+        Vec3::new(r * a.cos(), r * a.sin(), z)
+    };
+    let mut main: Vec<Vec3> = (0..=steps)
+        .map(|i| point(i as f32 / steps as f32, &mut rng))
+        .collect();
+    // Pin the ends onto the glass (no jitter there).
+    let (first, last) = (main[0], main[steps]);
+    main[0] = first.truncate().normalize().extend(0.0) * 0.048 + Vec3::Z * first.z;
+    main[steps] = last.truncate().normalize().extend(0.0) * 0.048 + Vec3::Z * last.z;
+    // A short fork off the middle, toward the crystal's end.
+    let k = steps / 2 + rng.pick(3) - 1;
+    let fork: Vec<Vec3> = (0..4)
+        .map(|j| {
+            let f = j as f32 / 3.0;
+            main[k]
+                + Vec3::new(rng.range(-0.004, 0.004), rng.range(-0.004, 0.004), 0.0)
+                + Vec3::new(0.0, 0.0, -0.022 * f)
+                + main[k].truncate().normalize().extend(0.0) * (0.006 * f)
+        })
+        .collect();
+    let bolt = |m: &mut ModelBuilder, pts: &[Vec3], width: f32| {
+        let n = pts.len();
+        for i in 0..n - 1 {
+            let (p, q) = (pts[i], pts[i + 1]);
+            let t = (q - p).normalize_or(Vec3::Z);
+            let radial = ((p + q) * 0.5).with_z(0.0).normalize_or(Vec3::X);
+            // Thin at both ends, full in the middle.
+            let w = |j: usize| width * (0.35 + 0.65 * ((j as f32 / (n - 1) as f32) * PI).sin());
+            let fade = |j: usize| {
+                let e = (j as f32 / (n - 1) as f32 * PI).sin();
+                0.35 + 0.65 * e
+            };
+            for side in [t.cross(radial).normalize_or(Vec3::Z), radial] {
+                let (wp, wq) = (side * w(i), side * w(i + 1));
+                let (ap, aq) = (fade(i), fade(i + 1));
+                // A crisp white-hot filament, a band of `core` round it, and
+                // a soft `edge` glow fading out at the sides.
+                let rows = [(-1.0, 0.0), (-0.4, 1.0), (0.0, 2.0), (0.4, 1.0), (1.0, 0.0)];
+                let color = |k: f32, a: f32| match k as u8 {
+                    2 => lin(Color::WHITE, a),
+                    1 => lin(core, a),
+                    _ => lin(edge, 0.0),
+                };
+                let normal = t.cross(side).normalize_or(Vec3::Y);
+                for pair in rows.windows(2) {
+                    let ((o0, k0), (o1, k1)) = (pair[0], pair[1]);
+                    m.poly_colored(
+                        &[p + wp * o0, p + wp * o1, q + wq * o1, q + wq * o0],
+                        &[color(k0, ap), color(k1, ap), color(k1, aq), color(k0, aq)],
+                        normal,
+                    );
+                }
+            }
+        }
+    };
+    bolt(&mut m, &main, 0.004);
+    bolt(&mut m, &fork, 0.003);
+    m.build()
+}
+
+/// A sparkle mote that reads from any side: three [`sparkle`] cards crossed
+/// on the three axes. Radius 0.5.
+pub fn sparkle_cross(tip: Color, core: Color) -> Mesh {
+    let mut m = ModelBuilder::new();
+    for rot in [
+        Affine3A::IDENTITY,
+        Affine3A::from_rotation_y(PI / 2.0),
+        Affine3A::from_rotation_x(PI / 2.0),
+    ] {
+        m.with(rot, |m| {
+            star_fan(
+                m,
+                &StarSpec {
+                    points: 4,
+                    tip: vec![0.5; 4],
+                    valley: 0.09,
+                    core: lin(Color::WHITE, 1.0),
+                    tip_colors: vec![lin(tip, 0.6)],
+                    valley_color: lin(core, 0.95),
+                    twist: PI / 4.0,
+                },
+            );
+        });
+    }
     m.build()
 }
 
@@ -796,6 +972,9 @@ mod tests {
             glass_chip(4),
             rifle_muzzle_burst(),
             pump_muzzle_fan(),
+            bolt_head(),
+            lightning_arc(7, BOLT_CORE, BOLT_BLUE),
+            sparkle_cross(VIOLET, VIOLET_CORE),
             poof_cloud(5),
             puff(6),
             brick_chip(),

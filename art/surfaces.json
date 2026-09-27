@@ -35,6 +35,8 @@
   "palette": {
     "brass": "brass",
     "gold_rings": "brass",
+    "gun_brass": "brass",
+    "gun_brass_light": "brass",
     "star_gold": "brass",
     "gun_iron": "steel",
     "knight_steel": "steel",

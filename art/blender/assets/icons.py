@@ -28,7 +28,8 @@ SMALL = 64   # crystal and heart, px square
 
 # The guns read darker than the targets' hotbar at icon size: lift the wood and
 # iron a step and make the brass gold (only in the icons).
-BRIGHT_GUN = {"stock": "trunk", "gun_iron": "station_stone", "brass": "star_gold"}
+BRIGHT_GUN = {"stock": "trunk", "gun_wood_light": "trunk", "gun_wood_dark": "stock",
+              "gun_iron": "station_stone", "brass": "star_gold"}
 
 
 def _model(assets, name):
@@ -148,11 +149,12 @@ def _heart_icon(path):
 IMAGES = [
     UiImage("icon_rifle", "icons/rifle.png",
             _slot_icon(guns.ASSETS, "rifle", 72.0, 16.0, roll=-34.0, mirror=True,
-                       glass={"Chamber"}, glow={"Crystal"}, recolor=BRIGHT_GUN),
+                       glass={"Chamber"}, glow={"Crystal", "Runes"}, recolor=BRIGHT_GUN),
             "hotbar: the rifle, muzzle up-right"),
     UiImage("icon_pump", "icons/pump.png",
             _slot_icon(guns.ASSETS, "pump", 72.0, 16.0, roll=-34.0, mirror=True,
-                       glow={"Crystal"}, skip={"Shard"}, recolor=BRIGHT_GUN),
+                       glass={"Chamber"}, glow={"Crystal", "Runes"}, skip={"Shard"},
+                       recolor=BRIGHT_GUN),
             "hotbar: the pump, muzzle up-right"),
     UiImage("icon_wall", "icons/wall_brick.png",
             _slot_icon(pieces.ASSETS, "wall_brick", 28.0, 14.0, outline=4.5),

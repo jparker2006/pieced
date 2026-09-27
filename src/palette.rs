@@ -109,7 +109,14 @@ pub mod cartoon {
     pub const GRASS: Color = rgb(0x7A, 0xAE, 0x49);
     pub const GRASS_SHADOW: Color = rgb(0x51, 0x7A, 0x38);
     pub const GRID_LINE: Color = rgb(0xE4, 0xFF, 0xF5);
+    pub const GUN_BRASS: Color = rgb(0xE7, 0xB0, 0x48);
+    pub const GUN_BRASS_DARK: Color = rgb(0x9F, 0x6B, 0x2C);
+    pub const GUN_BRASS_LIGHT: Color = rgb(0xFF, 0xD2, 0x65);
+    pub const GUN_GLASS_BLUE: Color = rgb(0x28, 0x4F, 0x99);
+    pub const GUN_GLASS_VIOLET: Color = rgb(0x6D, 0x37, 0x96);
     pub const GUN_IRON: Color = rgb(0x3C, 0x3E, 0x56);
+    pub const GUN_WOOD_DARK: Color = rgb(0x55, 0x2C, 0x29);
+    pub const GUN_WOOD_LIGHT: Color = rgb(0xA6, 0x57, 0x3F);
     pub const HUD_FRAME: Color = rgb(0x75, 0x87, 0x96);
     pub const HUD_HEALTH: Color = rgb(0x4B, 0xFB, 0x56);
     pub const HUD_PANEL: Color = rgb(0x16, 0x23, 0x35);
@@ -178,7 +185,14 @@ pub mod cartoon {
         ("grass", GRASS),
         ("grass_shadow", GRASS_SHADOW),
         ("grid_line", GRID_LINE),
+        ("gun_brass", GUN_BRASS),
+        ("gun_brass_dark", GUN_BRASS_DARK),
+        ("gun_brass_light", GUN_BRASS_LIGHT),
+        ("gun_glass_blue", GUN_GLASS_BLUE),
+        ("gun_glass_violet", GUN_GLASS_VIOLET),
         ("gun_iron", GUN_IRON),
+        ("gun_wood_dark", GUN_WOOD_DARK),
+        ("gun_wood_light", GUN_WOOD_LIGHT),
         ("hud_frame", HUD_FRAME),
         ("hud_health", HUD_HEALTH),
         ("hud_panel", HUD_PANEL),

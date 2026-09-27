@@ -1,23 +1,30 @@
 """Guns: the rifle and the pump, first-person viewmodels (targets T02, T04; also T01, T03, T05, R4).
 
-Chunky, toy-like Fortnite proportions in brass, dark wood and dark iron, each
-powered by a glowing crystal:
+Chunky, toy-like Fortnite proportions, ornate as the targets paint them:
+polished gold brass with bands, rivets, beaded collars and scrollwork ridges,
+rich dark wood with painted grain, dark iron, and a glass chamber holding a big
+glowing crystal (the game adds the crackling energy inside, `viewmodel::energy`).
 
-* `rifle`: a SCAR-style assault rifle. Brass collars and bands, a dark-wood
-  stock, forend and grip, a thick iron barrel with a brass muzzle, a glass
-  chamber on top holding a faceted blue rune crystal, glowing rune windows on
-  both sides of the forend, an energy-cell magazine with glowing slots, and
+* `rifle`: a SCAR-style assault rifle. Beaded brass collars at both ends of a
+  blue glass chamber holding a faceted rune crystal, a grained dark-wood stock,
+  forend and grip, brass side plates with scrollwork, glowing rune windows on
+  both sides of the forend, an energy-cell magazine with glowing slots, a thick
+  iron barrel banded in brass ending in a flared, fluted brass muzzle, and
   chunky iron sights (a U-notch rear and a ring front sight).
-* `pump`: stubby, with a flared brass bell muzzle, a ribbed wooden pump grip
-  that slides, and a violet crystal floating in an open cradle, wrapped in three
-  tilted gold rings (they spin on the rack).
+* `pump`: a stubby shotgun (T04). A big flared, fluted brass bell muzzle, an
+  iron barrel over a magazine tube, a chunky ribbed wooden pump grip that
+  slides, and a violet crystal in a violet glass chamber between beaded brass
+  collars, wrapped by two gem-studded gold rings (they spin on the rack).
 
 Named parts (Rust finds them by name and animates them):
 
-    rifle: Body, Stock, Chamber, Crystal, Mag, Muzzle
-    pump:  Body, Stock, Crystal, Rings, PumpGrip, Shard, Muzzle
-           (Shard: a small violet crystal shard, the pump's "shell"; it rests
-           inside the crystal and is hidden in game until a reload pushes it in)
+    rifle: Body, Stock, Chamber, Crystal, Mag, Muzzle, Runes
+    pump:  Body, Stock, Chamber, Crystal, Rings, PumpGrip, Shard, Muzzle, Runes
+           (Chamber: the glass tube, see-through in game. Runes: every inlay
+           that glows with the crystal (rune windows, magazine slots, muzzle
+           rings). Shard: a small violet crystal shard, the pump's "shell"; it
+           rests inside the crystal and is hidden in game until a reload pushes
+           it in)
 
 Attach points (empties; -Y forward, +Z up in Blender, so -Z forward in Bevy):
 
@@ -37,8 +44,11 @@ trigger at the origin); the finished gun is then lifted so its lowest point sits
 on z = 0, the pipeline's "pivot on the ground" (the preview's ground disc stays
 below it). Use the attach points, not the origin, to place the gun.
 
-Every part is a closed mesh; small parts are joined into their part, coloured by
-palette name (`art/palette.json`), with soft bevels and smooth shading.
+Colour. Every part is a closed mesh coloured by palette name
+(`art/palette.json`). Two passes paint on top of the base colours: brass faces
+turned up to the sky take the polished highlight (`gun_brass_light`), and wood
+takes streaks of lighter and darker grain along its length (`grain`). Both are
+plain per-face palette colours, so they cost no triangles or textures.
 """
 
 import math
@@ -48,6 +58,15 @@ from mathutils import Euler, Matrix, Vector
 
 from lib import palette, scene, shapes
 from lib.registry import Asset
+
+# Palette names used here.
+BRASS = "gun_brass"
+BRASS_LIGHT = "gun_brass_light"
+BRASS_DARK = "gun_brass_dark"
+IRON = "gun_iron"
+WOOD = "stock"
+WOOD_LIGHT = "gun_wood_light"
+WOOD_DARK = "gun_wood_dark"
 
 # ---------------------------------------------------------------------------
 # Geometry kit (local to the gun and glove families)
@@ -121,6 +140,7 @@ def loft(stations, color, seg=24, bevel=0.0, bevel_segments=2, cap=True):
 
 
 X = (1.0, 0.0, 0.0)
+Y = (0.0, 1.0, 0.0)
 Z = (0.0, 0.0, 1.0)
 
 
@@ -130,7 +150,21 @@ def loft_y(stations, color, seg=24, bevel=0.0, bevel_segments=2, x=0.0):
                 color, seg, bevel, bevel_segments)
 
 
-def band_y(y0, y1, zc, hw, hh, color, n=3.4, seg=20, bevel=0.0, bevel_segments=2):
+def loft_tagged(stations, colors, seg=16, cap=True):
+    """`loft_y` whose span i (station i to i + 1) takes palette colour
+    colors[i] (the caps take the first and last): beaded bands in one mesh."""
+    bm = palette.new_bmesh()
+    rings = [ring_verts(bm, Vector((0.0, y, zc)), Vector(X), Vector(Z), hw, hh, n, seg)
+             for y, zc, hw, hh, n in stations]
+    for i, (a, b) in enumerate(zip(rings, rings[1:])):
+        palette.tag(bm, shapes.bridge(bm, a, b), colors[i])
+    if cap:
+        palette.tag(bm, [bm.faces.new(list(reversed(rings[0])))], colors[0])
+        palette.tag(bm, [bm.faces.new(rings[-1])], colors[-1])
+    return finish(bm, None)
+
+
+def band_y(y0, y1, zc, hw, hh, color, n=3.4, seg=20, bevel=0.0, bevel_segments=1):
     """A short rounded-rectangle band around the gun (collars, straps)."""
     return loft_y([(y0, zc, hw, hh, n), (y1, zc, hw, hh, n)], color, seg, bevel,
                   bevel_segments)
@@ -144,18 +178,26 @@ def cyl(p0, p1, r, color, seg=20, bevel=0.0, bevel_segments=2, cap=True):
                 bevel_segments, cap)
 
 
-def lathe(origin, axis, profile, colors, seg=24):
+def lathe(origin, axis, profile, colors, seg=24, flutes=0, flute_depth=0.0, flute_from=None):
     """A surface of revolution: `profile` is a closed polygon [(t, r)] (t along
     `axis` from `origin`, r > 0 the radius); edge i (point i to i+1) takes
-    colors[i] (a palette name, or one name for all)."""
+    colors[i] (a palette name, or one name for all).
+
+    With `flutes` > 0, profile points at t >= `flute_from` are scalloped into
+    that many rounded flutes `flute_depth` deep (a fluted, flared muzzle)."""
     origin, a = Vector(origin), Vector(axis).normalized()
     u, v = axis_frame(a)
     bm = palette.new_bmesh()
     rings = []
     for t, r in profile:
-        rings.append([bm.verts.new(origin + a * t + (u * math.cos(k * 2 * math.pi / seg)
-                                                     + v * math.sin(k * 2 * math.pi / seg)) * r)
-                      for k in range(seg)])
+        ring = []
+        for k in range(seg):
+            ang = k * 2 * math.pi / seg
+            rr = r
+            if flutes and flute_from is not None and t >= flute_from:
+                rr = r * (1.0 - flute_depth * (0.5 - 0.5 * math.cos(flutes * ang)))
+            ring.append(bm.verts.new(origin + a * t + (u * math.cos(ang) + v * math.sin(ang)) * rr))
+        rings.append(ring)
     n = len(rings)
     for i in range(n):
         faces = shapes.bridge(bm, rings[i], rings[(i + 1) % n])
@@ -167,6 +209,13 @@ def hoop(center, normal, radius, width, thickness, color, seg=32):
     """A flat ring (rectangular section) around `normal`: bands, hoops."""
     w, t = width / 2.0, thickness / 2.0
     profile = [(-w, radius - t), (w, radius - t), (w, radius + t), (-w, radius + t)]
+    return lathe(center, normal, profile, color, seg)
+
+
+def bead_ring(center, normal, radius, thickness, color, seg=24):
+    """A rounded bead (a torus with a diamond section): the beading on collars."""
+    t = thickness / 2.0
+    profile = [(-t, radius), (0.0, radius + t * 0.9), (t, radius), (0.0, radius - t * 0.6)]
     return lathe(center, normal, profile, color, seg)
 
 
@@ -190,23 +239,19 @@ def arc_band(center, axis, r_in, r_out, depth, a0, a1, color, seg=16):
     return finish(bm, color, 0.0)
 
 
-def dome(center, normal, radius, color="gun_iron", squash=0.55, seg=8):
-    """A rivet head: a squashed half sphere on a surface, facing `normal`.
+def dome(center, normal, radius, color=IRON, squash=0.55, seg=8):
+    """A rivet head: a low dome on a surface, facing `normal` (a pole over one
+    ring: 14 triangles, smooth-shaded into a dome at rivet size).
 
     Built vertex by vertex (not with holes_fill, whose cap starts on a varying
     vertex and so triangulates differently from run to run)."""
     bm = bmesh.new()
     pole = bm.verts.new((0.0, 0.0, radius * squash))
-    rings = []
-    for polar in (40.0, 90.0):
-        p = math.radians(polar)
-        rings.append([bm.verts.new((radius * math.sin(p) * math.cos(2 * math.pi * k / seg),
-                                    radius * math.sin(p) * math.sin(2 * math.pi * k / seg),
-                                    radius * math.cos(p) * squash)) for k in range(seg)])
+    ring = [bm.verts.new((radius * math.cos(2 * math.pi * k / seg),
+                          radius * math.sin(2 * math.pi * k / seg), 0.0)) for k in range(seg)]
     for k in range(seg):
-        bm.faces.new((pole, rings[0][k], rings[0][(k + 1) % seg]))
-    shapes.bridge(bm, rings[1], rings[0])
-    bm.faces.new(list(reversed(rings[1])))
+        bm.faces.new((pole, ring[k], ring[(k + 1) % seg]))
+    bm.faces.new(list(reversed(ring)))
     rot = Vector((0.0, 0.0, 1.0)).rotation_difference(Vector(normal)).to_matrix().to_4x4()
     return finish(bm, color, matrix=Matrix.Translation(Vector(center)) @ rot)
 
@@ -231,13 +276,22 @@ def two_tone(obj, color, light, every=3):
     return obj
 
 
-def gem_icosa(radius, stretch, color, light, rotation=(0.0, 0.0, 0.0)):
-    """A faceted gem: an icosahedron stretched along Y (the chamber axis)."""
-    bm = bmesh.new()
-    bmesh.ops.create_icosphere(bm, subdivisions=1, radius=radius)
+def gem(radius, stretch, color, edge, rotation=(0.0, 0.0, 0.0), inset=0.18):
+    """A faceted gem with bright facet edges (T02's and T04's crystals): an
+    icosahedron stretched along Y, each face inset so a rim of `edge` colour
+    outlines it round a `color` centre."""
+    bm = palette.new_bmesh()
+    bmesh.ops.create_icosphere(bm, subdivisions=0, radius=radius)
     for v in bm.verts:
         v.co = Vector((v.co.x, v.co.y * stretch, v.co.z))
-    return two_tone(finish(bm, None, matrix=place((0, 0, 0), rotation)), color, light)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    faces = list(bm.faces)
+    palette.tag(bm, faces, edge)
+    res = bmesh.ops.inset_individual(bm, faces=faces, thickness=radius * inset, depth=0.0,
+                                     use_even_offset=True)
+    palette.tag(bm, faces, color)  # the inner faces keep the original faces
+    del res
+    return finish(bm, None, matrix=place((0, 0, 0), rotation))
 
 
 def shard(length, radius, tip, color, light=None, sides=6, rotation=(0.0, 0.0, 0.0),
@@ -264,14 +318,51 @@ def shard(length, radius, tip, color, light=None, sides=6, rotation=(0.0, 0.0, 0
     return two_tone(obj, color, light or color, every=2)
 
 
-def stroke(center, p, q, width, depth, color, normal_axis="X"):
+def stroke(center, p, q, width, depth, color):
     """A thin raised bar from 2D point p to q (in the plane perpendicular to X),
-    centred at depth `center.x`: the glyph strokes of the rune windows."""
+    centred at depth `center.x`: glyph strokes and scrollwork."""
     (py, pz), (qy, qz) = p, q
     length = math.hypot(qy - py, qz - pz)
     ang = math.atan2(qz - pz, qy - py)
     mid = Vector((center[0], center[1] + (py + qy) / 2, center[2] + (pz + qz) / 2))
     return rbox(mid, (depth, length + width, width), color, rotation=(ang, 0.0, 0.0))
+
+
+def ribbon_x(points, x, width, height, color):
+    """A raised strip on a surface facing +-X (sign of `height`): the centre line
+    `points` [(y, z)] swept with `width`, standing `height` proud of x. A cheap
+    prism per segment pair (one closed tube), for scrollwork ridges."""
+    bm = bmesh.new()
+    pts = [Vector(p) for p in points]
+    rings = []
+    for i, p in enumerate(pts):
+        a = pts[max(i - 1, 0)]
+        b = pts[min(i + 1, len(pts) - 1)]
+        t = (b - a).normalized()
+        n = Vector((-t.y, t.x)) * (width / 2.0)
+        rings.append([bm.verts.new((x, p.x - n.x, p.y - n.y)),
+                      bm.verts.new((x, p.x + n.x, p.y + n.y)),
+                      bm.verts.new((x + height, p.x + n.x * 0.55, p.y + n.y * 0.55)),
+                      bm.verts.new((x + height, p.x - n.x * 0.55, p.y - n.y * 0.55))])
+    for r0, r1 in zip(rings, rings[1:]):
+        shapes.bridge(bm, r0, r1)
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    return finish(bm, color)
+
+
+def scroll(center, x, size, height, color, turns=1.25, steps=10, mirror=False, a0=0.0):
+    """A spiral scroll ridge (filigree) on a side plate facing +-X: from the
+    outside in, `size` across, standing `height` proud of `x`."""
+    cy, cz = center
+    pts = []
+    for k in range(steps + 1):
+        t = k / steps
+        ang = a0 + turns * 2.0 * math.pi * t
+        r = size * 0.5 * (1.0 - 0.72 * t)
+        y = r * math.cos(ang)
+        pts.append((cy + (-y if mirror else y), cz + r * math.sin(ang)))
+    return ribbon_x(pts, x, size * 0.12, height, color)
 
 
 def triangulate(mesh):
@@ -301,11 +392,66 @@ def triangulate(mesh):
     return mesh
 
 
+# ---------------------------------------------------------------------------
+# Paint passes: polished brass and wood grain
+# ---------------------------------------------------------------------------
+
+# A brass face turned up this far toward the sky takes the polished highlight.
+POLISH_UP = 0.62
+
+
+def polish(obj, up=Z, threshold=POLISH_UP):
+    """Brass faces facing `up` take the polished highlight, as the targets paint
+    a light band along the top of every collar and band."""
+    pal = palette.palette()
+    brass, light = pal.idx(BRASS) + 1, pal.idx(BRASS_LIGHT) + 1
+    up = Vector(up).normalized()
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.normal_update()
+    layer = palette.face_layer(bm)
+    for f in bm.faces:
+        if f[layer] == brass and f.normal.dot(up) > threshold:
+            f[layer] = light
+    bm.to_mesh(obj.data)
+    bm.free()
+    return obj
+
+
+def grain(obj, axis=Y, seed=1, across=55.0, along=3.5, dark=0.26, light=0.3):
+    """Wood grain: every wood face takes a streak colour from noise stretched
+    along `axis` (the grain), so long faces make long light and dark streaks."""
+    pal = palette.palette()
+    wood = pal.idx(WOOD) + 1
+    tags = (pal.idx(WOOD_DARK) + 1, pal.idx(WOOD_LIGHT) + 1)
+    a = Vector(axis).normalized()
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    layer = palette.face_layer(bm)
+    for f in bm.faces:
+        if f[layer] != wood:
+            continue
+        c = f.calc_center_median()
+        s = c.dot(a)
+        off = c - a * s
+        v = shapes.perlin(off * across + a * (s * along), seed)
+        if v > dark:
+            f[layer] = tags[0]
+        elif v < -light:
+            f[layer] = tags[1]
+    bm.to_mesh(obj.data)
+    bm.free()
+    return obj
+
+
 def part(name, objects, parent, location=(0.0, 0.0, 0.0), rotation=(0.0, 0.0, 0.0),
-         sharp_deg=40.0, flat=False):
+         sharp_deg=40.0, flat=False, shine=True):
     """Joins scratch objects (built in model space) into a named part whose pivot
-    is `location` (and whose axes are turned by `rotation`)."""
+    is `location` (and whose axes are turned by `rotation`). Brass that faces the
+    sky is polished (`shine`)."""
     obj = shapes.join(objects, name + "Tmp")
+    if shine:
+        polish(obj)
     inv = place(location, rotation).inverted()
     obj.data.transform(inv)
     mesh = triangulate(shapes.detach_mesh(obj))
@@ -352,40 +498,51 @@ def grip_r_location():
 GRIP_L_HALF = (0.040, 0.036)
 
 
-def pistol_grip(objs):
-    """Wooden raked pistol grip with a brass cap, iron trigger guard, brass trigger."""
+def pistol_grip(objs, seed):
+    """Grained wooden raked pistol grip with a beaded brass cap, iron trigger
+    guard, brass trigger."""
     def st(s, hu, hv, n=2.8):
         return (GRIP_TOP + GRIP_DOWN * s, X, GRIP_BACK, hu, hv, n)
 
-    objs.append(loft([st(-0.014, 0.019, 0.028), st(0.0, 0.019, 0.028),
-                      st(0.07, 0.020, 0.029), st(0.140, 0.022, 0.032)],
-                     "stock", seg=20))
-    objs.append(loft([st(0.134, 0.0235, 0.0335), st(0.156, 0.0235, 0.0335)],
-                     "brass", seg=20, bevel=0.005, bevel_segments=1))
+    objs.append(grain(loft([st(-0.014, 0.019, 0.028), st(0.0, 0.019, 0.028),
+                            st(0.05, 0.0197, 0.0287), st(0.10, 0.021, 0.0305),
+                            st(0.140, 0.022, 0.032)],
+                           WOOD, seg=16), axis=GRIP_DOWN, seed=seed, across=70.0, along=6.0))
+    objs.append(loft([st(0.134, 0.0235, 0.0335), st(0.150, 0.0245, 0.0345),
+                      st(0.158, 0.021, 0.030)], BRASS, seg=16))
     # Trigger guard: a bar under the trigger and a post up to the receiver.
-    objs.append(rbox((0.0, -0.006, -0.072), (0.014, 0.076, 0.010), "gun_iron", bevel=0.003))
-    objs.append(rbox((0.0, -0.040, -0.058), (0.013, 0.012, 0.030), "gun_iron", bevel=0.003))
+    objs.append(rbox((0.0, -0.006, -0.072), (0.014, 0.076, 0.010), IRON, bevel=0.003))
+    objs.append(rbox((0.0, -0.040, -0.058), (0.013, 0.012, 0.030), IRON, bevel=0.003))
     # Trigger.
-    objs.append(rbox((0.0, -0.008, -0.056), (0.008, 0.010, 0.022), "brass", bevel=0.003,
+    objs.append(rbox((0.0, -0.008, -0.056), (0.008, 0.010, 0.022), BRASS, bevel=0.003,
                      rotation=(math.radians(-14.0), 0.0, 0.0)))
 
 
-def stepped_collar(objs, y0, y1, zc, hw, hh):
-    """A chunky brass collar: a band with a raised ridge round its middle."""
-    objs.append(band_y(y0, y1, zc, hw, hh, "brass", bevel=0.006))
-    mid, half = (y0 + y1) / 2, (y1 - y0) * 0.2
-    objs.append(band_y(mid - half, mid + half, zc, hw + 0.004, hh + 0.004, "brass",
-                       bevel=0.003, bevel_segments=1))
+def beaded_collar(objs, y0, y1, zc, hw, hh, rivet_r=0.0062, rivet_rows=(0.62, 0.0, -0.62),
+                  n=3.4, seg=16):
+    """A chunky, ornate brass collar in one loft: a dark bead rolled round each
+    edge, a raised ridge round its middle, and a column of iron rivets on the
+    ridge on each side."""
+    m = (y0 + y1) / 2
+    k = min(1.0, (y1 - y0) / 0.044)   # narrow bands get narrow details
+    profile = [(y0, -0.003), (y0 + 0.0025 * k, 0.0015), (y0 + 0.005 * k, 0.0),
+               (m - 0.009 * k, 0.0), (m - 0.0065 * k, 0.005), (m + 0.0065 * k, 0.005),
+               (m + 0.009 * k, 0.0), (y1 - 0.005 * k, 0.0), (y1 - 0.0025 * k, 0.0015),
+               (y1, -0.003)]
+    colors = [BRASS_DARK, BRASS_DARK] + [BRASS] * 5 + [BRASS_DARK, BRASS_DARK]
+    objs.append(loft_tagged([(y, zc, hw + d, hh + d, n) for y, d in profile], colors, seg))
+    rivets(objs, [((s * (hw + 0.005), m, zc + f * hh), (s, 0.0, 0.0))
+                  for s in (1.0, -1.0) for f in rivet_rows], rivet_r)
 
 
 def rear_sight(objs, y, base_z, sight_z):
     """A brass ear on a collar, split into two lobes: the rear sight's U-notch.
     The notch bottom sits just under the sight line."""
     objs.append(rbox((0.0, y, (base_z + sight_z - 0.009) / 2), (0.040, 0.026,
-                     sight_z - 0.009 - base_z), "brass", bevel=0.004))
+                     sight_z - 0.009 - base_z), BRASS, bevel=0.004))
     for s in (1.0, -1.0):
-        objs.append(rbox((s * 0.0145, y, sight_z - 0.002), (0.011, 0.024, 0.022), "brass",
-                         bevel=0.004, segments=2))
+        objs.append(rbox((s * 0.0145, y, sight_z - 0.002), (0.011, 0.024, 0.022), BRASS,
+                         bevel=0.004))
 
 
 def rivets(objs, points, radius=0.0055):
@@ -394,6 +551,20 @@ def rivets(objs, points, radius=0.0055):
         objs.append(dome(p, n, radius))
 
 
+def side_plates(objs, yc, zc, length, height, x, rivet_y):
+    """Brass side plates on the receiver, each framed by a dark bead line with a
+    pair of scrollwork ridges and a rivet at each end (the filigree)."""
+    for s in (1.0, -1.0):
+        objs.append(rbox((s * x, yc, zc), (0.006, length, height), BRASS, bevel=0.0018))
+        xs = s * (x + 0.003)
+        h, l = height / 2 - 0.004, length / 2 - 0.006
+        for p, q in (((-l, h), (l, h)), ((-l, -h), (l, -h))):
+            objs.append(stroke((xs, yc, zc), p, q, 0.0022, 0.0022, BRASS_DARK))
+        for sign in (1.0, -1.0):
+            objs.append(scroll((yc + sign * length * 0.2, zc), xs, height * 0.62,
+                               s * 0.0018, BRASS_LIGHT, turns=1.1, steps=7,
+                               mirror=sign < 0, a0=math.pi * 0.5))
+        rivets(objs, [((s * (x + 0.003), y, zc), (s, 0.0, 0.0)) for y in rivet_y], 0.0052)
 
 
 # ---------------------------------------------------------------------------
@@ -403,96 +574,112 @@ def rivets(objs, points, radius=0.0055):
 R_AXIS = 0.062           # chamber / barrel axis height
 R_SIGHT = 0.185          # sight line height (high, so ADS sees over the gun)
 R_CHAMBER_Y = -0.005     # chamber and crystal centre along the gun
+R_CHAMBER_R = 0.055      # glass radius
+R_CHAMBER_HALF = 0.109   # half the glass length (viewmodel::CHAMBER_HALF_LENGTH)
 R_REAR_SIGHT_Y = 0.120
 R_FRONT_SIGHT_Y = -0.392
 R_MUZZLE_Y = -0.548
-R_MUZZLE_LEN = 0.070
+R_MUZZLE_LEN = 0.078
 R_MAG_SEAT = Vector((0.0, -0.092, -0.046))
 R_MAG_TILT = math.radians(-8.0)   # the magazine's foot leans forward
 # The left glove on the forend, in front of the magazine, behind the rune window.
 R_GRIP_L = Vector((0.0, -0.200, 0.031))
+R_WINDOW = (-0.318, R_AXIS + 0.008)   # rune window centre (y, z) on each side
 
 
 def rifle_body(objs):
     ax = R_AXIS
-    # Brass collars at both ends of the glass chamber, each with a top ear.
+    # Ornate brass collars at both ends of the glass chamber.
     for y0, y1 in ((0.098, 0.142), (-0.150, -0.106)):
-        stepped_collar(objs, y0, y1, ax, 0.053, 0.071)
-        rivets(objs, [((s * 0.0575, (y0 + y1) / 2, ax), (s, 0.0, 0.0)) for s in (1.0, -1.0)],
-               0.0068)
+        beaded_collar(objs, y0, y1, ax, 0.053, 0.071, 0.0064)
     for y in (-0.105, 0.097):
-        objs.append(cyl((0.0, y - 0.004, ax), (0.0, y + 0.004, ax), 0.052, "gun_iron", seg=20))
+        objs.append(cyl((0.0, y - 0.004, ax), (0.0, y + 0.004, ax), 0.052, IRON, seg=16))
+    # Brass rails along the lower sides of the chamber, collar to collar.
+    for s in (1.0, -1.0):
+        objs.append(rbox((s * 0.041, R_CHAMBER_Y, ax - 0.046), (0.010, 0.206, 0.012), BRASS,
+                         bevel=0.003))
     # Front ear, and the rear ear split into a chunky U-notch: the rear sight.
-    objs.append(rbox((0.0, -0.128, ax + 0.076), (0.034, 0.030, 0.026), "brass", bevel=0.008,
-                     segments=2))
+    objs.append(rbox((0.0, -0.128, ax + 0.076), (0.034, 0.030, 0.026), BRASS, bevel=0.008))
     rear_sight(objs, R_REAR_SIGHT_Y, ax + 0.062, R_SIGHT)
 
-    # Lower receiver (iron) with brass side plates and rivets.
-    objs.append(rbox((0.0, -0.030, -0.018), (0.068, 0.270, 0.060), "gun_iron", bevel=0.009,
+    # Lower receiver (iron) with ornate brass side plates.
+    objs.append(rbox((0.0, -0.030, -0.018), (0.068, 0.270, 0.060), IRON, bevel=0.009,
                      segments=2))
-    for s in (1.0, -1.0):
-        objs.append(rbox((s * 0.0345, -0.035, -0.018), (0.006, 0.190, 0.034), "brass",
-                         bevel=0.002))
-        rivets(objs, [((s * 0.0376, y, -0.018), (s, 0.0, 0.0)) for y in (-0.115, 0.045)])
-    pistol_grip(objs)
+    side_plates(objs, -0.035, -0.018, 0.190, 0.036, 0.0345, (-0.118, 0.048))
+    pistol_grip(objs, seed=11)
 
-    # Wooden forend in front of the chamber.
-    objs.append(loft_y([(-0.150, ax - 0.006, 0.041, 0.063, 3.2),
-                        (-0.290, ax - 0.004, 0.040, 0.061, 3.2),
-                        (-0.395, ax - 0.002, 0.039, 0.058, 3.2)],
-                       "stock", seg=24))
-    objs.append(rbox((0.0, -0.262, ax + 0.060), (0.050, 0.220, 0.012), "brass", bevel=0.004,
-                     segments=2))
-    # Front band (brass) with rivets, carrying the front sight.
-    objs.append(band_y(-0.415, -0.370, ax - 0.002, 0.046, 0.066, "brass", bevel=0.006))
-    rivets(objs, [((s * 0.0465, -0.392, ax + dz), (s, 0.0, 0.0))
-                  for s in (1.0, -1.0) for dz in (0.026, -0.030)])
+    # Grained wooden forend in front of the chamber.
+    objs.append(grain(loft_y([(-0.150, ax - 0.006, 0.041, 0.063, 3.2),
+                              (-0.215, ax - 0.0055, 0.0406, 0.0624, 3.2),
+                              (-0.290, ax - 0.004, 0.040, 0.061, 3.2),
+                              (-0.345, ax - 0.003, 0.0395, 0.0595, 3.2),
+                              (-0.395, ax - 0.002, 0.039, 0.058, 3.2)],
+                             WOOD, seg=20), seed=12))
+    objs.append(rbox((0.0, -0.262, ax + 0.060), (0.050, 0.220, 0.012), BRASS, bevel=0.004))
+    # Front band (brass, beaded) with rivets, carrying the front sight.
+    beaded_collar(objs, -0.415, -0.370, ax - 0.002, 0.046, 0.066, 0.0058,
+                  rivet_rows=(0.45, -0.45), n=3.2)
     fy = R_FRONT_SIGHT_Y
     post_top = R_SIGHT - 0.020
     objs.append(rbox((0.0, fy, (0.124 + post_top) / 2), (0.013, 0.016, post_top - 0.124),
-                     "gun_iron", bevel=0.003))
+                     IRON, bevel=0.003))
     objs.append(arc_band((0.0, fy, R_SIGHT), (0.0, -1.0, 0.0), 0.0135, 0.0235, 0.015,
-                         math.radians(125.0), math.radians(415.0), "gun_iron", seg=14))
+                         math.radians(125.0), math.radians(415.0), IRON, seg=12))
 
-    # Rune windows on both sides of the forend: iron frame, glowing panel, glyph.
-    wy, wz = -0.318, ax + 0.008
+    # Rune window frames on both sides of the forend (the glowing panels and
+    # glyphs are the Runes part).
+    wy, wz = R_WINDOW
     for s in (1.0, -1.0):
-        objs.append(rbox((s * 0.041, wy, wz), (0.010, 0.090, 0.080), "gun_iron", bevel=0.004))
-        objs.append(rbox((s * 0.0448, wy, wz), (0.004, 0.072, 0.062), "crystal_blue",
-                         bevel=0.0015))
-        gx = s * 0.0472
-        dy, dz = 0.024, 0.022
-        for p, q in (((-dy, 0.0), (0.0, dz)), ((0.0, dz), (dy, 0.0)),
-                     ((dy, 0.0), (0.0, -dz)), ((0.0, -dz), (-dy, 0.0)),
-                     ((0.0, -0.027), (0.0, 0.027))):
-            objs.append(stroke((gx, wy, wz), p, q, 0.0045, 0.003, "barrier_cyan"))
+        objs.append(rbox((s * 0.041, wy, wz), (0.010, 0.090, 0.080), IRON, bevel=0.004))
+        rivets(objs, [((s * 0.0465, wy + dy, wz + dz), (s, 0.0, 0.0))
+                      for dy in (-0.039, 0.039) for dz in (-0.034, 0.034)], 0.0036)
 
-    # Thick iron barrel with a brass band.
-    objs.append(cyl((0.0, -0.395, ax), (0.0, R_MUZZLE_Y - 0.004, ax), 0.031, "gun_iron",
-                    seg=20))
-    objs.append(cyl((0.0, -0.470, ax), (0.0, -0.498, ax), 0.037, "brass", seg=20,
-                    bevel=0.005))
+    # Thick iron barrel, with a brass bead and a beaded brass band.
+    objs.append(cyl((0.0, -0.395, ax), (0.0, R_MUZZLE_Y - 0.004, ax), 0.031, IRON, seg=16))
+    band = [(0.000, 0.031), (0.000, 0.035), (0.003, 0.0385), (0.006, 0.0365),
+            (0.028, 0.0365), (0.031, 0.0385), (0.034, 0.035), (0.034, 0.031)]
+    objs.append(lathe((0.0, -0.466, ax), (0.0, -1.0, 0.0), band,
+                      [BRASS, BRASS_DARK, BRASS_DARK, BRASS, BRASS_DARK, BRASS_DARK, BRASS,
+                       BRASS], seg=20))
+    objs.append(bead_ring((0.0, -0.432, ax), Y, 0.031, 0.007, BRASS, seg=16))
 
 
 def rifle_stock():
     ax = R_AXIS
-    objs = [loft_y([(0.118, ax - 0.002, 0.041, 0.056, 3.4),
-                    (0.200, ax - 0.014, 0.041, 0.066, 3.4),
-                    (0.330, ax - 0.032, 0.040, 0.082, 3.4),
-                    (0.448, ax - 0.044, 0.041, 0.090, 3.4)],
-                   "stock", seg=22, bevel=0.012)]
-    objs.append(band_y(0.446, 0.468, ax - 0.045, 0.042, 0.091, "gun_iron", bevel=0.006))
+    objs = [grain(loft_y([(0.118, ax - 0.002, 0.041, 0.056, 3.4),
+                          (0.160, ax - 0.007, 0.041, 0.061, 3.4),
+                          (0.215, ax - 0.016, 0.041, 0.068, 3.4),
+                          (0.280, ax - 0.025, 0.0405, 0.076, 3.4),
+                          (0.345, ax - 0.034, 0.040, 0.083, 3.4),
+                          (0.400, ax - 0.040, 0.0405, 0.088, 3.4),
+                          (0.446, ax - 0.044, 0.041, 0.090, 3.4)],
+                         WOOD, seg=20), seed=13)]
+    # A beaded brass butt plate, and a brass band with rivets near the grip.
+    c = ax - 0.045
+    objs.append(loft_tagged([(0.443, c, 0.0412, 0.0902, 3.4), (0.446, c, 0.0438, 0.0928, 3.4),
+                             (0.449, c, 0.0428, 0.0918, 3.4), (0.466, c, 0.0428, 0.0918, 3.4),
+                             (0.471, c, 0.0405, 0.0895, 3.4)],
+                            [BRASS_DARK, BRASS_DARK, BRASS, BRASS], seg=20))
+    objs.append(band_y(0.182, 0.200, ax - 0.0115, 0.0425, 0.066, BRASS))
+    rivets(objs, [((s * 0.0455, 0.191, ax - 0.0115 + dz), (s, 0.0, 0.0))
+                  for s in (1.0, -1.0) for dz in (0.034, -0.034)], 0.0048)
     return objs
 
 
 def rifle_mag():
-    """The energy cell, built at its seat and leaning forward."""
-    objs = [rbox((0.0, 0.0, -0.078), (0.050, 0.068, 0.148), "gun_iron", bevel=0.008, segments=2),
-            rbox((0.0, 0.0, -0.010), (0.056, 0.074, 0.018), "brass", bevel=0.004),
-            rbox((0.0, 0.0, -0.154), (0.058, 0.078, 0.020), "brass", bevel=0.006, segments=2)]
+    """The energy cell, built at its seat and leaning forward (its glowing slots
+    are the Runes part)."""
+    objs = [rbox((0.0, 0.0, -0.078), (0.050, 0.068, 0.148), IRON, bevel=0.008),
+            rbox((0.0, 0.0, -0.010), (0.056, 0.074, 0.018), BRASS, bevel=0.004),
+            rbox((0.0, 0.0, -0.154), (0.058, 0.078, 0.020), BRASS, bevel=0.006),
+            rbox((0.0, 0.0, -0.140), (0.057, 0.076, 0.004), BRASS_DARK)]
     for s in (1.0, -1.0):
-        for y in (-0.019, 0.0, 0.019):
-            objs.append(rbox((s * 0.0255, y, -0.080), (0.004, 0.009, 0.098), "crystal_blue"))
+        for y in (0.026, -0.026):
+            objs.append(dome((s * 0.029, y, -0.010), (s, 0.0, 0.0), 0.0042))
+    return _at_mag(objs)
+
+
+def _at_mag(objs):
     m = Matrix.Translation(R_MAG_SEAT) @ Matrix.Rotation(R_MAG_TILT, 4, "X")
     for o in objs:
         o.data.transform(m)
@@ -500,16 +687,69 @@ def rifle_mag():
 
 
 def rifle_muzzle():
-    """A chunky brass muzzle with a dark bore and a glowing rune ring."""
+    """A flared, fluted brass muzzle with a dark bead, a rolled lip and a dark bore."""
     base = Vector((0.0, R_MUZZLE_Y, R_AXIS))
-    fwd = (0.0, -1.0, 0.0)
     L = R_MUZZLE_LEN
-    profile = [(0.0, 0.020), (0.0, 0.035), (0.008, 0.043), (L - 0.013, 0.043),
-               (L - 0.005, 0.040), (L, 0.031), (L, 0.020)]
-    colors = ["brass"] * 6 + ["gun_iron"]
-    return [lathe(base, fwd, profile, colors, seg=24),
-            hoop(base + Vector((0.0, -0.026, 0.0)), fwd, 0.0445, 0.009, 0.004,
-                 "crystal_blue", seg=20)]
+    profile = [(0.0, 0.020), (0.0, 0.036), (0.008, 0.041), (0.012, 0.044), (0.016, 0.039),
+               (0.034, 0.039), (L - 0.012, 0.050), (L - 0.004, 0.052), (L, 0.047),
+               (L, 0.030), (L - 0.010, 0.022)]
+    colors = [BRASS, BRASS, BRASS_DARK, BRASS_DARK, BRASS, BRASS, BRASS, BRASS, BRASS,
+              IRON, IRON]
+    return [lathe(base, (0.0, -1.0, 0.0), profile, colors, seg=24, flutes=8,
+                  flute_depth=0.07, flute_from=0.034)]
+
+
+def rifle_runes():
+    """Everything on the rifle that glows with its crystal: the rune windows'
+    panels and glyphs, the magazine's slots and the muzzle's rune ring."""
+    objs = []
+    wy, wz = R_WINDOW
+    for s in (1.0, -1.0):
+        objs.append(rbox((s * 0.0448, wy, wz), (0.004, 0.072, 0.062), "crystal_blue",
+                         bevel=0.0015))
+        gx = s * 0.0472
+        dy, dz = 0.024, 0.022
+        for p, q in (((-dy, 0.0), (0.0, dz)), ((0.0, dz), (dy, 0.0)),
+                     ((dy, 0.0), (0.0, -dz)), ((0.0, -dz), (-dy, 0.0)),
+                     ((0.0, -0.027), (0.0, 0.027)), ((-0.02, -0.02), (0.02, 0.02))):
+            objs.append(stroke((gx, wy, wz), p, q, 0.0045, 0.003, "barrier_cyan"))
+    slots = []
+    for s in (1.0, -1.0):
+        for y in (-0.019, 0.0, 0.019):
+            slots.append(rbox((s * 0.0255, y, -0.080), (0.004, 0.009, 0.098), "crystal_blue"))
+    objs += _at_mag(slots)
+    objs.append(hoop(Vector((0.0, R_MUZZLE_Y - 0.025, R_AXIS)), (0.0, -1.0, 0.0), 0.0395,
+                     0.007, 0.004, "crystal_blue", seg=16))
+    # Small rune gems set in each chamber collar's side.
+    for y in (0.120, -0.128):
+        for s in (1.0, -1.0):
+            objs.append(dome((s * 0.058, y, R_AXIS + 0.044), (s, 0.0, 0.25), 0.0055,
+                             "crystal_blue", squash=0.8, seg=6))
+    return objs
+
+
+def chamber_glass(y0, y1, zc, r, body, light, seg=24):
+    """The glass chamber: an open tube, `body` tinted, with a long `light`
+    highlight streak along its upper side facing the player (the targets'
+    glass shine)."""
+    bm = palette.new_bmesh()
+    u, v = axis_frame((0.0, 1.0, 0.0))
+    rings = []
+    for y in (y0, y0 + (y1 - y0) * 0.2, y0 + (y1 - y0) * 0.8, y1):
+        c = Vector((0.0, y, zc))
+        rings.append([bm.verts.new(c + (u * math.cos(2 * math.pi * k / seg)
+                                        + v * math.sin(2 * math.pi * k / seg)) * r)
+                      for k in range(seg)])
+    faces = []
+    for a, b in zip(rings, rings[1:]):
+        faces += shapes.bridge(bm, a, b)
+    palette.tag(bm, faces, body)
+    bm.normal_update()
+    # One streak along the upper side facing the player (+X), in the middle.
+    shine = [f for f in faces if 0.5 < f.normal.z < 0.9 and f.normal.x > 0.0]
+    mid = [f for f in shine if abs(f.calc_center_median().y - (y0 + y1) / 2) < (y1 - y0) * 0.31]
+    palette.tag(bm, mid, light)
+    return finish(bm, None)
 
 
 def build_rifle(root):
@@ -517,16 +757,16 @@ def build_rifle(root):
     rifle_body(body)
     part("Body", body, root)
     part("Stock", rifle_stock(), root, location=(0.0, 0.118, R_AXIS))
-    chamber = cyl((0.0, R_CHAMBER_Y - 0.110, R_AXIS), (0.0, R_CHAMBER_Y + 0.108, R_AXIS),
-                  0.055, "glass_cyan", seg=24, cap=False)
     socket = (0.0, R_CHAMBER_Y, R_AXIS)
-    part("Chamber", [chamber], root, location=socket)
-    crystal = gem_icosa(0.036, 1.22, "crystal_blue", "barrier_cyan",
-                        rotation=(0.35, 0.25, 0.55))
+    glass = chamber_glass(R_CHAMBER_Y - R_CHAMBER_HALF, R_CHAMBER_Y + R_CHAMBER_HALF, R_AXIS,
+                          R_CHAMBER_R, "gun_glass_blue", "barrier_cyan")
+    part("Chamber", [glass], root, location=socket, shine=False)
+    crystal = gem(0.039, 1.2, "crystal_blue", "barrier_cyan", rotation=(0.35, 0.25, 0.55))
     crystal.data.transform(Matrix.Translation(Vector(socket)))
-    part("Crystal", [crystal], root, location=socket, flat=True)
+    part("Crystal", [crystal], root, location=socket, flat=True, shine=False)
     part("Mag", rifle_mag(), root, location=R_MAG_SEAT)
-    part("Muzzle", rifle_muzzle(), root, location=(0.0, R_MUZZLE_Y, R_AXIS))
+    part("Muzzle", rifle_muzzle(), root, location=(0.0, R_MUZZLE_Y, R_AXIS), sharp_deg=50.0)
+    part("Runes", rifle_runes(), root, flat=True, shine=False)
 
     scene.make_attach("MuzzleTip", root, (0.0, R_MUZZLE_Y - R_MUZZLE_LEN, R_AXIS))
     scene.make_attach("CrystalSocket", root, socket)
@@ -545,117 +785,150 @@ P_AXIS = 0.066           # crystal and barrel axis height
 P_SIGHT = 0.178          # sight line height
 P_CRYSTAL_Y = -0.012     # crystal centre (between the collars)
 P_REAR_COLLAR = (0.068, 0.110)
-P_FRONT_COLLAR = (-0.132, -0.092)
+P_FRONT_COLLAR = (-0.140, -0.100)
+P_CHAMBER_R = 0.056      # glass radius
 P_REAR_SIGHT_Y = 0.089
 P_FRONT_SIGHT_Y = -0.470
 P_MUZZLE_Y = -0.500
-P_BELL_LEN = 0.120
-P_PUMP = Vector((0.0, -0.330, 0.035))   # the pump grip's rest centre
+P_BELL_LEN = 0.130
+P_PUMP = Vector((0.0, -0.335, 0.035))   # the pump grip's rest centre
 P_PUMP_HALF = (0.040, 0.052)
+P_PUMP_LEN = 0.180
 P_PUMP_TRAVEL = 0.09                      # how far the rack pulls the grip back
 P_TUBE_Z = 0.010                          # magazine tube under the barrel
-# Rings: three hoops round the crystal, spaced along it, each tipped from the gun
-# axis toward a different side (so their spin reads), band width and thickness.
-P_RING_RADIUS = 0.054
-P_RING_SPACING = 0.050   # rings sit along the crystal at -1, 0, +1 spacings
-P_RING_WIDTH = 0.010
-P_RING_THICK = 0.005
-P_RING_TILT = math.radians(22.0)
+# Rings: two gem-studded gold rings hugging the glass inboard of the collars,
+# `P_RING_SPACING` either side of the crystal, each tipped a little off the
+# gun's axis (so their spin reads as a wobble too).
+P_RING_RADIUS = 0.0625
+P_RING_SPACING = 0.056
+P_RING_WIDTH = 0.012
+P_RING_THICK = 0.007
+P_RING_TILT = math.radians(7.0)
+P_RING_GEMS = 4
 
 
 def pump_body(objs):
     ax = P_AXIS
-    # Brass collars framing the open crystal cradle.
+    # Ornate brass collars framing the glass chamber.
     for y0, y1 in (P_REAR_COLLAR, P_FRONT_COLLAR):
-        stepped_collar(objs, y0, y1, ax, 0.052, 0.070)
-        rivets(objs, [((s * 0.0565, (y0 + y1) / 2, ax), (s, 0.0, 0.0)) for s in (1.0, -1.0)],
-               0.0065)
+        beaded_collar(objs, y0, y1, ax, 0.054, 0.072, 0.0064)
+    for y in (P_FRONT_COLLAR[1] + 0.001, P_REAR_COLLAR[0] - 0.001):
+        objs.append(cyl((0.0, y - 0.004, ax), (0.0, y + 0.004, ax), 0.054, IRON, seg=16))
     # Rear ear with the iron U-notch sight.
     rear_sight(objs, P_REAR_SIGHT_Y, ax + 0.060, P_SIGHT)
-
-    # The spine under the cradle (iron) with brass plates, a brass saddle and rivets.
-    objs.append(rbox((0.0, -0.012, -0.027), (0.066, 0.270, 0.046), "gun_iron", bevel=0.009,
-                     segments=2))
-    objs.append(rbox((0.0, P_CRYSTAL_Y, -0.004), (0.046, 0.200, 0.010), "brass", bevel=0.003))
+    # Brass rails along the lower sides of the chamber (T04's frame).
+    y0, y1 = P_FRONT_COLLAR[1], P_REAR_COLLAR[0]
     for s in (1.0, -1.0):
-        objs.append(rbox((s * 0.0335, -0.020, -0.026), (0.006, 0.200, 0.028), "brass",
-                         bevel=0.002))
-        rivets(objs, [((s * 0.0366, y, -0.026), (s, 0.0, 0.0)) for y in (-0.105, 0.065)])
-    pistol_grip(objs)
+        objs.append(rbox((s * 0.042, (y0 + y1) / 2, ax - 0.047), (0.010, y1 - y0 + 0.004, 0.012),
+                         BRASS, bevel=0.003))
+
+    # The receiver under the chamber (iron) with ornate brass side plates.
+    objs.append(rbox((0.0, -0.016, -0.027), (0.066, 0.262, 0.046), IRON, bevel=0.009,
+                     segments=2))
+    side_plates(objs, -0.020, -0.026, 0.200, 0.028, 0.0335, (-0.110, 0.070))
+    pistol_grip(objs, seed=21)
 
     # Barrel (iron) and the magazine tube under it.
-    objs.append(cyl((0.0, -0.120, ax), (0.0, P_MUZZLE_Y - 0.004, ax), 0.033, "gun_iron",
-                    seg=20))
-    objs.append(cyl((0.0, -0.120, P_TUBE_Z), (0.0, -0.462, P_TUBE_Z), 0.022, "gun_iron",
-                    seg=16))
-    # Front band holding barrel and tube, with rivets; the front sight on top.
+    objs.append(cyl((0.0, -0.120, ax), (0.0, P_MUZZLE_Y - 0.004, ax), 0.033, IRON, seg=16))
+    objs.append(cyl((0.0, -0.120, P_TUBE_Z), (0.0, -0.462, P_TUBE_Z), 0.022, IRON, seg=14))
+    # A brass ring on the barrel just ahead of the chamber (clear of the rack).
+    objs.append(bead_ring((0.0, -0.148, ax), Y, 0.033, 0.007, BRASS, seg=16))
+    # Front band holding barrel and tube (beaded), with rivets; the front sight on top.
     fy = P_FRONT_SIGHT_Y
-    objs.append(loft_y([(fy - 0.017, 0.041, 0.041, 0.062, 3.2),
-                        (fy + 0.017, 0.041, 0.041, 0.062, 3.2)], "brass", seg=20, bevel=0.006))
-    rivets(objs, [((s * 0.0415, fy, 0.040), (s, 0.0, 0.0)) for s in (1.0, -1.0)])
+    beaded_collar(objs, fy - 0.018, fy + 0.018, 0.041, 0.041, 0.062, 0.0055,
+                  rivet_rows=(0.0,), n=3.2)
     objs.append(rbox((0.0, fy, (0.100 + P_SIGHT) / 2), (0.012, 0.016, P_SIGHT - 0.100),
-                     "gun_iron", bevel=0.003))
-    objs.append(ball((0.0, fy, P_SIGHT), 0.0095, "brass", seg=10, rings=6))
+                     IRON, bevel=0.003))
+    objs.append(ball((0.0, fy, P_SIGHT), 0.0095, BRASS, seg=8, rings=5))
 
 
 def pump_stock():
     ax = P_AXIS
-    objs = [loft_y([(0.100, ax - 0.002, 0.042, 0.060, 3.4),
-                    (0.170, ax - 0.014, 0.042, 0.070, 3.4),
-                    (0.280, ax - 0.030, 0.042, 0.082, 3.4),
-                    (0.335, ax - 0.036, 0.043, 0.086, 3.4)],
-                   "stock", seg=22, bevel=0.012)]
-    objs.append(band_y(0.333, 0.355, ax - 0.037, 0.044, 0.087, "gun_iron", bevel=0.006))
+    objs = [grain(loft_y([(0.100, ax - 0.002, 0.042, 0.060, 3.4),
+                          (0.135, ax - 0.008, 0.042, 0.065, 3.4),
+                          (0.180, ax - 0.015, 0.042, 0.071, 3.4),
+                          (0.235, ax - 0.024, 0.042, 0.078, 3.4),
+                          (0.290, ax - 0.031, 0.0425, 0.083, 3.4),
+                          (0.333, ax - 0.036, 0.043, 0.086, 3.4)],
+                         WOOD, seg=20), seed=23)]
+    c = ax - 0.037
+    objs.append(loft_tagged([(0.330, c, 0.0422, 0.0852, 3.4), (0.333, c, 0.0452, 0.0882, 3.4),
+                             (0.336, c, 0.0442, 0.0872, 3.4), (0.353, c, 0.0442, 0.0872, 3.4),
+                             (0.358, c, 0.0418, 0.0848, 3.4)],
+                            [BRASS_DARK, BRASS_DARK, BRASS, BRASS], seg=20))
     return objs
 
 
 def pump_grip():
-    """The pump grip: chunky wood cut into five ribs by four grooves, brass end rims.
-    Centred on P_PUMP."""
+    """The pump grip (T04): five chunky rounded wooden ribs cut apart by deep
+    grooves, grained, between brass end rims. Centred on P_PUMP."""
     c = P_PUMP
     hw, hh = P_PUMP_HALF
-    length, grooves, groove_w, depth = 0.190, 4, 0.009, 0.0045
-    rib = (length - grooves * groove_w) / (grooves + 1)
+    length, ribs, groove_w, depth = P_PUMP_LEN, 5, 0.008, 0.011
+    rib = (length - (ribs - 1) * groove_w) / ribs
     y = c.y + length / 2
-    stations = [(y, c.z, hw, hh, 3.0)]
-    for _ in range(grooves):
-        y -= rib
-        stations.append((y, c.z, hw, hh, 3.0))
-        for f in (0.3, 0.7):
-            stations.append((y - groove_w * f, c.z, hw - depth, hh - depth, 3.0))
-        y -= groove_w
-        stations.append((y, c.z, hw, hh, 3.0))
-    stations.append((c.y - length / 2, c.z, hw, hh, 3.0))
-    objs = [loft_y(stations, "stock", seg=18)]  # the brass rims cover its ends
-    for dy in (-0.091, 0.091):
-        objs.append(band_y(c.y + dy - 0.006, c.y + dy + 0.006, c.z, hw + 0.003, hh + 0.003,
-                           "brass", n=3.0, bevel=0.003, bevel_segments=1))
+    stations = []
+    for k in range(ribs):
+        y_end = y - rib
+        stations += [(y, c.z, hw - depth * 0.35, hh - depth * 0.35, 3.0),
+                     (y - rib * 0.3, c.z, hw, hh, 3.0),
+                     (y_end + rib * 0.3, c.z, hw, hh, 3.0),
+                     (y_end, c.z, hw - depth * 0.35, hh - depth * 0.35, 3.0)]
+        if k < ribs - 1:
+            stations.append((y_end - groove_w * 0.5, c.z, hw - depth, hh - depth, 3.0))
+        y = y_end - groove_w
+    objs = [grain(loft_y(stations, WOOD, seg=14), seed=24, across=60.0, along=5.0)]
+    for dy in (-(length / 2 + 0.005), length / 2 + 0.005):
+        objs.append(band_y(c.y + dy - 0.006, c.y + dy + 0.006, c.z, hw + 0.002, hh + 0.002,
+                           BRASS, n=3.0, seg=16))
     return objs
 
 
 def pump_bell():
-    """The flared brass bell: outer flare, rolled lip, brass throat, dark bore, violet glow."""
+    """The flared brass bell (T04): a beaded throat, then a wide fluted flare
+    with a thick rolled lip, a brass throat inside and a dark bore."""
     base = Vector((0.0, P_MUZZLE_Y, P_AXIS))
-    fwd = (0.0, -1.0, 0.0)
-    profile = [(0.000, 0.022), (0.000, 0.035), (0.030, 0.039), (0.060, 0.048),
-               (0.086, 0.064), (0.104, 0.080), (0.114, 0.090), (0.120, 0.084),
-               (0.114, 0.075), (0.090, 0.058), (0.060, 0.038), (0.034, 0.024)]
-    colors = ["brass"] * 11 + ["gun_iron"]
-    return [lathe(base, fwd, profile, colors, seg=26),
-            hoop(base + Vector((0.0, -0.036, 0.0)), fwd, 0.0245, 0.006, 0.005,
-                 "crystal_violet", seg=16)]
+    L = P_BELL_LEN
+    profile = [(0.000, 0.022), (0.000, 0.037), (0.010, 0.042), (0.020, 0.038),
+               (0.024, 0.043), (0.030, 0.039), (0.064, 0.049), (0.092, 0.067),
+               (0.116, 0.090), (L - 0.003, 0.100), (L, 0.094), (L - 0.005, 0.083),
+               (0.100, 0.064), (0.060, 0.036), (0.034, 0.024)]
+    # The rolled lip is polished bright, so the bell's rim reads from behind.
+    colors = ([BRASS, BRASS, BRASS, BRASS_DARK, BRASS_DARK] + [BRASS] * 4
+              + [BRASS_LIGHT, BRASS_LIGHT] + [BRASS] * 3 + [IRON])
+    return [lathe(base, (0.0, -1.0, 0.0), profile, colors, seg=28, flutes=14,
+                  flute_depth=0.045, flute_from=0.05)]
 
 
 def pump_rings(center):
-    """Three gold hoops round the crystal, spaced along it, each tipped from the gun
-    axis toward a different side (120 degrees apart), so they wobble as they spin."""
+    """Two gold rings hugging the glass either side of the crystal, each set with
+    small violet gems (so their spin reads) and tipped a little off the axis."""
     objs = []
-    for k in range(3):
-        az = math.radians(90.0 + 120.0 * k)
+    for k, side in enumerate((-1.0, 1.0)):
+        az = math.radians(90.0 + 180.0 * k)
         n = Vector((math.sin(P_RING_TILT) * math.cos(az), math.cos(P_RING_TILT),
                     math.sin(P_RING_TILT) * math.sin(az)))
-        c = Vector(center) + Vector((0.0, (k - 1) * P_RING_SPACING, 0.0))
-        objs.append(hoop(c, n, P_RING_RADIUS, P_RING_WIDTH, P_RING_THICK, "gold_rings", seg=30))
+        c = Vector(center) + Vector((0.0, side * P_RING_SPACING, 0.0))
+        objs.append(hoop(c, n, P_RING_RADIUS, P_RING_WIDTH, P_RING_THICK, "gold_rings", seg=24))
+        u, v = axis_frame(n)
+        for g in range(P_RING_GEMS):
+            a = 2.0 * math.pi * (g + 0.5 * k) / P_RING_GEMS + math.pi / 4.0
+            d = u * math.cos(a) + v * math.sin(a)
+            objs.append(dome(c + d * (P_RING_RADIUS + P_RING_THICK * 0.5), d, 0.0058,
+                             "crystal_violet", squash=0.9, seg=6))
+    return objs
+
+
+def pump_runes():
+    """The pump's glowing inlays: the violet rune ring in the bell's throat and
+    small violet gems set in each chamber collar's side."""
+    objs = [hoop(Vector((0.0, P_MUZZLE_Y - 0.044, P_AXIS)), (0.0, -1.0, 0.0), 0.026,
+                 0.007, 0.005, "crystal_violet", seg=16)]
+    for y in ((P_REAR_COLLAR[0] + P_REAR_COLLAR[1]) / 2,
+              (P_FRONT_COLLAR[0] + P_FRONT_COLLAR[1]) / 2):
+        for s in (1.0, -1.0):
+            objs.append(dome((s * 0.059, y, P_AXIS + 0.044), (s, 0.0, 0.25), 0.0055,
+                             "crystal_violet", squash=0.8, seg=6))
     return objs
 
 
@@ -665,16 +938,19 @@ def build_pump(root):
     part("Body", body, root)
     part("Stock", pump_stock(), root, location=(0.0, 0.100, P_AXIS))
     socket = Vector((0.0, P_CRYSTAL_Y, P_AXIS))
-    crystal = shard(0.150, 0.026, 0.032, "crystal_violet", "glass_violet", sides=6,
-                    rotation=(0.0, math.radians(30.0), 0.0))
+    y0, y1 = P_FRONT_COLLAR[1], P_REAR_COLLAR[0]
+    glass = chamber_glass(y0, y1, P_AXIS, P_CHAMBER_R, "gun_glass_violet", "glass_violet")
+    part("Chamber", [glass], root, location=socket, shine=False)
+    crystal = gem(0.037, 1.7, "crystal_violet", "glass_violet", rotation=(0.12, 0.2, 0.5))
     crystal.data.transform(Matrix.Translation(socket))
-    part("Crystal", [crystal], root, location=socket, flat=True)
-    part("Rings", pump_rings(socket), root, location=socket, sharp_deg=50.0)
+    part("Crystal", [crystal], root, location=socket, flat=True, shine=False)
+    part("Rings", pump_rings(socket), root, location=socket, sharp_deg=50.0, shine=False)
     shell = shard(0.038, 0.0105, 0.012, "crystal_violet", "glass_violet", sides=6)
     shell.data.transform(Matrix.Translation(socket))
-    part("Shard", [shell], root, location=socket, flat=True)
+    part("Shard", [shell], root, location=socket, flat=True, shine=False)
     grip = part("PumpGrip", pump_grip(), root, location=P_PUMP)
     part("Muzzle", pump_bell(), root, location=(0.0, P_MUZZLE_Y, P_AXIS), sharp_deg=60.0)
+    part("Runes", pump_runes(), root, flat=True, shine=False)
 
     scene.make_attach("MuzzleTip", root, (0.0, P_MUZZLE_Y - P_BELL_LEN, P_AXIS))
     scene.make_attach("CrystalSocket", root, socket)
@@ -688,6 +964,7 @@ def build_pump(root):
 
 
 ASSETS = [
-    Asset("rifle", "gun", build_rifle, "brass-and-crystal assault rifle viewmodel"),
-    Asset("pump", "gun", build_pump, "stubby bell-mouthed pump with a ringed violet crystal"),
+    Asset("rifle", "gun", build_rifle, "ornate brass-and-crystal assault rifle viewmodel"),
+    Asset("pump", "gun", build_pump,
+          "stubby bell-mouthed pump with a violet crystal in a ringed glass chamber"),
 ]

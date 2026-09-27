@@ -2,7 +2,9 @@
 //! `PlayerIntent` in, the real combat, HUD and spell systems headless, and
 //! what a player would see out: the impact, hitmarker and damage number on
 //! the hit frame and the bolt on its hit point within 2 frames (gate S6), ten
-//! pump sparks along the pellet paths, the dropped hat, and fixed pools.
+//! pump sparks along the pellet paths inside a big spark fan, impacts 2–3×
+//! the first pass (Amendment B), the crackling crystal chambers, the dropped
+//! hat, and fixed pools.
 
 use avian3d::prelude::PhysicsPlugins;
 use bevy::{
@@ -14,20 +16,27 @@ use pieced::{
     combat::Downed,
     dummy::{Dummy, look_toward},
     fx::{
+        chamber::{
+            CHAMBER_ARCS, CHAMBER_MOTES, ChamberEnergy, ChamberState, EnergyRole, arc_chance,
+            arc_intensity, strike,
+        },
+        hat::HAT_THROW,
         hat::HatProp,
         material::SpellMaterial,
+        sim::FxRng,
         sim::{
             BOLT_ARRIVAL_FRAMES, HatBody, RIFLE_SCREEN_FLIGHT, apparent_size, axial_billboard,
             bolt_progress, orbit_offset, pellet_flight, rifle_flight, screen_to_path,
         },
         spells::{
-            BOLT_POOL, BoltHead, DIZZY_TIME, HALO_POOL, HEAD_FLASH_LIFE, HEAD_FLASH_SIZE,
-            ImpactKind, RIFLE_HEAD_ANGLE, RIFLE_HEAD_SIZE, RIFLE_TRAIL_SPARKLES, SpellAssets,
-            SpellGlow, SpellHalo, SpellSolid, SpellTiming, SpellsPlugin, pool_counts,
+            BODY_SPARKS, BOLT_POOL, BoltHead, DIZZY_TIME, HALO_POOL, HEAD_FLASH_LIFE,
+            HEAD_FLASH_SIZE, ImpactKind, PUMP_FAN_SPARKS, RIFLE_HEAD_ANGLE, RIFLE_HEAD_SIZE,
+            RIFLE_TRAIL_SPARKLES, SpellAssets, SpellGlow, SpellHalo, SpellSolid, SpellTiming,
+            SpellsPlugin, pool_counts,
         },
     },
     hud::{HitFeedbackStats, HudPlugin},
-    look::ToonMaterial,
+    look::{Halo, ModelDressed, ToonMaterial},
     player::HEAD_CENTER,
     render::CurrentFov,
     rng::{Rng, SimRng},
@@ -36,6 +45,7 @@ use pieced::{
         WeaponKind, tick_duration,
     },
     tuning::Tuning,
+    viewmodel::{CrystalGlow, VmModel},
 };
 
 const RIFLE: ActiveTool = ActiveTool::Weapon(WeaponKind::Rifle);
@@ -578,6 +588,240 @@ fn the_pump_sends_ten_sparks_along_the_real_pellet_paths() {
     }
 }
 
+/// Visible pooled glows (not halos) within `r` of `p`, and the biggest one's
+/// scale.
+fn glow_shapes_near(game: &mut Game, p: Vec3, r: f32) -> (usize, f32) {
+    let world = game.app.world_mut();
+    world
+        .query_filtered::<(&Transform, &Visibility), With<SpellGlow>>()
+        .iter(world)
+        .filter(|(t, v)| **v == Visibility::Visible && t.translation.distance(p) < r)
+        .fold((0, 0.0f32), |(n, big), (t, _)| {
+            (n + 1, big.max(t.scale.max_element()))
+        })
+}
+
+/// Amendment B: a body hit is 2–3× the first pass's burst (its starburst was
+/// 0.55 m across up close) and sprays [`BODY_SPARKS`] sparks, over a solid
+/// cyan star that keeps it blue on the bright sky.
+#[test]
+fn a_body_hit_bursts_big_and_sprays_sparks_over_a_solid_blue_star() {
+    let mut game = Game::new(70, |_| {});
+    let feet = game.feet(game.dummy);
+    game.place_dummy(feet, 100.0, 0.0);
+    game.frames(2);
+    game.aim_at(chest(feet));
+    game.clear_shots();
+    game.fire();
+    assert_eq!(game.timing().hits.last().unwrap().kind, ImpactKind::Body);
+    let end = game.shots().pop().expect("the shot").traces[0].end;
+    let blue = game.world().resource::<SpellAssets>().flash_blue.clone();
+    let world = game.app.world_mut();
+    let solid = world
+        .query_filtered::<(&Transform, &Visibility, &MeshMaterial3d<ToonMaterial>), With<SpellSolid>>()
+        .iter(world)
+        .filter(|(t, v, m)| **v == Visibility::Visible && m.0 == blue && t.translation.distance(end) < 0.6)
+        .count();
+    assert_eq!(solid, 1, "a solid blue star on the hit frame");
+    // Grown to full size a few frames on.
+    game.frames(4);
+    let (count, biggest) = glow_shapes_near(&mut game, end, 3.0);
+    assert!(biggest >= 2.0 * 0.55, "the burst is {biggest:.2} m across");
+    assert!(
+        count >= BODY_SPARKS + 3 && BODY_SPARKS >= 3 * 7,
+        "{count} glows round the hit"
+    );
+}
+
+/// T04: the pump fans out dozens of violet and gold sparks from the bell,
+/// filling the space in front of the gun, not just ten.
+#[test]
+fn the_pump_fans_out_dozens_of_sparks_in_front_of_the_gun() {
+    let mut game = Game::new(71, |_| {});
+    game.equip(PUMP);
+    let feet = game.feet(game.dummy);
+    game.aim_at(chest(feet));
+    game.clear_shots();
+    game.fire();
+    let shot = game
+        .shots()
+        .into_iter()
+        .find(|s| s.weapon == WeaponKind::Pump)
+        .expect("a pump shot");
+    let aim = (shot.traces[0].end - shot.origin).normalize();
+    game.frame();
+    let world = game.app.world_mut();
+    let in_front = world
+        .query_filtered::<(&Transform, &Visibility), With<SpellGlow>>()
+        .iter(world)
+        .filter(|(t, v)| {
+            let d = t.translation - shot.origin;
+            **v == Visibility::Visible && d.length() < 6.0 && d.normalize_or_zero().dot(aim) > 0.85
+        })
+        .count();
+    assert!(
+        in_front >= PUMP_FAN_SPARKS && PUMP_FAN_SPARKS >= 3 * 18,
+        "{in_front} sparks in the fan"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Crystal chambers
+// ---------------------------------------------------------------------------
+
+/// The chamber energy of a stand-in rifle model, as the viewmodel dresses it.
+fn chamber_game() -> (Game, Entity) {
+    let mut game = Game::new(72, |_| {});
+    let world = game.app.world_mut();
+    let root = world
+        .spawn((
+            VmModel::Gun(WeaponKind::Rifle),
+            Transform::default(),
+            Visibility::default(),
+        ))
+        .id();
+    world.insert_resource(CrystalGlow {
+        rifle: 1.0,
+        pump: 1.0,
+    });
+    world.write_message(ModelDressed {
+        root,
+        name: "rifle".into(),
+    });
+    game.frames(2);
+    (game, root)
+}
+
+type EnergyView = (ChamberEnergy, Transform, Visibility, u32, Option<Halo>);
+
+fn energy(game: &mut Game) -> Vec<EnergyView> {
+    let world = game.app.world_mut();
+    world
+        .query::<(
+            &ChamberEnergy,
+            &Transform,
+            &Visibility,
+            Option<&bevy::mesh::MeshTag>,
+            Option<&Halo>,
+        )>()
+        .iter(world)
+        .map(|(e, t, v, tag, h)| (*e, *t, *v, tag.map_or(0, |m| m.0), h.copied()))
+        .collect()
+}
+
+/// Over `frames`, the fraction of arc-frames lit and the mean inner glow.
+fn crackle(game: &mut Game, frames: u32) -> (f32, f32) {
+    let (mut lit, mut total, mut glow) = (0, 0, 0.0);
+    for _ in 0..frames {
+        game.frame();
+        for (e, _, v, _, halo) in energy(game) {
+            match e.role {
+                EnergyRole::Arc(_) => {
+                    total += 1;
+                    lit += usize::from(v != Visibility::Hidden);
+                }
+                EnergyRole::Glow => glow += halo.unwrap().intensity,
+                EnergyRole::Mote(_) => {}
+            }
+        }
+    }
+    (lit as f32 / total as f32, glow / frames as f32)
+}
+
+/// D50: each gun's crystal chamber crackles with lightning arcs and sparkle
+/// motes round a breathing glow. A full crystal crackles bright with its arcs
+/// lit; an empty one only sputters and glows dim. The arcs re-strike all the
+/// time, the gallery's freeze holds them still, and nothing new is made.
+#[test]
+fn a_crystal_chamber_crackles_with_its_magazine_and_holds_still_when_frozen() {
+    let (mut game, root) = chamber_game();
+    let pieces = energy(&mut game);
+    let count = |role: fn(EnergyRole) -> bool| pieces.iter().filter(|p| role(p.0.role)).count();
+    assert_eq!(count(|r| matches!(r, EnergyRole::Arc(_))), CHAMBER_ARCS);
+    assert_eq!(count(|r| matches!(r, EnergyRole::Mote(_))), CHAMBER_MOTES);
+    assert_eq!(count(|r| r == EnergyRole::Glow), 1);
+    let world = game.app.world_mut();
+    let under_root = world
+        .query_filtered::<&ChildOf, With<ChamberEnergy>>()
+        .iter(world)
+        .all(|c| c.parent() == root);
+    assert!(under_root, "it all rides on the gun");
+    let entities = game.entity_counts();
+    let assets = game.asset_counts();
+
+    let (full_lit, full_glow) = crackle(&mut game, 90);
+    game.app.world_mut().insert_resource(CrystalGlow {
+        rifle: 0.25,
+        pump: 1.0,
+    });
+    let (empty_lit, empty_glow) = crackle(&mut game, 90);
+    assert!(
+        full_lit > 0.75,
+        "a full crystal keeps its arcs lit ({full_lit})"
+    );
+    assert!(empty_lit < 0.35, "an empty one sputters ({empty_lit})");
+    assert!(
+        full_glow > 3.0 * empty_glow,
+        "glow {full_glow} vs {empty_glow}"
+    );
+
+    // The arcs re-strike: over a few frames they turn up somewhere new.
+    game.app.world_mut().insert_resource(CrystalGlow {
+        rifle: 1.0,
+        pump: 1.0,
+    });
+    let rolls = |game: &Game| {
+        let state = game.world().resource::<ChamberState>();
+        (0..CHAMBER_ARCS)
+            .map(|i| state.arc(WeaponKind::Rifle, i).roll)
+            .collect::<Vec<f32>>()
+    };
+    let before = rolls(&game);
+    game.frames(12);
+    assert_ne!(before, rolls(&game), "the arcs re-strike");
+
+    // Frozen: every arc, mote and the glow hold exactly where they are.
+    game.app.world_mut().insert_resource(GalleryFreeze);
+    game.frame();
+    let held = energy(&mut game);
+    game.frames(20);
+    let after = energy(&mut game);
+    for (a, b) in held.iter().zip(&after) {
+        assert_eq!(a.0, b.0);
+        assert_eq!(a.1, b.1, "{:?} moved while frozen", a.0.role);
+        assert_eq!((a.2, a.3), (b.2, b.3));
+    }
+    game.app.world_mut().remove_resource::<GalleryFreeze>();
+
+    assert_eq!(
+        game.entity_counts(),
+        entities,
+        "no effect entity was spawned"
+    );
+    assert_eq!(game.asset_counts(), assets, "no mesh or material was made");
+}
+
+#[test]
+fn arcs_strike_more_often_and_brighter_as_the_crystal_fills() {
+    let chances: Vec<f32> = (0..=10)
+        .map(|i| arc_chance(0.25 + 0.075 * i as f32))
+        .collect();
+    assert!(chances.windows(2).all(|w| w[1] >= w[0]), "{chances:?}");
+    assert!(chances[0] < 0.2 && chances[10] > 0.99);
+    let mut rng = FxRng::new(3);
+    for _ in 0..50 {
+        let s = strike(&mut rng, 1.0);
+        if s.lit {
+            assert!(arc_intensity(&s, 1.0) > 2.0 * arc_intensity(&s, 0.25));
+        } else {
+            assert_eq!(arc_intensity(&s, 1.0), 0.0);
+        }
+    }
+    // The same seed strikes the same arcs.
+    let (mut a, mut b) = (FxRng::new(9), FxRng::new(9));
+    assert_eq!(strike(&mut a, 0.7), strike(&mut b, 0.7));
+}
+
 // ---------------------------------------------------------------------------
 // The elimination hat
 // ---------------------------------------------------------------------------
@@ -631,6 +875,20 @@ fn the_hat_drops_on_elimination_settles_within_two_seconds_and_goes_on_respawn()
     let settled_at = settled_at.expect("settled");
     assert!(settled_at <= 120, "settled after {settled_at} frames");
     assert!(spun > 3.0, "it spun ({spun} rad)");
+    // It lies on the grass in front of the poof, toward the player, where
+    // the cloud doesn't hide it (T08).
+    let (_, rest, _) = game
+        .hats()
+        .into_iter()
+        .find(|(h, ..)| h.victim == Some(dummy))
+        .unwrap();
+    let toward = (game.feet(game.player) - feet).with_y(0.0).normalize();
+    let ahead = (rest.translation - feet).with_y(0.0).dot(toward);
+    assert!(ahead >= HAT_THROW, "{ahead:.2} m in front of his feet");
+    assert!(
+        rest.translation.y - feet.y < 0.1,
+        "under 10 cm off the grass"
+    );
 
     // It stays until he's back, then goes.
     game.frames(60);

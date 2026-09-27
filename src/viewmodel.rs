@@ -13,7 +13,10 @@
 //! `GripR` / `GripL` attach points. Named parts are animated here:
 //!
 //! - both crystals glow with the magazine ([`CrystalGlow`]: 0.25 + 0.75 × the
-//!   magazine fraction) and turn slowly;
+//!   magazine fraction) and turn slowly, and so do each gun's glass `Chamber`
+//!   (tinted blue or violet) and its `Runes` (the rune windows, magazine slots
+//!   and muzzle rings); the crackling energy inside each chamber is
+//!   [`crate::fx::chamber`]'s;
 //! - rifle reload: the glass `Chamber` slides open, the dim `Crystal` pops up
 //!   and spins away, a fresh one slides in, and its glow charges up the moment
 //!   the reload completes;
@@ -37,8 +40,8 @@ use crate::{
     combat::Loadout,
     fx::sim::{FxRng, Spring},
     look::{
-        InheritedOutline, ModelDressed, ModelLook, NoOutline, Outline, OutlineHull, ToonMaterial,
-        warmup::Warmup, with_outline_normals,
+        InheritedOutline, ModelDressed, ModelLook, NoOutline, Outline, OutlineHull, Surface,
+        ToonMaterial, VertexAlpha, warmup::Warmup, with_outline_normals,
     },
     models::{MODEL_FORWARD_FIX, ModelLibrary, ModelParts, spawn_model},
     movement::Motor,
@@ -126,10 +129,12 @@ impl CrystalGlow {
 
 /// Emissive strength of a crystal at glow 1 (crystal color × this is added).
 pub const CRYSTAL_EMISSIVE: f32 = 1.5;
-/// The rifle's glass chamber glows with its crystal, fainter.
-pub const GLASS_EMISSIVE: f32 = 0.55;
-/// The glass chamber's opacity.
-pub const GLASS_ALPHA: f32 = 0.42;
+/// Each gun's glass chamber glows with its crystal, fainter: the chamber is
+/// lit from inside (T02, T04).
+pub const GLASS_EMISSIVE: f32 = 0.2;
+/// Each wall of the glass chamber's opacity (its tint and shine streaks are
+/// vertex colours).
+pub const GLASS_ALPHA: f32 = 0.5;
 /// Idle spin of a seated crystal (rad/s): it's alive in there.
 pub const CRYSTAL_IDLE_SPIN: f32 = 0.7;
 
@@ -321,6 +326,7 @@ struct GunParts {
     rings: Option<AnimPart>,
     pump_grip: Option<AnimPart>,
     shard: Option<AnimPart>,
+    runes: Option<AnimPart>,
     glove_r: Option<Entity>,
     glove_l: Option<Entity>,
     gun_ready: bool,
@@ -342,7 +348,8 @@ pub struct ViewmodelModels {
     pump: GunParts,
     rifle_crystal: Option<Handle<ToonMaterial>>,
     pump_crystal: Option<Handle<ToonMaterial>>,
-    glass: Option<Handle<ToonMaterial>>,
+    rifle_glass: Option<Handle<ToonMaterial>>,
+    pump_glass: Option<Handle<ToonMaterial>>,
 }
 
 impl ViewmodelModels {
@@ -372,6 +379,14 @@ impl ViewmodelModels {
         match kind {
             WeaponKind::Rifle => self.rifle_crystal.as_ref(),
             WeaponKind::Pump => self.pump_crystal.as_ref(),
+        }
+    }
+
+    /// The material a gun's glass chamber is drawn with (once dressed).
+    pub fn glass_material(&self, kind: WeaponKind) -> Option<&Handle<ToonMaterial>> {
+        match kind {
+            WeaponKind::Rifle => self.rifle_glass.as_ref(),
+            WeaponKind::Pump => self.pump_glass.as_ref(),
         }
     }
 }
@@ -656,15 +671,21 @@ fn configure_models(
                     rings: anim_part("Rings"),
                     pump_grip: anim_part("PumpGrip"),
                     chamber: anim_part("Chamber"),
+                    runes: anim_part("Runes"),
                     ..default()
                 };
-                let color = match kind {
-                    WeaponKind::Rifle => cartoon::CRYSTAL_BLUE,
-                    WeaponKind::Pump => cartoon::CRYSTAL_VIOLET,
-                };
-                let crystal_mat =
-                    toon.add(ToonMaterial::vertex_colored().with_emissive(color, CRYSTAL_EMISSIVE));
-                for part in [found.crystal, found.shard].into_iter().flatten() {
+                let color = crystal_color(kind);
+                // Crystal glints on every facet, its bright edges included.
+                let crystal_mat = toon.add(
+                    ToonMaterial::vertex_colored()
+                        .with_emissive(color, CRYSTAL_EMISSIVE)
+                        .with_surface(Surface::named("crystal").unwrap_or_default()),
+                );
+                // The crystal, the pump's shard and every rune inlay glow together.
+                for part in [found.crystal, found.shard, found.runes]
+                    .into_iter()
+                    .flatten()
+                {
                     for mesh in meshes_below(part.entity) {
                         commands
                             .entity(mesh)
@@ -686,10 +707,20 @@ fn configure_models(
                     commands.entity(shard.entity).insert(Visibility::Hidden);
                 }
                 if let Some(chamber) = found.chamber {
+                    // Tinted by the model's vertex colours (the glass colour and
+                    // its shine streaks), lit from inside by the crystal, and
+                    // double-sided: the far wall of the tube tints the view
+                    // behind the crystal too, so the chamber reads deep and
+                    // glowing while the crystal shows through one layer.
+                    // Its vertex alpha is baked AO like every model's, not
+                    // opacity, and it glints like glass.
                     let glass = toon.add(
-                        ToonMaterial::new(cartoon::GLASS_CYAN.with_alpha(GLASS_ALPHA))
-                            .with_emissive(cartoon::CRYSTAL_BLUE, GLASS_EMISSIVE)
-                            .with_alpha(AlphaMode::Blend),
+                        ToonMaterial::new(Color::WHITE.with_alpha(GLASS_ALPHA))
+                            .with_emissive(color, GLASS_EMISSIVE)
+                            .with_alpha(AlphaMode::Blend)
+                            .with_vertex_alpha(VertexAlpha::Occlusion)
+                            .with_surface(Surface::named("glass").unwrap_or_default())
+                            .double_sided(),
                     );
                     for mesh in meshes_below(chamber.entity) {
                         // Glass is see-through: an ink hull behind it would
@@ -702,7 +733,10 @@ fn configure_models(
                             warmup.add_with(m.0.clone(), glass.clone(), layer.clone());
                         }
                     }
-                    vm_models.glass = Some(glass);
+                    match kind {
+                        WeaponKind::Rifle => vm_models.rifle_glass = Some(glass),
+                        WeaponKind::Pump => vm_models.pump_glass = Some(glass),
+                    }
                 }
                 match kind {
                     WeaponKind::Rifle => vm_models.rifle_crystal = Some(crystal_mat),
@@ -734,6 +768,14 @@ fn configure_models(
     if vm_models.wanted && !vm_models.released && vm_models.is_ready() {
         vm_models.released = true;
         warmup.gate().release(VIEWMODEL_GATE);
+    }
+}
+
+/// The colour a gun's crystal (and its glass and runes) glows.
+pub fn crystal_color(kind: WeaponKind) -> Color {
+    match kind {
+        WeaponKind::Rifle => cartoon::CRYSTAL_BLUE,
+        WeaponKind::Pump => cartoon::CRYSTAL_VIOLET,
     }
 }
 
@@ -1141,10 +1183,11 @@ fn animate_viewmodel(
     let flash_size = st.flash_scale
         * if st.flash_frames >= 2 { 1.0 } else { 0.6 }
         * if st.flash_kind == WeaponKind::Pump {
-            1.9
+            // The pump's fan, as wide as T04's.
+            3.0
         } else {
             // The rifle's star, big as T03 paints it.
-            1.6
+            2.1
         };
     let build_kind = match tool {
         ActiveTool::Build(kind) => Some(*kind),
@@ -1195,19 +1238,22 @@ fn animate_gun_parts(
     mut transforms: Query<&mut Transform, (Without<VmPart>, Without<MainCamera>)>,
     mut visibility: Query<&mut Visibility, Without<VmPart>>,
 ) {
-    // Crystal glow, written only when it changes.
-    for (handle, level, color) in [
-        (&vm_models.rifle_crystal, glow.rifle, cartoon::CRYSTAL_BLUE),
-        (&vm_models.pump_crystal, glow.pump, cartoon::CRYSTAL_VIOLET),
-    ] {
-        set_emissive(&mut toon, handle.as_ref(), color, level * CRYSTAL_EMISSIVE);
+    // Crystal and glass glow, written only when it changes.
+    for kind in [WeaponKind::Rifle, WeaponKind::Pump] {
+        let (level, color) = (glow.of(kind), crystal_color(kind));
+        set_emissive(
+            &mut toon,
+            vm_models.crystal_material(kind),
+            color,
+            level * CRYSTAL_EMISSIVE,
+        );
+        set_emissive(
+            &mut toon,
+            vm_models.glass_material(kind),
+            color,
+            level * GLASS_EMISSIVE,
+        );
     }
-    set_emissive(
-        &mut toon,
-        vm_models.glass.as_ref(),
-        cartoon::CRYSTAL_BLUE,
-        glow.rifle * GLASS_EMISSIVE,
-    );
 
     let Some(kind) = state.shown else { return };
     let spec = gun_spec(kind);
