@@ -6,6 +6,12 @@
 //!   and every piece shares one material, so pieces batch.
 //! - Cracking swaps the model (66% HP: cartoon cracks; 33%: bigger cracks,
 //!   missing bricks or split planks).
+//! - An edited piece (D44) swaps to its edit's mesh at once: walls and floors
+//!   are composed from the Blender tile sets (kept tiles plus frame boards
+//!   round the opening), half ramps and cone roofs are one model turned to
+//!   fit. Every edit's meshes are built once when the models load and warmed
+//!   up, so editing never creates an asset.
+//! - [`super::edit_grid`] draws the edit grid over the piece being edited.
 //! - A newly placed piece lands with a [`POP_SECONDS`] squash pop; a hit piece
 //!   shudders.
 //! - The build ghost is translucent and glowing: blue when the placement is
@@ -17,10 +23,12 @@
 //! waits for them); the initial cover gets them like any other piece.
 
 use super::{
-    BuildTarget, InitialCover, Piece,
+    BuildTarget, InitialCover, Piece, PieceEdit,
+    edit::{self},
     mesh::{
-        BRICK_DEBRIS, PIECE_MODELS, PLANK_DEBRIS, ghost_floor_mesh, ghost_ramp_mesh,
-        ghost_wall_mesh, kind_index,
+        BRICK_DEBRIS, CONE_ROOF_MODELS, KINDS, PIECE_MODELS, PLANK_DEBRIS, TILE_MODELS,
+        compose_floor, compose_wall, cone_roof, ghost_cone_mesh, ghost_floor_mesh, ghost_ramp_mesh,
+        ghost_wall_mesh, kind_index, model_part_meshes, ramp_half,
     },
 };
 use crate::{
@@ -33,8 +41,11 @@ use crate::{
     },
     tuning::Tuning,
 };
-use bevy::{light::NotShadowCaster, prelude::*, world_serialization::WorldAsset};
-use std::f32::consts::PI;
+use bevy::{
+    light::NotShadowCaster, platform::collections::HashMap, prelude::*,
+    world_serialization::WorldAsset,
+};
+use std::{collections::BTreeMap, f32::consts::PI};
 
 pub use super::mesh::{model_mesh, model_offset, piece_model};
 
@@ -49,13 +60,14 @@ impl Plugin for BuildingVisualsPlugin {
                 (
                     load_piece_models.run_if(not(resource_exists::<PieceAssets>)),
                     attach_piece_visuals,
-                    update_crack_visuals,
+                    update_piece_meshes,
                     start_hit_shudder,
                     animate_piece_visuals,
                     update_ghost,
                 )
                     .chain(),
             );
+        super::edit_grid::build(app);
     }
 
     fn finish(&self, app: &mut App) {
@@ -79,17 +91,35 @@ const EW_WALL_LIFT: f32 = 0.004;
 /// Emissive strength of the ghost preview (× its own colour).
 const GHOST_GLOW: f32 = 0.6;
 
-/// The shared piece meshes (`[kind][stage]`, kind in [`kind_index`] order) and
-/// the one material every piece uses.
+/// The shared piece meshes (`[kind][stage]`, kind in [`kind_index`] order),
+/// every valid edit's meshes, and the one material every piece uses.
 #[derive(Resource, Debug, Clone)]
 pub struct PieceAssets {
-    pub meshes: [[Handle<Mesh>; 3]; 3],
+    pub meshes: [[Handle<Mesh>; 3]; 4],
+    pub edits: HashMap<(PieceKind, PieceEdit), EditVisual>,
     pub material: Handle<ToonMaterial>,
+}
+
+/// How an edited piece is drawn: a mesh per crack stage, turned about the
+/// piece's +Y (half ramps and cone roofs are one model turned to fit).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EditVisual {
+    pub meshes: [Handle<Mesh>; 3],
+    pub turn: Quat,
 }
 
 impl PieceAssets {
     pub fn mesh(&self, kind: PieceKind, stage: u8) -> &Handle<Mesh> {
         &self.meshes[kind_index(kind)][stage.min(2) as usize]
+    }
+
+    /// The mesh and turn a piece of `kind` with `edit` shows at crack `stage`
+    /// (the full piece's model when unedited, or if the edit has no mesh).
+    pub fn visual(&self, kind: PieceKind, edit: PieceEdit, stage: u8) -> (&Handle<Mesh>, Quat) {
+        match self.edits.get(&(kind, edit)) {
+            Some(v) if edit.is_edited() => (&v.meshes[stage.min(2) as usize], v.turn),
+            _ => (self.mesh(kind, stage), Quat::IDENTITY),
+        }
     }
 }
 
@@ -104,7 +134,7 @@ pub struct PieceDebris {
 
 #[derive(Resource)]
 struct GhostAssets {
-    meshes: [Handle<Mesh>; 3],
+    meshes: [Handle<Mesh>; 4],
     valid: Handle<ToonMaterial>,
     invalid: Handle<ToonMaterial>,
 }
@@ -117,6 +147,7 @@ struct PieceVisualLink(Entity);
 #[derive(Component, Default)]
 struct PieceVisual {
     stage: u8,
+    edit: PieceEdit,
     base: Vec3,
     /// Seconds since placement, while popping in.
     pop: Option<f32>,
@@ -155,6 +186,7 @@ fn create_ghost_assets(
         meshes.add(ghost_wall_mesh(tuning.building.wall_thickness).build()),
         meshes.add(ghost_floor_mesh(tuning.building.floor_thickness).build()),
         meshes.add(ghost_ramp_mesh().build()),
+        meshes.add(ghost_cone_mesh().build()),
     ];
     let valid = materials.add(ghost_material(true));
     let invalid = materials.add(ghost_material(false));
@@ -178,6 +210,22 @@ fn spawn_ghost(mut commands: Commands, assets: Res<GhostAssets>) {
     ));
 }
 
+/// Adds three staged meshes (with outline normals) as assets.
+trait StagedMeshes {
+    fn into_staged_handles(self, meshes: &mut Assets<Mesh>) -> [Handle<Mesh>; 3];
+}
+
+impl StagedMeshes for Vec<Mesh> {
+    fn into_staged_handles(self, meshes: &mut Assets<Mesh>) -> [Handle<Mesh>; 3] {
+        let mut it = self.into_iter();
+        std::array::from_fn(|_| {
+            it.next()
+                .map(|m| meshes.add(with_outline_normals(m)))
+                .unwrap_or_default()
+        })
+    }
+}
+
 /// A plain box the size of a piece's collider, if its model is missing (so a
 /// piece is never invisible).
 fn fallback_mesh(kind: PieceKind) -> Mesh {
@@ -192,6 +240,7 @@ fn fallback_mesh(kind: PieceKind) -> Mesh {
             .build()
             .rotated_by(Quat::from_rotation_x((LEVEL_HEIGHT / CELL_SIZE).atan()))
             .translated_by(Vec3::Y * LEVEL_HEIGHT / 2.0),
+        PieceKind::Cone => ghost_cone_mesh().build(),
     }
 }
 
@@ -217,15 +266,81 @@ fn load_piece_models(
         }
         mesh
     };
-    let kinds = [PieceKind::Wall, PieceKind::Floor, PieceKind::Ramp];
-    let piece_meshes = kinds.map(|kind| {
+    let piece_meshes = KINDS.map(|kind| {
         PIECE_MODELS[kind_index(kind)].map(|name| {
             let mesh = model(name, &meshes).unwrap_or_else(|| fallback_mesh(kind));
             meshes.add(with_outline_normals(mesh))
         })
     });
+    let parts = |name: &str, meshes: &Assets<Mesh>| -> BTreeMap<String, Mesh> {
+        library
+            .get(name)
+            .and_then(|m| scenes.get(&m.scene))
+            .map(|scene| model_part_meshes(scene, meshes))
+            .unwrap_or_default()
+    };
+    let mut edits = HashMap::default();
+    // Walls and floors: every valid edit composed from its tile set, per stage.
+    for (kind, compose) in [
+        (PieceKind::Wall, compose_wall as fn(_, &_) -> _),
+        (PieceKind::Floor, compose_floor),
+    ] {
+        let sets = TILE_MODELS[kind_index(kind)].map(|name| parts(name, &meshes));
+        for e in edit::valid_edits(kind) {
+            let staged: Option<Vec<Mesh>> = sets.iter().map(|set| compose(e, set)).collect();
+            let Some(staged) = staged else {
+                error!("building: no mesh for {kind:?} edit {e:?}");
+                continue;
+            };
+            let handles = staged.into_staged_handles(&mut meshes);
+            edits.insert(
+                (kind, e),
+                EditVisual {
+                    meshes: handles,
+                    turn: Quat::IDENTITY,
+                },
+            );
+        }
+    }
+    // Half ramps: the tile set's two halves, turned.
+    let halves = TILE_MODELS[kind_index(PieceKind::Ramp)].map(|name| parts(name, &meshes));
+    let mut half_handles: BTreeMap<&str, [Handle<Mesh>; 3]> = BTreeMap::new();
+    for side in ["Left", "Right"] {
+        let staged: Option<Vec<Mesh>> = halves.iter().map(|set| set.get(side).cloned()).collect();
+        match staged {
+            Some(staged) => {
+                half_handles.insert(side, staged.into_staged_handles(&mut meshes));
+            }
+            None => error!("building: ramp tile part {side} is missing"),
+        }
+    }
+    for e in edit::valid_edits(PieceKind::Ramp) {
+        if let Some((side, turn)) = ramp_half(e)
+            && let Some(handles) = half_handles.get(side)
+        {
+            let meshes = handles.clone();
+            edits.insert((PieceKind::Ramp, e), EditVisual { meshes, turn });
+        }
+    }
+    // Cone roofs: four models, turned.
+    let roofs: Vec<Option<[Handle<Mesh>; 3]>> = CONE_ROOF_MODELS
+        .iter()
+        .map(|names| {
+            let staged: Option<Vec<Mesh>> = names.iter().map(|n| model(n, &meshes)).collect();
+            staged.map(|s| s.into_staged_handles(&mut meshes))
+        })
+        .collect();
+    for e in edit::valid_edits(PieceKind::Cone) {
+        if let Some((roof, turn)) = cone_roof(e)
+            && let Some(Some(handles)) = roofs.get(roof as usize)
+        {
+            let meshes = handles.clone();
+            edits.insert((PieceKind::Cone, e), EditVisual { meshes, turn });
+        }
+    }
     let assets = PieceAssets {
         meshes: piece_meshes,
+        edits,
         material: toon.add(ToonMaterial::vertex_colored()),
     };
     let chunk =
@@ -241,11 +356,19 @@ fn load_piece_models(
             ..default()
         }),
     };
-    warmup.add_with(
-        assets.meshes[0][0].clone(),
-        assets.material.clone(),
-        Outline::default(),
-    );
+    // Every piece and edit mesh is drawn once behind the loading screen, so
+    // the first cone or edit of a match never waits on an upload.
+    let mut warm: Vec<Handle<Mesh>> = assets.meshes.iter().flatten().cloned().collect();
+    for v in assets.edits.values() {
+        for m in &v.meshes {
+            if !warm.contains(m) {
+                warm.push(m.clone());
+            }
+        }
+    }
+    for mesh in warm {
+        warmup.add_with(mesh, assets.material.clone(), Outline::default());
+    }
     warmup.add(debris.brick.clone(), debris.material.clone());
     warmup.gate().release(PIECES_GATE);
     commands.insert_resource(assets);
@@ -256,13 +379,18 @@ fn load_piece_models(
 fn attach_piece_visuals(
     mut commands: Commands,
     assets: Option<Res<PieceAssets>>,
-    pieces: Query<(Entity, &Piece, Has<InitialCover>), Without<PieceVisualLink>>,
+    pieces: Query<
+        (Entity, &Piece, Option<&PieceEdit>, Has<InitialCover>),
+        Without<PieceVisualLink>,
+    >,
 ) {
     let Some(assets) = assets else {
         return;
     };
-    for (entity, piece, initial) in &pieces {
+    for (entity, piece, edit, initial) in &pieces {
         let stage = piece.crack_stage.min(2);
+        let edit = edit.copied().unwrap_or_default();
+        let (mesh, turn) = assets.visual(piece.kind, edit, stage);
         let lift = match (piece.kind, piece.facing) {
             (PieceKind::Wall, Facing::East | Facing::West) => EW_WALL_LIFT,
             _ => 0.0,
@@ -274,18 +402,21 @@ fn attach_piece_visuals(
                 Name::new("Piece visual"),
                 PieceVisual {
                     stage,
+                    edit,
                     base,
                     pop,
                     shudder: None,
                 },
-                Mesh3d(assets.mesh(piece.kind, stage).clone()),
+                Mesh3d(mesh.clone()),
                 MeshMaterial3d(assets.material.clone()),
                 Outline::default(),
-                Transform::from_translation(base).with_scale(if pop.is_some() {
-                    pop_scale(0.0)
-                } else {
-                    Vec3::ONE
-                }),
+                Transform::from_translation(base)
+                    .with_rotation(turn)
+                    .with_scale(if pop.is_some() {
+                        pop_scale(0.0)
+                    } else {
+                        Vec3::ONE
+                    }),
                 ChildOf(entity),
             ))
             .id();
@@ -295,22 +426,38 @@ fn attach_piece_visuals(
     }
 }
 
-fn update_crack_visuals(
+/// Swaps a piece's mesh when it cracks further or is edited (an edit lands
+/// with a little shudder).
+fn update_piece_meshes(
     assets: Option<Res<PieceAssets>>,
-    pieces: Query<(&Piece, &PieceVisualLink), Changed<Piece>>,
-    mut visuals: Query<(&mut PieceVisual, &mut Mesh3d)>,
+    pieces: Query<
+        (&Piece, Option<&PieceEdit>, &PieceVisualLink),
+        Or<(Changed<Piece>, Changed<PieceEdit>)>,
+    >,
+    mut visuals: Query<(&mut PieceVisual, &mut Mesh3d, &mut Transform)>,
 ) {
     let Some(assets) = assets else {
         return;
     };
-    for (piece, link) in &pieces {
+    for (piece, edit, link) in &pieces {
         let stage = piece.crack_stage.min(2);
-        if let Ok((mut visual, mut mesh)) = visuals.get_mut(link.0)
-            && visual.stage != stage
-        {
-            visual.stage = stage;
-            mesh.0 = assets.mesh(piece.kind, stage).clone();
+        let edit = edit.copied().unwrap_or_default();
+        let Ok((mut visual, mut mesh, mut transform)) = visuals.get_mut(link.0) else {
+            continue;
+        };
+        if visual.stage == stage && visual.edit == edit {
+            continue;
         }
+        if visual.edit != edit {
+            visual.shudder = Some(0.0);
+        }
+        visual.stage = stage;
+        visual.edit = edit;
+        let (wanted, turn) = assets.visual(piece.kind, edit, stage);
+        if mesh.0 != *wanted {
+            mesh.0 = wanted.clone();
+        }
+        transform.rotation = turn;
     }
 }
 

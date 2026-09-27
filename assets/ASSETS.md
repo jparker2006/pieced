@@ -68,6 +68,54 @@ from `art/palette.json`, sampled from the target images by
 | `models/wall_brick_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
 | `models/wall_brick_crack2.glb` | `art/blender/assets/pieces.py` | Brick wall at 33% HP: bigger cracks, missing bricks, a bite out of the top corner (584 tris) |
 | `models/wall_brick_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank.glb` | `art/blender/assets/pieces.py` | Plank cone (roof) piece, 4 x 4 m, 1.5 m tall: level planks on four faces, hip trims, nails (410 tris) |
+| `models/cone_plank.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_crack1.glb` | `art/blender/assets/pieces.py` | Plank cone (roof) piece, 4 x 4 m, 1.5 m tall: level planks on four faces, hip trims, nails at 66% HP: cracks (422 tris) |
+| `models/cone_plank_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_crack2.glb` | `art/blender/assets/pieces.py` | Plank cone (roof) piece, 4 x 4 m, 1.5 m tall: level planks on four faces, hip trims, nails at 33% HP: more cracks, a split plank (448 tris) |
+| `models/cone_plank_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_peak.glb` | `art/blender/assets/pieces.py` | Edited cone, one corner raised (a peak); Rust turns it to fit the edit (580 tris) |
+| `models/cone_plank_peak.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_peak_crack1.glb` | `art/blender/assets/pieces.py` | Edited cone, one corner raised (a peak); Rust turns it to fit the edit at 66% HP: cracks (592 tris) |
+| `models/cone_plank_peak_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_peak_crack2.glb` | `art/blender/assets/pieces.py` | Edited cone, one corner raised (a peak); Rust turns it to fit the edit at 33% HP: more cracks, a split plank (618 tris) |
+| `models/cone_plank_peak_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_slope.glb` | `art/blender/assets/pieces.py` | Edited cone, two neighbouring corners raised (a roof-ramp slope) (416 tris) |
+| `models/cone_plank_slope.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_slope_crack1.glb` | `art/blender/assets/pieces.py` | Edited cone, two neighbouring corners raised (a roof-ramp slope) at 66% HP: cracks (428 tris) |
+| `models/cone_plank_slope_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_slope_crack2.glb` | `art/blender/assets/pieces.py` | Edited cone, two neighbouring corners raised (a roof-ramp slope) at 33% HP: more cracks, a split plank (454 tris) |
+| `models/cone_plank_slope_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_ridge.glb` | `art/blender/assets/pieces.py` | Edited cone, two opposite corners raised (a ridge) (512 tris) |
+| `models/cone_plank_ridge.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_ridge_crack1.glb` | `art/blender/assets/pieces.py` | Edited cone, two opposite corners raised (a ridge) at 66% HP: cracks (524 tris) |
+| `models/cone_plank_ridge_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_ridge_crack2.glb` | `art/blender/assets/pieces.py` | Edited cone, two opposite corners raised (a ridge) at 33% HP: more cracks, a split plank (550 tris) |
+| `models/cone_plank_ridge_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_tent.glb` | `art/blender/assets/pieces.py` | Edited cone, three corners raised (a tent) (624 tris) |
+| `models/cone_plank_tent.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_tent_crack1.glb` | `art/blender/assets/pieces.py` | Edited cone, three corners raised (a tent) at 66% HP: cracks (636 tris) |
+| `models/cone_plank_tent_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/cone_plank_tent_crack2.glb` | `art/blender/assets/pieces.py` | Edited cone, three corners raised (a tent) at 33% HP: more cracks, a split plank (662 tris) |
+| `models/cone_plank_tent_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/wall_brick_tiles.glb` | `art/blender/assets/pieces.py` | Brick wall edit tiles: `T0`-`T8`, the diagonal halves `A*`/`B*`, frame boards `TrimH`/`TrimV`/`TrimD`; edited walls are composed from them (2060 tris) |
+| `models/wall_brick_tiles.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/wall_brick_tiles_crack1.glb` | `art/blender/assets/pieces.py` | Brick wall edit tiles: `T0`-`T8`, the diagonal halves `A*`/`B*`, frame boards `TrimH`/`TrimV`/`TrimD`; edited walls are composed from them at 66% HP (2154 tris) |
+| `models/wall_brick_tiles_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/wall_brick_tiles_crack2.glb` | `art/blender/assets/pieces.py` | Brick wall edit tiles: `T0`-`T8`, the diagonal halves `A*`/`B*`, frame boards `TrimH`/`TrimV`/`TrimD`; edited walls are composed from them at 33% HP (2294 tris) |
+| `models/wall_brick_tiles_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/floor_plank_tiles.glb` | `art/blender/assets/pieces.py` | Plank floor edit tiles: quarters `Q0`-`Q3` and a cut-edge beam `Trim` (424 tris) |
+| `models/floor_plank_tiles.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/floor_plank_tiles_crack1.glb` | `art/blender/assets/pieces.py` | Plank floor edit tiles: quarters `Q0`-`Q3` and a cut-edge beam `Trim` at 66% HP (434 tris) |
+| `models/floor_plank_tiles_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/floor_plank_tiles_crack2.glb` | `art/blender/assets/pieces.py` | Plank floor edit tiles: quarters `Q0`-`Q3` and a cut-edge beam `Trim` at 33% HP (416 tris) |
+| `models/floor_plank_tiles_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/ramp_plank_tiles.glb` | `art/blender/assets/pieces.py` | Plank ramp edit tiles: `Left` and `Right` halves (a half ramp, turned to fit) (420 tris) |
+| `models/ramp_plank_tiles.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/ramp_plank_tiles_crack1.glb` | `art/blender/assets/pieces.py` | Plank ramp edit tiles: `Left` and `Right` halves (a half ramp, turned to fit) at 66% HP (430 tris) |
+| `models/ramp_plank_tiles_crack1.json` | `art/blender/assets/pieces.py` | Sidecar |
+| `models/ramp_plank_tiles_crack2.glb` | `art/blender/assets/pieces.py` | Plank ramp edit tiles: `Left` and `Right` halves (a half ramp, turned to fit) at 33% HP (435 tris) |
+| `models/ramp_plank_tiles_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
 | `models/far_island_a.glb` | `art/blender/assets/far.py` | Far island: grass top, three trees, waterfall |
 | `models/far_island_a.json` | `art/blender/assets/far.py` | Sidecar |
 | `models/far_island_b.glb` | `art/blender/assets/far.py` | Far island with a gothic chapel tower and a waterfall |
@@ -117,6 +165,7 @@ scripts/build-art.sh icon_rifle logo   # rebuild some (names from --list)
 | `ui/icons/wall_brick.png` | `art/blender/assets/icons.py` | Hotbar: the brick wall model, 128 px |
 | `ui/icons/ramp_plank.png` | `art/blender/assets/icons.py` | Hotbar: the plank ramp model, 128 px |
 | `ui/icons/floor_plank.png` | `art/blender/assets/icons.py` | Hotbar: the plank floor model, 128 px |
+| `ui/icons/cone_plank.png` | `art/blender/assets/icons.py` | Hotbar: the plank cone model, 128 px |
 | `ui/icons/crystal_blue.png` | `art/blender/assets/icons.py` | Blue crystal: the shield bar, rifle ammo, menu buttons, 64 px |
 | `ui/icons/crystal_violet.png` | `art/blender/assets/icons.py` | Violet crystal: pump ammo, 64 px |
 | `ui/icons/heart.png` | `art/blender/assets/icons.py` | Green heart: the health bar, 64 px |

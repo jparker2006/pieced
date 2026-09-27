@@ -94,6 +94,8 @@ const RIVET: Color = Color::srgb(0.62, 0.65, 0.74);
 /// Menu buttons are this wide; the logo above them is a little wider.
 /// The controls that aren't obvious (docs/SPEC.md → Controls, D40–D42).
 const CONTROLS_HINT: &str = "W sprint   Shift (hold) aim   C slide   R reload";
+/// Building and editing (D43, D44).
+const BUILD_HINT: &str = "Q E F V wall ramp floor cone   G edit   R reset an edit";
 const BUTTON_WIDTH: f32 = 380.0;
 const LOGO_WIDTH: f32 = 600.0;
 
@@ -279,6 +281,7 @@ fn spawn_menu(mut commands: Commands, art: Option<Res<UiArt>>) {
                     },
                     children![
                         text(CONTROLS_HINT, 13.0, dim(0.75)),
+                        text(BUILD_HINT, 13.0, dim(0.75)),
                         text("Esc resume   F3 stats   F4 tuning", 13.0, dim(0.6)),
                     ],
                 ));

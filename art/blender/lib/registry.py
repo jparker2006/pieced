@@ -15,6 +15,13 @@ BUDGETS = {
     "wall": 600,
     "floor": 400,
     "ramp": 400,
+    # M2 Amendment A: the cone, and the edit tile sets (every tile of a piece
+    # plus the diagonal half tiles and opening trims; an edited piece draws a
+    # subset, never more than about its full piece).
+    "cone": 700,
+    "wall_tiles": 2600,
+    "floor_tiles": 700,
+    "ramp_tiles": 800,
     "tree": 1500,
     "rock": 300,
     "stump": 300,

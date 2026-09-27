@@ -22,7 +22,7 @@ pub mod sim;
 pub mod spells;
 
 use crate::{
-    building::{Piece, ramp_surface_height, visuals::PieceDebris},
+    building::{CONE_HEIGHT, Piece, ramp_surface_height, visuals::PieceDebris},
     palette,
     render::{CameraFollowSet, MainCamera},
     shared::{Eliminated, PieceChange, PieceChanged, PieceKind, Player, ShotFired, WeaponKind},
@@ -382,6 +382,12 @@ fn remember_removed_piece(
 // Emitters
 // ---------------------------------------------------------------------------
 
+/// Height of a cone's pyramid above its base at local (x, z).
+fn cone_surface_height(x: f32, z: f32) -> f32 {
+    let half = crate::shared::CELL_SIZE / 2.0;
+    (CONE_HEIGHT * (1.0 - x.abs().max(z.abs()) / half)).max(0.0)
+}
+
 struct Emitter<'a> {
     pools: &'a mut FxPools,
     assets: &'a FxAssets,
@@ -419,13 +425,15 @@ impl Emitter<'_> {
         // Local sample grid across the panel, and how planks lie on it.
         let (cols, rows) = match kind {
             PieceKind::Wall => (4, 3),
-            PieceKind::Floor | PieceKind::Ramp => (4, 3),
+            PieceKind::Floor | PieceKind::Ramp | PieceKind::Cone => (4, 3),
         };
         let slope = (crate::shared::LEVEL_HEIGHT / crate::shared::CELL_SIZE).atan();
         let lie = match kind {
             PieceKind::Wall => Quat::IDENTITY,
             PieceKind::Floor => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2),
             PieceKind::Ramp => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + slope),
+            // The cone's faces share the ramp's slope.
+            PieceKind::Cone => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + slope),
         };
         let away = (center - eye).with_y(0.0).normalize_or(Vec3::Z);
         let mut samples = Vec::with_capacity(cols * rows + 2);
@@ -459,6 +467,10 @@ impl Emitter<'_> {
                 PieceKind::Ramp => {
                     let z = v * 1.7;
                     Vec3::new(u * 1.7, ramp_surface_height(z) - 0.1, z)
+                }
+                PieceKind::Cone => {
+                    let (x, z) = (u * 1.7, v * 1.7);
+                    Vec3::new(x, cone_surface_height(x, z) - 0.1, z)
                 }
             };
             let pos = frame.transform_point(local);

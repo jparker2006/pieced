@@ -241,6 +241,12 @@ fn spec_budget(kind: &str) -> u32 {
         "knight" => 8000,
         "wall" => 600,
         "floor" | "ramp" => 400,
+        // M2 Amendment A (D43, D44): the cone, and the edit tile sets (a set
+        // holds every tile and half tile; an edited piece draws a subset).
+        "cone" => 700,
+        "wall_tiles" => 2600,
+        "floor_tiles" => 700,
+        "ramp_tiles" => 800,
         "tree" | "far_island" => 1500,
         "rock" | "stump" => 300,
         "station" => 25000,

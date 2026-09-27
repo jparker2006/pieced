@@ -19,6 +19,9 @@
 //!   always mean your own cell. Ramps rise away from you. Climbing a ramp, the
 //!   cell above it is never targeted (it would cap the ramp and wedge you under
 //!   it); turn away from its rise and it is (that's how 90s stack up).
+//! - **Cone:** like a floor (D43, research R11): the cell ahead, your own cell
+//!   looking down, or on top of your box looking steeply up. A ramp rush never
+//!   changes it.
 //!
 //! **Ramp rushing** (moving forward with the ramp: `advancing`) swaps the pitch
 //! rules for the chain rule, so holding forward and build runs up an endless ramp
@@ -282,7 +285,8 @@ pub fn target_slot(
                 None => wall(own, ahead_level, d_front),
             }
         }
-        PieceKind::Floor | PieceKind::Ramp => {
+        // Cones target like floors (docs/research/fortnite-building.md, R11).
+        PieceKind::Floor | PieceKind::Ramp | PieceKind::Cone => {
             let own_ground = base as f32 * LEVEL_HEIGHT;
             let ahead_ground = ahead_level as f32 * LEVEL_HEIGHT;
             let cell = if climbing.is_some() {
