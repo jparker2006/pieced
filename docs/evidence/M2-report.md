@@ -165,3 +165,13 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **Pause:** the gun hides while paused.
 
   Jake was shown the full offscreen board (target next to game for all 12). Open: the planet sits left of the station, where the targets paint it to the right.
+- 2026-09-26: **polish round 2 merged** (`713feb0`), with 333 tests passing:
+  - **T06:** a bold opaque gold headshot starburst, and the hat pops 0.44 m up and falls back onto the head (the view is mirrored so the damage number doesn't cover the hat).
+  - **T11:** the east edge (z 0–8) ends 0.9 m past the barrier, so the cliff drop shows. This is visual only; colliders are unchanged.
+  - **T03:** the knight faces three-quarters toward the camera.
+
+  **Two art-review rounds are complete** (the brief's minimum before Jake scores). The release play build is ready at `713feb0`.
+- **Known, left as is:**
+  - the planet sits left of the station (the targets paint it right);
+  - T01's foreground has no prop, because prop positions are fixed gameplay;
+  - the T12 background isn't blurred (a dark overlay only, by the spec's cost rule).
