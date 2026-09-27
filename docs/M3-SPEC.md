@@ -217,7 +217,11 @@ These are rules, and each one is tested headless:
   - **aurora ribbons:** soft teal-violet bands that drift slowly around the galaxy, as in C3 (D94).
 - **Budget:** the far layer may grow to **≤ 90k triangles, ≤ 18 opaque batches and ≤ 64 halos** (from 75k, 16 and 50). The `tests/far.rs` budget test is updated to match. Anything past that needs the performance gate to hold first.
 - **Motion tests:** the M2 motion tests keep passing, and new ones check that shooting stars fire and cross, motes drift within their volume, lanterns bob, and the shimmer varies over its period.
-- **Look check:** two offscreen views, the spawn vista and looking up at the castle (like T01 and T10), shown next to the chosen concept. Jake scores them in play-test 4.
+- **The bar (Jake, on seeing C4: "make it that but 100x in the 3d"):** the in-game castle should look as spectacular as C4, not like a simplified stand-in. That means:
+  - the silhouette, spire count, window density, rune ring, lanterns, waterfalls and glow all read at C4's scale and richness from spawn;
+  - **at least two art-review rounds** comparing offscreen views with C4 (and its greyscale) before Jake scores, as in M2's S1;
+  - the whole far budget (below) spent where it shows, with emissive windows, instanced lanterns and halos doing the heavy lifting cheaply.
+- **Look check:** two offscreen views, the spawn vista and looking up at the castle (like T01 and T10), shown next to C4. Jake scores them in play-test 4; W5 needs **≥ 4 on both, aiming for 5**.
 
 ### Main menu and rebinding (D92, D93)
 
@@ -335,7 +339,7 @@ These are rules, and each one is tested headless:
 | **W2** | Endless waves | Chunk 2's wave, score, best-run and results tests pass, and play-test 2's answers are recorded |
 | **W3** | Fair knights | The fairness suite passes on the final commit: zero unfair deaths, and every rule holds |
 | **W4** | Ships and the void | Chunk 3's ship, knockback and void tests pass, and play-test 3's answers are recorded |
-| **W5** | Castle and sky | The castle follows the D94 target; the motion and budget tests pass; Jake scores both castle views ≥ 4 against the concept in play-test 4 |
+| **W5** | Castle and sky | The castle follows the D94 target after ≥ 2 art-review rounds; the motion and budget tests pass; Jake scores both castle views ≥ 4 against C4 in play-test 4 |
 | **W6** | Menu and controls | Chunk 5's menu and rebinding tests pass |
 | **W7** | Performance | A logged session reaching **wave ≥ 6** qualifies and passes the S2 bar (battery, Low Power Mode on, window visible, ≥ 5 min of counted play); the full-wave budget tests pass |
 | **W8** | Launch | 3 warm launches in a row < 5.0 s to a clickable menu, printed in Jake's sessions; Play → controllable < 1 s |

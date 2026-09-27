@@ -200,7 +200,7 @@ Questions only the spec needs and Round 8 doesn't answer. Context from reading t
 
 | # | Decision | What it commits us to |
 |---|---|---|
-| D94 | **The castle target is `concepts/M3-C4-citadel-mix.png` (Q93).** | C3's starlit citadel is the base: a vast dark-indigo castle city on a jagged floating rock with waterfalls, star-tipped needle spires, a great stained-glass hall glowing gold and teal, hundreds of warm windows and swarms of lanterns, under a night galaxy with teal-violet aurora ribbons and shooting stars. From C2: a taller centre stacked like a wedding cake of cone-roofed towers, a **glowing golden ring of runes orbiting the castle**, streams of lanterns rising into the sky, and a warm golden aura. C4 was generated from C3 and C2 to show the mix, and it's the W5 target. C3's aurora glow on the galaxy joins D64's sky list. |
+| D94 | **The castle target is `concepts/M3-C4-citadel-mix.png` (Q93).** | C3's starlit citadel is the base: a vast dark-indigo castle city on a jagged floating rock with waterfalls, star-tipped needle spires, a great stained-glass hall glowing gold and teal, hundreds of warm windows and swarms of lanterns, under a night galaxy with teal-violet aurora ribbons and shooting stars. From C2: a taller centre stacked like a wedding cake of cone-roofed towers, a **glowing golden ring of runes orbiting the castle**, streams of lanterns rising into the sky, and a warm golden aura. C4 was generated from C3 and C2 to show the mix, and it's the W5 target. C3's aurora glow on the galaxy joins D64's sky list. Jake, on seeing C4: "perfect WOW. make it that but 100x in the 3d". The castle must look as spectacular in game as C4, with at least two art-review rounds before he scores it (W5). |
 
 ## Handoff: where to pick up
 
