@@ -6,14 +6,14 @@ use avian3d::prelude::*;
 use bevy::{ecs::system::RunSystemOnce, prelude::*};
 use pieced::{
     building::{
-        AimedPiece, BuildTarget, BuildTuning, InitialCover, Piece, PieceMap, PieceSlot, Placement,
-        check_placement, clear_pieces, damage_piece, initial_cover, place_piece,
-        ramp_surface_height, target_slot,
+        AimedPiece, BuildTarget, BuildTuning, Gait, InitialCover, Piece, PieceMap, PieceSlot,
+        Placement, build_target, check_placement, clear_pieces, damage_piece, initial_cover,
+        place_piece, ramp_surface_height, target_slot,
     },
     player::spawn_character,
     shared::{
-        ARENA_CELLS, ActiveTool, DamageDealt, DamageTarget, Facing, GameCue, GridCell, Health,
-        LEVEL_HEIGHT, Layer, LookAngles, MAX_LEVELS, PieceChange, PieceChanged, PieceHit,
+        ARENA_CELLS, ActiveTool, CELL_SIZE, DamageDealt, DamageTarget, Facing, GameCue, GridCell,
+        Health, LEVEL_HEIGHT, Layer, LookAngles, MAX_LEVELS, PieceChange, PieceChanged, PieceHit,
         PieceKind, PreviousFeet,
     },
     sim::Sim,
@@ -48,8 +48,8 @@ fn target_on(map: &PieceMap, kind: PieceKind, feet: Vec3, yaw: f32, pitch: f32) 
         dir(yaw, pitch),
         feet,
         kind,
+        false,
         map,
-        &BuildTuning::default(),
     )
 }
 
@@ -141,21 +141,20 @@ fn wall_snaps_to_the_front_edge_of_your_cell_for_each_facing() {
 }
 
 #[test]
-fn wall_moves_to_the_next_grid_line_when_pressed_up_to_your_own() {
+fn walls_go_on_your_own_cells_edge_wherever_you_stand() {
+    // Fortnite-style: pressed right up to the edge, the wall still goes on your
+    // own cell's edge (building it pushes you back into the cell), so a box
+    // always forms around you.
     let c = center(5, 5);
     for f in Facing::ALL {
-        let feet = c + f.vector() * (2.0 - 0.3);
-        assert_eq!(
-            target(PieceKind::Wall, feet, f.yaw(), 0.0),
-            PieceSlot::wall(ahead(cell(5, 5, 0), f), f),
-            "{f:?}"
-        );
-        // Still in your own cell with room to spare: your own edge.
-        let feet = c + f.vector() * (2.0 - 0.6);
-        assert_eq!(
-            target(PieceKind::Wall, feet, f.yaw(), 0.0),
-            PieceSlot::wall(cell(5, 5, 0), f)
-        );
+        for from_edge in [1.9f32, 0.6, 0.3, 0.05] {
+            let feet = c + f.vector() * (2.0 - from_edge);
+            assert_eq!(
+                target(PieceKind::Wall, feet, f.yaw(), 0.0),
+                PieceSlot::wall(cell(5, 5, 0), f),
+                "{f:?}, {from_edge} m from the edge"
+            );
+        }
     }
 }
 
@@ -228,9 +227,24 @@ fn climbing_a_ramp_targets_the_next_level_ahead() {
                 target_on(&map, PieceKind::Floor, feet, f.yaw(), 0.0).cell,
                 next
             );
-            // The wall in front sits on top of the ramp you're climbing.
+            // Looking down, it's still the next ramp: never the cell above the
+            // ramp you're on (it would cap it and wedge you under it).
+            assert_eq!(
+                target_on(&map, PieceKind::Ramp, feet, f.yaw(), deg(-70.0)),
+                PieceSlot::ramp(next, f),
+                "{f:?} at {along}, looking down"
+            );
+            // The wall in front: under your own ramp's top while you aim below it
+            // (low on the ramp), otherwise at the high end of the next ramp.
+            // Never on the edge you step across onto the next ramp.
             let wall = target_on(&map, PieceKind::Wall, feet, f.yaw(), 0.0);
-            assert_eq!(wall.cell.level, 1, "{f:?} at {along}");
+            let expected = if along < -1.0 {
+                PieceSlot::wall(own, f)
+            } else {
+                PieceSlot::wall(next, f)
+            };
+            assert_eq!(wall, expected, "{f:?} at {along}");
+            assert_ne!(wall, PieceSlot::wall(cell(5, 5, 1), f));
         }
     }
 }
@@ -452,18 +466,26 @@ fn your_own_walls_never_trap_you() {
         })
     );
 
-    // Pressed up to an empty grid line, the wall goes on the next one.
+    // Pressed right up to an empty grid line, the wall still goes on your own
+    // edge, and you're pushed back into your cell, clear of it.
     clear_pieces(sim.world_mut());
-    let feet = center(4, 10) + Vec3::NEG_Z * 1.7;
-    put_player(&mut sim, feet, Facing::North.yaw(), 0.0);
-    press(&mut sim);
-    let next = PieceSlot::wall(cell(4, 9, 0), Facing::North);
-    assert!(occupant(&sim, next).is_some());
-    assert!(occupant(&sim, own_north).is_none());
-    let (min, max) = next.aabb(&tuning);
-    assert!(!pieced::building::capsule_overlaps_box(
-        feet, &tuning, min, max
-    ));
+    for from_edge in [0.3f32, 0.05] {
+        clear_pieces(sim.world_mut());
+        let feet = center(4, 10) + Vec3::NEG_Z * (2.0 - from_edge);
+        put_player(&mut sim, feet, Facing::North.yaw(), 0.0);
+        press(&mut sim);
+        assert!(occupant(&sim, own_north).is_some(), "{from_edge} m");
+        assert_eq!(piece_count(&sim), 1);
+        sim.ticks(3);
+        let p = sim.player();
+        let now = sim.feet(p);
+        let inner_face = cell(4, 10, 0).min_corner().z + tuning.wall_thickness / 2.0;
+        assert!(
+            now.z - inner_face >= 0.35 - 0.005,
+            "{from_edge} m from the edge: still inside the wall at {now}"
+        );
+        assert_eq!(GridCell::containing(now).z, 10, "pushed back into the cell");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -855,4 +877,644 @@ fn initial_cover_is_placed_clear_of_the_spawns_and_the_line_between() {
     let chest = dummy_spawn + Vec3::Y;
     let to = Dir3::new(chest - eye).unwrap();
     assert_eq!(cast(&mut sim, eye, to, eye.distance(chest)), None);
+}
+
+// ---------------------------------------------------------------------------
+// Ramp rushing, driven through intents with real movement
+// ---------------------------------------------------------------------------
+
+/// One scripted ramp rush: select the ramp, then hold forward and build.
+#[derive(Debug, Clone, Copy)]
+struct Rush {
+    start: Vec3,
+    /// Look pitch in degrees (the yaw is north).
+    pitch: f32,
+    sprint: bool,
+    /// Jump on the first tick.
+    jump: bool,
+    /// Switch between the ramp and the wall every this many ticks (0: ramp only).
+    wall_every: u32,
+    ticks: u32,
+}
+
+impl Default for Rush {
+    fn default() -> Self {
+        Self {
+            start: center(6, 11),
+            pitch: 0.0,
+            sprint: true,
+            jump: false,
+            wall_every: 0,
+            ticks: 360,
+        }
+    }
+}
+
+/// What a rush did, tick by tick.
+struct RushLog {
+    /// Every placement: tick index, slot, and the builder's feet then.
+    placed: Vec<(usize, PieceSlot, Vec3)>,
+    feet: Vec<Vec3>,
+    grounded: Vec<bool>,
+    falling: Vec<bool>,
+    ghost: Vec<Option<pieced::building::BuildCandidate>>,
+}
+
+impl RushLog {
+    fn ramps(&self) -> Vec<PieceSlot> {
+        self.placed
+            .iter()
+            .map(|p| p.1)
+            .filter(|s| s.kind == PieceKind::Ramp)
+            .collect()
+    }
+
+    /// Horizontal speed over tick `i`.
+    fn speed(&self, i: usize) -> f32 {
+        let (a, b) = (self.feet[i - 1], self.feet[i]);
+        Vec2::new(b.x - a.x, b.z - a.z).length() * 60.0
+    }
+
+    /// First tick at which the feet reach `y`.
+    fn reaches(&self, y: f32) -> Option<usize> {
+        self.feet.iter().position(|f| f.y >= y)
+    }
+}
+
+fn run_rush(r: Rush) -> RushLog {
+    let mut sim = empty_sim();
+    sim.record::<PieceChanged>();
+    put_player(&mut sim, r.start, Facing::North.yaw(), deg(r.pitch));
+    sim.ticks(10);
+    let p = sim.player();
+    select(&mut sim, PieceKind::Ramp);
+    {
+        let mut i = sim.player_intent();
+        i.move_axis = Vec2::Y;
+        i.sprint = r.sprint;
+        i.fire = true;
+        i.fire_pressed = true;
+        i.jump = r.jump;
+        i.jump_pressed = r.jump;
+    }
+    let mut log = RushLog {
+        placed: Vec::new(),
+        feet: Vec::new(),
+        grounded: Vec::new(),
+        falling: Vec::new(),
+        ghost: Vec::new(),
+    };
+    let mut seen = 0;
+    for n in 0..r.ticks {
+        if r.wall_every > 0 && n > 0 && n % r.wall_every == 0 {
+            let kind = if (n / r.wall_every) % 2 == 1 {
+                PieceKind::Wall
+            } else {
+                PieceKind::Ramp
+            };
+            select(&mut sim, kind);
+        }
+        sim.tick();
+        sim.player_intent().jump = false;
+        let motor = sim.get::<pieced::movement::Motor>(p).clone();
+        let feet = sim.feet(p);
+        log.feet.push(feet);
+        log.grounded.push(motor.grounded);
+        log.falling.push(!motor.grounded && motor.velocity.y < 0.0);
+        log.ghost.push(player_target(&mut sim));
+        let changes = sim.recorded::<PieceChanged>();
+        for c in &changes[seen..] {
+            if c.change == PieceChange::Placed {
+                let slot = sim.get::<Piece>(c.entity).slot();
+                log.placed.push((n as usize, slot, feet));
+            }
+        }
+        seen = changes.len();
+    }
+    log
+}
+
+/// The straight chain a rush from cell (6, 11) builds: ramp k in the k-th cell
+/// north, k levels up, rising north, as high as the height limit allows.
+fn chain() -> Vec<PieceSlot> {
+    (0..MAX_LEVELS)
+        .map(|k| PieceSlot::ramp(cell(6, 10 - k, k), Facing::North))
+        .collect()
+}
+
+/// Checks one rush: the full chain, each ramp early, and a climb that never
+/// dips, bumps or slows. Returns (seconds to the top, slowest speed / target).
+fn assert_endless_ramp(name: &str, r: Rush) -> (f32, f32) {
+    let log = run_rush(r);
+    let target = if r.sprint { 7.5 } else { 5.5 };
+    let chain = chain();
+    let ramps = log.ramps();
+    assert!(
+        ramps.len() >= chain.len() && ramps[..chain.len()] == chain[..],
+        "{name}: chain {ramps:?}"
+    );
+    // Every next ramp is placed while the builder is still well short of it
+    // (as they step onto the one before).
+    for (tick, slot, feet) in log.placed.iter().filter(|p| chain[1..].contains(&p.1)) {
+        let low_edge = slot.cell.min_corner().z + CELL_SIZE;
+        assert!(
+            feet.z - low_edge >= 3.0,
+            "{name}: {slot:?} placed late (tick {tick}, feet {feet})"
+        );
+    }
+    let top_y = MAX_LEVELS as f32 * LEVEL_HEIGHT;
+    let top = log.reaches(top_y - 0.05).unwrap_or_else(|| {
+        panic!(
+            "{name}: never reached the top: highest {:?}",
+            log.feet.last()
+        )
+    });
+    let full = (1..top)
+        .find(|&i| log.speed(i) >= target - 1e-3)
+        .expect("reaches full speed");
+    let on_chain = log
+        .reaches(0.05)
+        .and_then(|i| (i..top).find(|&j| log.grounded[j]))
+        .expect("lands on the first ramp");
+    let mut slowest = f32::MAX;
+    for i in full..=top {
+        slowest = slowest.min(log.speed(i) / target);
+        assert!(
+            log.speed(i) >= 0.97 * target,
+            "{name}: slowed to {:.2} m/s at {}",
+            log.speed(i),
+            log.feet[i]
+        );
+        if i > on_chain {
+            assert!(log.grounded[i], "{name}: left the ramp at {}", log.feet[i]);
+            assert!(
+                log.feet[i].y >= log.feet[i - 1].y - 1e-3,
+                "{name}: dipped at {}",
+                log.feet[i]
+            );
+            assert!(
+                log.feet[i].y - log.feet[i - 1].y < 0.15,
+                "{name}: bumped up at {}",
+                log.feet[i]
+            );
+        }
+    }
+    // No ramp lands behind, beside or above the chain on the way up.
+    for (tick, slot, _) in &log.placed {
+        if *tick <= top && slot.kind == PieceKind::Ramp {
+            assert!(
+                chain.contains(slot),
+                "{name}: stray {slot:?} at tick {tick}"
+            );
+        }
+    }
+    (top as f32 / 60.0, slowest)
+}
+
+#[test]
+fn ramp_rush_runs_up_an_endless_ramp_without_slowing() {
+    for (name, pitch, sprint, jump) in [
+        ("level", 0.0, false, false),
+        ("level sprint", 0.0, true, false),
+        ("15 down", -15.0, false, false),
+        ("15 down sprint", -15.0, true, false),
+        ("15 up", 15.0, false, false),
+        ("15 up sprint", 15.0, true, false),
+        ("35 down sprint", -35.0, true, false),
+        ("45 up sprint", 45.0, true, false),
+        ("jump sprint", 0.0, true, true),
+    ] {
+        let r = Rush {
+            pitch,
+            sprint,
+            jump,
+            ..default()
+        };
+        let (seconds, slowest) = assert_endless_ramp(name, r);
+        println!(
+            "{name:>15}: 6 ramps, 18 m up in {seconds:.2} s, slowest {:.0}% of {}",
+            slowest * 100.0,
+            if sprint { "sprint" } else { "run" }
+        );
+    }
+}
+
+#[test]
+fn ramp_rush_stops_cleanly_at_the_height_limit_and_the_arena_edge() {
+    for sprint in [true, false] {
+        let target = if sprint { 7.5 } else { 5.5 };
+        let log = run_rush(Rush {
+            sprint,
+            ticks: 600,
+            ..default()
+        });
+        let chain = chain();
+        let top = log
+            .reaches(MAX_LEVELS as f32 * LEVEL_HEIGHT - 0.05)
+            .unwrap();
+        // On the top ramp the next one would break the height limit: the ghost
+        // shows it red and nothing is placed.
+        let ghost = log.ghost[top].expect("ghost");
+        assert_eq!(ghost.placement, Placement::AboveHeightLimit);
+        assert_eq!(
+            ghost.slot,
+            PieceSlot::ramp(cell(6, 4, MAX_LEVELS), Facing::North)
+        );
+        assert!(log.placed.iter().all(|p| p.1.cell.level < MAX_LEVELS));
+        // Running off the top: nothing is built in the air on the way down.
+        let fall: Vec<usize> = (top..log.feet.len()).filter(|&i| log.falling[i]).collect();
+        assert!(fall.len() > 30, "falls off the top");
+        for &i in &fall {
+            assert!(log.placed.iter().all(|p| p.0 != i), "placed while falling");
+        }
+        assert!(
+            fall.iter()
+                .any(|&i| log.ghost[i].map(|g| g.placement) == Some(Placement::Falling))
+        );
+        let landed = *fall.last().unwrap() + 1;
+        assert!(
+            log.grounded[landed] && log.feet[landed].y < 0.05,
+            "lands on the ground"
+        );
+        assert!(
+            log.speed(landed + 1) >= 0.97 * target,
+            "landing keeps the run speed"
+        );
+        // Landed, the rush starts again from the ground and runs up to the
+        // arena's edge, where the next ramp would leave the arena.
+        let restart: Vec<PieceSlot> = log.ramps()[chain.len()..].to_vec();
+        let first = restart.first().expect("the rush restarts").cell;
+        assert_eq!(first.level, 0);
+        for (k, slot) in restart.iter().enumerate() {
+            let k = k as i32;
+            assert_eq!(
+                *slot,
+                PieceSlot::ramp(cell(6, first.z - k, k), Facing::North)
+            );
+        }
+        assert_eq!(restart.last().unwrap().cell.z, 0, "up to the arena's edge");
+        let end = *log.feet.last().unwrap();
+        let bound = pieced::arena::ArenaLayout::default().bounds_min.y;
+        assert!(
+            (end.z - bound).abs() < 1e-3,
+            "stopped by the arena's edge at {end}"
+        );
+        assert!(
+            *log.grounded.last().unwrap(),
+            "standing on the last ramp at {end}"
+        );
+        let ghost = log.ghost.last().unwrap().expect("ghost");
+        assert_eq!(ghost.placement, Placement::OutOfBounds);
+        // Nothing stray anywhere.
+        assert_eq!(log.placed.len(), chain.len() + restart.len());
+    }
+}
+
+#[test]
+fn ramp_rush_with_walls_in_front_never_blocks_the_climb() {
+    // Ramp + wall: flick between the two while holding forward and build. Each
+    // wall shields the next ramp's high end and never blocks the way onto it.
+    for (name, pitch, sprint) in [("sprint", 0.0, true), ("run, 15 down", -15.0, false)] {
+        let r = Rush {
+            pitch,
+            sprint,
+            wall_every: 4,
+            ticks: 320,
+            ..default()
+        };
+        let (seconds, slowest) = assert_endless_ramp(name, r);
+        let log = run_rush(r);
+        let walls: Vec<PieceSlot> = log
+            .placed
+            .iter()
+            .map(|p| p.1)
+            .filter(|s| s.kind == PieceKind::Wall)
+            .collect();
+        let top = log
+            .reaches(MAX_LEVELS as f32 * LEVEL_HEIGHT - 0.05)
+            .unwrap();
+        let on_the_way: Vec<PieceSlot> = log
+            .placed
+            .iter()
+            .filter(|p| p.0 <= top && p.1.kind == PieceKind::Wall)
+            .map(|p| p.1)
+            .collect();
+        let shields: Vec<PieceSlot> = chain()
+            .iter()
+            .map(|r| PieceSlot::wall(r.cell, r.facing))
+            .collect();
+        assert_eq!(on_the_way, shields, "{name}: {walls:?}");
+        println!(
+            "{name:>13}: 6 ramps + 6 walls, 18 m up in {seconds:.2} s, slowest {:.0}%",
+            slowest * 100.0
+        );
+    }
+}
+
+#[test]
+fn ramp_rush_targeting_ignores_the_look_pitch() {
+    let rush = |map: &PieceMap, feet: Vec3, yaw: f32, pitch: f32| {
+        target_slot(
+            feet + Vec3::Y * EYE,
+            dir(yaw, deg(pitch)),
+            feet,
+            PieceKind::Ramp,
+            true,
+            map,
+        )
+    };
+    let own = cell(5, 5, 0);
+    for f in Facing::ALL {
+        // On the ground: the cell ahead at ground level, looking up or down,
+        // from anywhere in the cell. Only a steep look down builds under you.
+        let empty = PieceMap::default();
+        for along in [-1.9f32, 0.0, 1.9] {
+            let feet = center(5, 5) + f.vector() * along;
+            for pitch in (-10..=17).map(|k| k as f32 * 5.0) {
+                let expected = if pitch <= -55.0 { own } else { ahead(own, f) };
+                assert_eq!(
+                    rush(&empty, feet, f.yaw(), pitch),
+                    PieceSlot::ramp(expected, f),
+                    "{f:?} at {along}, pitch {pitch}"
+                );
+            }
+        }
+        // Up against a wall of yours, the ramp goes under you, rising to it.
+        let mut sim = empty_sim();
+        place_piece(sim.world_mut(), PieceSlot::wall(own, f)).unwrap();
+        let walled = sim.world().resource::<PieceMap>().clone();
+        assert_eq!(
+            rush(&walled, center(5, 5), f.yaw(), 0.0),
+            PieceSlot::ramp(own, f)
+        );
+
+        // On a ramp: the next link, whatever the pitch, and even looking up
+        // to 50° off its rise.
+        let mut sim = empty_sim();
+        place_piece(sim.world_mut(), PieceSlot::ramp(own, f)).unwrap();
+        let map = sim.world().resource::<PieceMap>().clone();
+        let next = PieceSlot::ramp(cell(ahead(own, f).x, ahead(own, f).z, 1), f);
+        for along in [-1.9f32, 0.0, 1.9] {
+            let feet = center(5, 5) + f.vector() * along + Vec3::Y * ramp_surface_height(-along);
+            for pitch in (-17..=17).map(|k| k as f32 * 5.0) {
+                for turn in [-50.0f32, 0.0, 50.0] {
+                    assert_eq!(
+                        rush(&map, feet, f.yaw() + deg(turn), pitch),
+                        next,
+                        "{f:?} at {along}, pitch {pitch}, turned {turn}"
+                    );
+                }
+            }
+        }
+        // Turned 90° at the top: a steep look down builds in your own column one
+        // level up, facing the new way (90s); a level look starts a new chain.
+        let top = center(5, 5) + f.vector() * 1.8 + Vec3::Y * 2.9;
+        let side = Facing::ALL[(Facing::ALL.iter().position(|&g| g == f).unwrap() + 1) % 4];
+        assert_eq!(
+            rush(&map, top, side.yaw(), -60.0),
+            PieceSlot::ramp(cell(5, 5, 1), side)
+        );
+        assert_eq!(
+            rush(&map, top, side.yaw(), 0.0),
+            PieceSlot::ramp(cell(ahead(own, side).x, ahead(own, side).z, 1), side)
+        );
+    }
+}
+
+#[test]
+fn falling_rushes_wait_for_your_feet() {
+    let tuning = BuildTuning::default();
+    let empty = PieceMap::default();
+    let ghost = |map: &PieceMap, feet: Vec3, gait: Gait| {
+        build_target(
+            feet + Vec3::Y * EYE,
+            dir(0.0, 0.0),
+            feet,
+            PieceKind::Ramp,
+            gait,
+            map,
+            0,
+            &[],
+            &tuning,
+        )
+    };
+    // Falling past empty cells: the chain waits (it would pass overhead).
+    let air = center(5, 5) + Vec3::Y * 10.0;
+    assert_eq!(
+        ghost(&empty, air, Gait::Falling).placement,
+        Placement::Falling
+    );
+    assert_eq!(
+        ghost(&empty, air, Gait::Advancing).placement,
+        Placement::Valid
+    );
+    // Dropping onto a ramp: its next link can still go down.
+    let mut sim = empty_sim();
+    place_piece(
+        sim.world_mut(),
+        PieceSlot::ramp(cell(5, 5, 0), Facing::North),
+    )
+    .unwrap();
+    let map = sim.world().resource::<PieceMap>().clone();
+    let over = center(5, 5) + Vec3::Y * 2.0;
+    let c = ghost(&map, over, Gait::Falling);
+    assert_eq!(c.slot, PieceSlot::ramp(cell(5, 4, 1), Facing::North));
+    assert_eq!(c.placement, Placement::Valid);
+}
+
+#[test]
+fn a_ramp_built_on_your_own_cell_lifts_you_onto_it() {
+    // Standing anywhere in the cell, a ramp at your feet lifts you onto its slope
+    // (you used to be left buried inside it, unable to move).
+    for along in [0.0f32, 1.6] {
+        let mut sim = empty_sim();
+        let feet = center(4, 10) + Vec3::NEG_Z * along;
+        put_player(&mut sim, feet, Facing::North.yaw(), deg(-70.0));
+        sim.ticks(3);
+        select(&mut sim, PieceKind::Ramp);
+        press(&mut sim);
+        let own = PieceSlot::ramp(cell(4, 10, 0), Facing::North);
+        assert!(occupant(&sim, own).is_some());
+        sim.ticks(3);
+        let p = sim.player();
+        let lifted = sim.feet(p);
+        let surface = ramp_surface_height(-along);
+        assert!(
+            lifted.y >= surface - 0.02 && lifted.y < surface + 0.2,
+            "at {along}: feet {lifted}, slope {surface}"
+        );
+        assert!(sim.get::<pieced::movement::Motor>(p).grounded);
+        // And you can walk on up it.
+        sim.set_look(p, Facing::North.yaw(), 0.0);
+        sim.player_intent().move_axis = Vec2::Y;
+        sim.ticks(12);
+        let later = sim.feet(p);
+        assert!(
+            later.z < lifted.z - 0.5,
+            "walks on from {lifted} to {later}"
+        );
+    }
+}
+
+/// Swipes the view by (yaw, pitch) degrees over `ticks` ticks.
+fn swipe(sim: &mut Sim, yaw: f32, pitch: f32, ticks: u32) {
+    for _ in 0..ticks {
+        sim.player_intent().look_delta = Vec2::new(deg(yaw), deg(pitch)) / ticks as f32;
+        sim.tick();
+    }
+}
+
+/// After a box: the builder stands inside `own`, clear of all four walls and
+/// not buried in the ramp.
+fn assert_boxed_in(sim: &mut Sim, own: GridCell, name: &str) {
+    let tuning = BuildTuning::default();
+    for f in Facing::ALL {
+        assert!(
+            occupant(sim, PieceSlot::wall(own, f)).is_some(),
+            "{name}: {f:?} wall"
+        );
+    }
+    let p = sim.player();
+    let feet = sim.feet(p);
+    let min = own.min_corner();
+    let clear = 0.35 + tuning.wall_thickness / 2.0 - 0.005;
+    assert!(
+        feet.x - min.x >= clear
+            && min.x + CELL_SIZE - feet.x >= clear
+            && feet.z - min.z >= clear
+            && min.z + CELL_SIZE - feet.z >= clear,
+        "{name}: not clear of the walls at {feet}"
+    );
+    assert!(
+        sim.get::<pieced::movement::Motor>(p).grounded,
+        "{name}: grounded"
+    );
+}
+
+#[test]
+fn a_1x1_box_forms_around_you_from_anywhere_in_the_cell() {
+    let own = cell(4, 10, 0);
+    let spots = [
+        ("centre", Vec2::ZERO),
+        ("north-east corner", Vec2::new(1.75, -1.75)),
+        ("north-west corner", Vec2::new(-1.75, -1.75)),
+        ("south-east corner", Vec2::new(1.75, 1.75)),
+        ("south-west corner", Vec2::new(-1.75, 1.75)),
+    ];
+    for (name, offset) in spots {
+        // Clicks: wall, swipe 90° right, wall (×3), then a ramp at your feet.
+        let mut sim = empty_sim();
+        put_player(
+            &mut sim,
+            center(4, 10) + Vec3::new(offset.x, 0.0, offset.y),
+            Facing::North.yaw(),
+            0.0,
+        );
+        sim.ticks(3);
+        let start = sim.sim_tick();
+        select(&mut sim, PieceKind::Wall);
+        press(&mut sim);
+        for _ in 0..3 {
+            swipe(&mut sim, -90.0, 0.0, 8);
+            press(&mut sim);
+        }
+        select(&mut sim, PieceKind::Ramp);
+        swipe(&mut sim, 0.0, -60.0, 8);
+        press(&mut sim);
+        let elapsed = (sim.sim_tick() - start) as f32 / 60.0;
+        assert!(elapsed <= 1.0, "{name}: box took {elapsed} s");
+        let map = sim.world().resource::<PieceMap>();
+        assert!(map.ramp_at(own).is_some(), "{name}: ramp inside");
+        assert_eq!(map.len(), 5, "{name}");
+        sim.ticks(5);
+        assert_boxed_in(&mut sim, own, name);
+
+        // Turbo: hold the click and sweep a full turn; every edge gets its wall.
+        let mut sim = empty_sim();
+        put_player(
+            &mut sim,
+            center(4, 10) + Vec3::new(offset.x, 0.0, offset.y),
+            Facing::North.yaw(),
+            0.0,
+        );
+        sim.ticks(3);
+        select(&mut sim, PieceKind::Wall);
+        sim.player_intent().fire = true;
+        sim.player_intent().fire_pressed = true;
+        swipe(&mut sim, -360.0, 0.0, 30);
+        sim.player_intent().fire = false;
+        sim.ticks(5);
+        assert_eq!(piece_count(&sim), 4, "{name}: turbo box");
+        let p = sim.player();
+        let feet = sim.feet(p);
+        assert_eq!(
+            GridCell::containing(feet),
+            own,
+            "{name}: inside the turbo box"
+        );
+    }
+}
+
+#[test]
+fn nineties_stack_a_ramp_tower_in_your_own_column() {
+    // Fortnite's 90s: at the top of each ramp, turn 90° right, wall, look down
+    // and jump as you build the next ramp in your own column one level up (it
+    // lifts you onto it), climb it, repeat.
+    let mut sim = empty_sim();
+    let (x, z) = (4, 10);
+    put_player(&mut sim, center(x, z), Facing::North.yaw(), 0.0);
+    sim.ticks(3);
+    let p = sim.player();
+    let start = sim.sim_tick();
+    let facings = [Facing::North, Facing::East, Facing::South, Facing::West];
+    for (level, &f) in facings.iter().enumerate() {
+        let level = level as i32;
+        select(&mut sim, PieceKind::Wall);
+        press(&mut sim);
+        assert!(
+            occupant(&sim, PieceSlot::wall(cell(x, z, level), f)).is_some(),
+            "wall {level}"
+        );
+        select(&mut sim, PieceKind::Ramp);
+        swipe(&mut sim, 0.0, -60.0, 3);
+        {
+            let mut i = sim.player_intent();
+            i.jump = true;
+            i.jump_pressed = true;
+        }
+        press(&mut sim);
+        sim.player_intent().jump = false;
+        assert!(
+            occupant(&sim, PieceSlot::ramp(cell(x, z, level), f)).is_some(),
+            "ramp {level}"
+        );
+        swipe(&mut sim, 0.0, 60.0, 3);
+        // Climb to the top.
+        {
+            let mut i = sim.player_intent();
+            i.move_axis = Vec2::Y;
+            i.sprint = true;
+        }
+        let top = (level + 1) as f32 * LEVEL_HEIGHT - 0.15;
+        for _ in 0..90 {
+            if sim.feet(p).y >= top {
+                break;
+            }
+            sim.tick();
+        }
+        sim.player_intent().move_axis = Vec2::ZERO;
+        let feet = sim.feet(p);
+        assert!(feet.y >= top, "climbed ramp {level}: {feet}");
+        assert_eq!(
+            (GridCell::containing(feet).x, GridCell::containing(feet).z),
+            (x, z)
+        );
+        swipe(&mut sim, -90.0, 0.0, 6);
+    }
+    let elapsed = (sim.sim_tick() - start) as f32 / 60.0;
+    let feet = sim.feet(p);
+    println!("90s: 4 levels ({:.1} m) in {elapsed:.2} s", feet.y);
+    assert!(elapsed <= 3.5, "four levels took {elapsed} s");
+    assert!(feet.y >= 4.0 * LEVEL_HEIGHT - 0.2);
+    assert_eq!(piece_count(&sim), 8, "4 ramps and 4 walls, nothing stray");
 }
