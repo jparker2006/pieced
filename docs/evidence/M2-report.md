@@ -15,7 +15,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
 | S5 Knight hitbox fit | PASS (on `12550d4`; re-run on the final commit) | `tests/knight.rs`. Worst part outside its hitbox: Helmet +4.6 cm (limit 5). Front fill ≤ 9.2 cm (limit 10) |
 | S6 Feedback timing | PARTIAL | `tests/spells.rs`: impact, hitmarker and damage number on the hit tick; bolt ≤ 2 frames, with the real `HudPlugin`. Native `fx_check` `scenario.s6` pending (go window) |
 | S7 No regressions (G1, G3, G6, tests, clippy, fmt) | PARTIAL | `cargo test --locked` 331 passed, 0 failed; clippy `-D warnings` and `fmt --check` clean on `12550d4`. Native G1, G3 and G6 pending (go window) |
-| S8 Jake's feel verdict | PENDING | — |
+| S8 Jake's feel verdict | PARTIAL | Positive on look and feel (2026-09-26, quoted in the log). Sessions were about 3 minutes, muted; sound unheard |
 | S10 Fortnite building and controls (Amendment A) | PENDING | ramp rush, controls, editing and cone in progress |
 | S9 Original and reproducible | PASS (on `12550d4`; re-run on the final commit) | `scripts/build-art.sh --check`: every model and UI image rebuilt headless, byte-identical. `tests/assets.rs` audit passes. `tests/models.rs` loads every glb headless. The only third-party files are Lilita One and its OFL license |
 
@@ -210,3 +210,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - Collision follows the edit, the HP fraction is kept, and 50 edits create no assets.
   - `tests/editing.rs` has 16 tests.
   - **Known:** `perf_director_generates_heavy_play_deterministically` flaked once under parallel load (it passed alone).
+- 2026-09-26 22:15–22:19: **Jake's second play session**, on the release build `189a0c0` (ramp rush, controls, editing, cone), muted at his request. About 3 minutes. Warm launch **2.98 s**, under the 5 s limit (informal; S3 still needs its 3-launch run). His verdict, quoted:
+  > "Okay, I just played. That was a lot of fun. Obviously, there's not an objective of the game, but just looks and feel-wise, it was great. I genuinely just love that. I wanted to feel magical and just have beautiful 3D graphics, and I think we're on the way to doing that."
+
+  S8 status: **positive on look and feel.** Still missing before PASS: a session of at least 10 minutes, and the **sounds**, which were muted in both sessions and never heard.
