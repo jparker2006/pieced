@@ -46,12 +46,12 @@ It holds a steady 60 fps with low input delay on battery in Low Power Mode. A tu
 12. As Jake, I want an optional mild aim friction on the rifle, off by default, so that I can decide whether trackpad aiming needs help.
 13. As Jake, I want to set the field of view between 60° and 90° (vertical), so that the view suits the screen.
 14. As Jake, I want to fire with a physical trackpad press and have it register while I hold movement keys, so that shooting while strafing works.
-15. As Jake, I want to toggle aim-down-sights with a two-finger click or a key, so that I never have to hold an awkward two-finger press.
+15. As Jake, I want to aim down sights while I hold Shift and stop when I let go, so that the trackpad only has to look, aim and click. *(D40 and D42 replaced the original toggle.)*
 
 **Movement**
 
 16. As Jake, I want to run with WASD, reaching full speed almost instantly and stopping crisply, so that movement feels responsive.
-17. As Jake, I want to sprint while holding Shift, so that I can cover ground and rotate fast.
+17. As Jake, I want to sprint whenever I hold W, with no sprint key, like Fortnite, so that I can cover ground and rotate fast. *(D41 replaced the Shift sprint.)*
 18. As Jake, I want to jump, with jump buffering and a short grace period after walking off an edge, so that jumps never feel eaten.
 19. As Jake, I want a jump that can't clear a wall, so that walls mean something.
 20. As Jake, I want to crouch while holding C, so that I can make myself smaller and move quietly.
@@ -142,8 +142,8 @@ It holds a steady 60 fps with low input delay on battery in Low Power Mode. A tu
 2. **Intent.** The single boundary between devices and gameplay. A **`PlayerIntent`** per controlled character holds:
    - a move vector;
    - jump pressed and held;
-   - sprint, crouch and fire (held and pressed edges);
-   - ADS toggle, reload;
+   - sprint (wanted; the keyboard sets it while W is held), crouch and fire (held and pressed edges);
+   - ADS held, reload;
    - select rifle, select pump;
    - select wall, ramp or floor;
    - a look delta in yaw and pitch.
@@ -271,23 +271,29 @@ It holds a steady 60 fps with low input delay on battery in Low Power Mode. A tu
 **Dummy**
 - 100 HP + 100 shield, moving at player run speed, respawning after about 2 s.
 
-### Controls (Milestone 1; rebinding is out of scope)
+### Controls (rebinding is out of scope)
+
+**Changed on 2026-09-26 by D40–D42** (`docs/design/DESIGN-GRILL.md`):
+- Aiming down sights is a Shift hold, never a toggle, and V no longer aims.
+- Sprint is on by default: holding W sprints, and there is no sprint key.
+- The trackpad's secondary (right) click does nothing.
 
 | Input | Action |
 |---|---|
-| W A S D | Move |
+| W A S D | Move. Holding W sprints, including forward diagonals (W+A, W+D). Strafing (A or D alone) and backpedalling (S) run, as in Fortnite |
 | Trackpad move | Look |
 | Trackpad physical click | Fire / place piece (hold for full-auto rifle or turbo build) |
-| Two-finger click, or V | Toggle aim-down-sights |
+| Shift, left or right (hold) | Aim down sights; letting go stops. Aiming stops the sprint |
 | Space | Jump |
-| Shift (hold) | Sprint |
-| C (hold) | Crouch; slide when pressed while sprinting |
+| C (hold) | Crouch; slide when pressed while sprinting (holding W) |
 | 1 / 2 | SCAR / pump (also leaves build mode) |
 | Q / E / F | Wall / ramp / floor (enters build mode) |
 | R | Reload |
 | Esc | Pause menu |
 | F3 | Performance overlay |
 | F4 | Tuning panel |
+
+ADS is still refused in build mode and while the rifle reloads. If Shift is still held when either ends, aiming resumes by itself.
 
 Command-key combinations are never used for gameplay.
 

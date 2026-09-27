@@ -19,7 +19,9 @@
 use crate::{
     arena::ArenaLayout,
     player::{BODY_BOTTOM, BODY_RADIUS, BODY_TOP, HEAD_CENTER},
-    shared::{Character, EyeHeight, GameCue, Hitbox, Layer, LookAngles, PlayerIntent, SimSet},
+    shared::{
+        ActiveTool, Character, EyeHeight, GameCue, Hitbox, Layer, LookAngles, PlayerIntent, SimSet,
+    },
     tuning::Tuning,
 };
 use avian3d::{character_controller::move_and_slide::DepenetrationConfig, prelude::*};
@@ -124,7 +126,8 @@ pub struct Motor {
     /// The collision capsule is the crouched one (also true while sliding).
     pub crouched: bool,
     pub sliding: bool,
-    /// Sprint is requested and allowed (held, moving forward, not crouched).
+    /// Sprint is requested and allowed (wanted, moving forward, not crouched, not
+    /// holding aim with a gun out).
     pub sprinting: bool,
     /// Seconds since the current slide started.
     pub slide_time: f32,
@@ -560,6 +563,7 @@ fn move_characters(
             &mut Transform,
             &mut Motor,
             &mut EyeHeight,
+            Option<&ActiveTool>,
         ),
         With<Character>,
     >,
@@ -591,7 +595,7 @@ fn move_characters(
     let accel_time = t.accel_time.max(1e-3);
     let decel = t.run_speed.max(0.1) / t.stop_time.max(1e-3);
 
-    for (entity, intent, look, mut transform, mut motor, mut eye) in &mut characters {
+    for (entity, intent, look, mut transform, mut motor, mut eye, tool) in &mut characters {
         let mut feet = transform.translation;
         if !feet.is_finite() || feet.y < KILL_HEIGHT {
             feet = Vec3::new(
@@ -643,7 +647,10 @@ fn move_characters(
             Vec3::ZERO
         };
         let mut horizontal = flat(motor.velocity);
-        let sprint_intent = intent.sprint && axis.y > 0.1;
+        // Sprint only moving forward (forward diagonals too; strafing and
+        // backpedalling run), and never while holding aim with a gun out (D41).
+        let aiming = intent.ads_held && tool.is_some_and(|t| !t.is_build());
+        let sprint_intent = intent.sprint && axis.y > 0.1 && !aiming;
 
         // 4. Slide entry: crouch pressed while sprinting on the ground.
         if intent.crouch_pressed

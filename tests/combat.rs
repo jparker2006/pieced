@@ -616,61 +616,65 @@ fn guns_do_not_fire_in_build_mode() {
 }
 
 #[test]
-fn ads_toggles_and_turns_off_for_build_sprint_and_rifle_reload() {
+fn ads_follows_the_aim_hold_and_is_refused_in_build_mode_and_rifle_reload() {
     let mut a = Arena::new(18);
     a.park_dummy();
     let ads = |a: &Arena| a.sim.get::<Ads>(a.player).0;
-    let toggle = |a: &mut Arena| {
-        a.sim.player_intent().ads_toggle_pressed = true;
+    let hold = |a: &mut Arena, held: bool| {
+        a.sim.player_intent().ads_held = held;
         a.sim.tick();
     };
 
-    toggle(&mut a);
+    // Holding aim turns ADS on and keeps it on; letting go turns it off.
+    hold(&mut a, true);
     assert!(ads(&a));
     assert!(a.cues().contains(&GameCue::AdsChanged {
         who: a.player,
         ads: true
     }));
-    toggle(&mut a);
+    a.sim.run_seconds(0.5);
+    assert!(ads(&a), "a hold, not a toggle");
+    hold(&mut a, false);
+    assert!(!ads(&a));
+    a.sim.run_seconds(0.5);
     assert!(!ads(&a));
 
-    // Entering build mode drops ADS, and it can't be turned on while building.
-    toggle(&mut a);
-    assert!(ads(&a));
+    // Build mode refuses ADS while aim stays held; back on a gun, it returns
+    // without a new press.
+    hold(&mut a, true);
     a.select(ActiveTool::Build(PieceKind::Ramp));
     assert!(!ads(&a));
-    toggle(&mut a);
-    assert!(!ads(&a));
+    a.sim.run_seconds(0.5);
+    assert!(!ads(&a), "no ADS in build mode");
+    a.select(RIFLE);
+    assert!(ads(&a), "aim still held: ADS comes back on the gun");
 
-    // Sprinting drops it.
-    a.equip(RIFLE);
-    toggle(&mut a);
-    assert!(ads(&a));
+    // Sprinting doesn't block ADS any more (aiming stops the sprint instead).
     {
         let mut i = a.sim.player_intent();
         i.sprint = true;
         i.move_axis = Vec2::Y;
     }
-    a.sim.tick();
-    assert!(!ads(&a));
+    a.sim.ticks(5);
+    assert!(ads(&a));
     {
         let mut i = a.sim.player_intent();
         i.sprint = false;
         i.move_axis = Vec2::ZERO;
     }
 
-    // Reloading the rifle drops it.
+    // The rifle reload refuses it, and it comes back when the reload ends.
+    a.sim.run_seconds(0.5);
     a.press_fire();
-    toggle(&mut a);
-    assert!(ads(&a));
     a.sim.player_intent().reload_pressed = true;
     a.sim.tick();
     assert!(!ads(&a));
-    toggle(&mut a);
+    a.sim.run_seconds(1.5);
     assert!(!ads(&a), "can't aim while the rifle reloads");
-    a.sim.run_seconds(2.0);
-    toggle(&mut a);
-    assert!(ads(&a), "ADS works again after the reload");
+    a.sim.run_seconds(0.6);
+    assert!(ads(&a), "ADS is back after the reload, aim still held");
+    hold(&mut a, false);
+    assert!(!ads(&a));
 }
 
 // ---------------------------------------------------------------------------

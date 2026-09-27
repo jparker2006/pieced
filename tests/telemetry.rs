@@ -272,18 +272,29 @@ fn perf_script_edges_fire_once_whatever_the_frame_rate() {
             n(|f| f.jump_pressed),
             n(|f| f.crouch_pressed),
             n(|f| f.select.is_some()),
-            n(|f| f.ads_toggle_pressed),
         )
     };
-    let at_60 = count(&play(&script, 90.0, |_| 1.0 / 60.0));
-    let at_45 = count(&play(&script, 90.0, |_| 1.0 / 45.0));
+    let frames_60 = play(&script, 90.0, |_| 1.0 / 60.0);
+    let frames_45 = play(&script, 90.0, |_| 1.0 / 45.0);
+    let at_60 = count(&frames_60);
+    let at_45 = count(&frames_45);
     let at_120 = count(&play(&script, 90.0, |_| 1.0 / 120.0));
     assert_eq!(at_60, at_45);
     assert_eq!(at_60, at_120);
-    let (fire, jump, crouch, select, ads) = at_60;
+    let (fire, jump, crouch, select) = at_60;
     assert!(
-        fire > 20 && jump > 10 && crouch > 5 && select > 30 && ads > 2,
+        fire > 20 && jump > 10 && crouch > 5 && select > 30,
         "{at_60:?}"
+    );
+    // Aim is a hold (D40): about the same time aimed whatever the frame rate.
+    let aimed = |frames: &[pieced::scenario::perf::ScriptFrame], fps: f64| {
+        frames.iter().filter(|f| f.ads_held).count() as f64 / fps
+    };
+    let (aimed_60, aimed_45) = (aimed(&frames_60, 60.0), aimed(&frames_45, 45.0));
+    assert!(aimed_60 > 5.0, "the script aims down sights: {aimed_60} s");
+    assert!(
+        (aimed_60 - aimed_45).abs() < 0.5,
+        "{aimed_60} s vs {aimed_45} s"
     );
 }
 
@@ -349,6 +360,7 @@ fn perf_director_generates_heavy_play_deterministically() {
     assert!(stats.shots >= 30, "sprays and pumps: {}", stats.shots);
     assert!(stats.hits >= 5, "hits the dummy: {}", stats.hits);
     assert!(intents.iter().any(|i| i.sprint) && intents.iter().any(|i| i.crouch));
+    assert!(intents.iter().any(|i| i.ads_held), "aims down sights");
     assert!(
         intents
             .iter()

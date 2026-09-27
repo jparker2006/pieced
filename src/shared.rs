@@ -216,13 +216,19 @@ pub struct PlayerIntent {
     pub move_axis: Vec2,
     pub jump: bool,
     pub jump_pressed: bool,
+    /// Sprint wanted. The keyboard sets it whenever W is held (D41: sprint by
+    /// default, no sprint key). Movement only sprints while moving forward,
+    /// standing, and not holding aim with a gun out.
     pub sprint: bool,
     pub crouch: bool,
     pub crouch_pressed: bool,
     /// Primary action held: fire the gun or keep placing pieces (turbo build).
     pub fire: bool,
     pub fire_pressed: bool,
-    pub ads_toggle_pressed: bool,
+    /// Aim down sights while held (D40: hold Shift, never a toggle). Combat turns
+    /// [`Ads`] on whenever this is held and aiming is allowed, so it comes back on
+    /// by itself when a blocking condition (build mode, a rifle reload) ends.
+    pub ads_held: bool,
     pub reload_pressed: bool,
     /// Requested tool change, latched like a press.
     pub select: Option<ActiveTool>,
@@ -236,7 +242,6 @@ impl PlayerIntent {
         self.jump_pressed = false;
         self.crouch_pressed = false;
         self.fire_pressed = false;
-        self.ads_toggle_pressed = false;
         self.reload_pressed = false;
         self.select = None;
     }

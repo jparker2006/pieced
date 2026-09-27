@@ -20,14 +20,14 @@ scripts/play.sh --windowed # in a window
 Developers: `source scripts/env.sh` first, then `cargo test --locked`. Scenarios for evidence runs:
 `cargo run --release -- --scenario <smoke|gallery|perf|ttk|latency> --evidence evidence/<name>`.
 
-## Controls (Milestone 1)
+## Controls
 
 | Input | Action |
 |---|---|
-| WASD / trackpad | Move / look |
+| WASD / trackpad | Move / look. Holding W sprints (no sprint key) |
 | Trackpad click | Fire, or place piece (hold for full-auto or turbo build) |
-| Two-finger click or V | Toggle aim-down-sights |
-| Space / Shift / C | Jump / sprint / crouch (slide while sprinting) |
+| Shift (hold) | Aim down sights; let go to stop. Aiming stops the sprint |
+| Space / C | Jump / crouch (slide when pressed while sprinting) |
 | 1 / 2 | SCAR / pump |
 | Q / E / F | Wall / ramp / floor |
 | R | Reload |

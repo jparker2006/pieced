@@ -384,6 +384,36 @@ Done means all four hold:
   - never time a game started through `cargo run`, because it inherits the low priority.
 - Codex image generation (network only) is always fine.
 
+### Amendment A (2026-09-26): Fortnite mechanics (D32–D46)
+
+After his first play session, Jake approved **gameplay changes to building and controls** for this milestone. His order: mechanics → design → playability. Weapons, damage, TTK, hitboxes, movement speeds and piece HP stay as they are. Full rules and sources are in `docs/research/fortnite-building.md`.
+
+1. **Ramp rush:** sprinting with the ramp selected and build held builds an endless ramp ahead: the right height every time, never behind you, no slowdown.
+2. **Targeting** (Fortnite model):
+   - Floor, ramp and cone tiles come from where the aim ray lands, with side and diagonal tiles allowed.
+   - A forward bias applies while sprinting.
+   - While climbing, the level comes from the ramp's own slot, and the cell above your own ramp is never targeted.
+   - Walls go on your own tile's edge, pushing the builder inward instead of rejecting.
+   - Reach covers the 3×3 tiles around you, one level down to one level up.
+   - 90s, double ramps, wall + ramp, and the 1×1 box from anywhere in the tile all work. Turbo (0.05 s) and the rebuild lock (0.15 s) are unchanged.
+3. **Cone:** a fourth piece. A half-level pyramid (1.5 m) that shares a cell with a floor and a ramp, on **V**. It uses the brick-and-plank style, 170 HP like the floor, and has crack stages and debris.
+4. **Editing:**
+   - **G** on the piece you're looking at enters edit mode, showing a grid overlay (wall 3×3, floor 2×2, ramp 2×2 path, cone 2×2 corners).
+   - Click or drag to select tiles; releasing confirms; **R** resets.
+   - Only Fortnite's valid edit shapes are allowed (window, door, arch, half wall, corner and triangle floors, half ramps, cone variants).
+   - No delay. The edit keeps the piece's HP fraction, and collision and mesh follow the edit.
+5. **Controls:** hold **Shift** to aim; always sprint while holding **W**; the right click (two-finger) does nothing. The full key layout is D43.
+
+**Gate S10, Fortnite building** (headless tests; Jake's feel is judged in S8):
+- a ramp rush places ≥ 10 consecutive ramps, height rises every ramp, and minimum horizontal speed ≥ 90% of run speed, from a standing start and from a sprint, looking level, 15° down and 15° up;
+- 90s work;
+- a double ramp works;
+- the 1×1 box works from anywhere in the tile;
+- every valid edit shape changes collision correctly and reset restores the piece;
+- the cone places, blocks and breaks;
+- hold-Shift ADS, auto-sprint and slide work, and the right click is inert;
+- every M1 building test still passes (G4).
+
 ## Testing Decisions
 
 - **Seams:** the same as Milestone 1: headless simulation (primary), native scenarios (evidence), and Jake (feel and scoring). Tests assert behavior a player would notice, deterministically.
@@ -423,6 +453,7 @@ Done means all four hold:
 | S7 | No regressions: Milestone 1 G1, G3 and G6 pass; `cargo test`, clippy and fmt are clean |
 | S8 | Jake's 10-minute feel verdict |
 | S9 | Original and reproducible: `build-art.sh` regenerates every model headless; the asset audit passes |
+| S10 | Fortnite building and controls (Amendment A) |
 
 ## Out of Scope
 

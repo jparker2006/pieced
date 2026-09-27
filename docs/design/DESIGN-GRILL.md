@@ -66,6 +66,38 @@ The M1 `/goal` was cleared by Jake on 2026-09-25.
 
 The spec (`docs/M2-SPEC.md`) and goal brief (`docs/M2-GOAL.md`) are final.
 
+## Round 6: play feedback, 2026-09-26 (after Jake's first play session)
+
+Jake: "it plays really fun … it looked really good." His answers to Q30–Q38:
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D32 | **Ramp rush is broken; fix all of it (Q30).** | Sprinting with the ramp selected and build held must ramp you up endlessly. Today "ramp started placing behind me." No dead ends, right heights, no slowdown. |
+| D33 | **Fortnite building, fully (Q31: "all of those").** | Wall + ramp combos, reliable building while turning and jumping (90s), Fortnite-like reach, **editing**, and the **cone/roof** piece: all now in scope. Rules come from research on real Fortnite building (`docs/research/fortnite-building.md`). |
+| D34 | **Guns stay (Q32).** | "The guns made a lot of sense." No weapon changes. Bloom is researched only to confirm we're close. |
+| D35 | **Controls (Q33).** | ADS moves to a key (Shift proposed), with auto-sprint on so Shift is free. The trackpad is only for looking, aiming and clicking. Details to confirm: see Round 6 follow-ups. |
+| D36 | **Movement stays (Q34).** | Sprinting and jumping are "really good." Slide untested. |
+| D37 | **The look is good; make it more beautiful later (Q35).** | "Looked really good and clean … could look a little bit more beautiful." A beauty pass comes after mechanics (D39). |
+| D38 | **Bots are their own milestone (Q36).** | The knight fighting back needs real gameplay decisions, so it's out of scope now (Milestone 3). |
+| D39 | **Scope and order (Q37, Q38).** | Mechanics fixes go into **this** milestone. Order: **mechanics → design → playability.** |
+
+**Round 6 follow-ups, 2026-09-26:**
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D40 | **Hold Shift to aim (Q39).** | ADS is a hold on Shift, not a toggle. V and the two-finger click no longer toggle ADS. |
+| D41 | **Always sprint (Q40).** | "If I'm holding W, I'm sprinting," like Fortnite. Sprint speed whenever moving; no sprint key. Slide is C while moving. |
+| D42 | **No two-finger clicks (Q41).** | The trackpad only looks, aims and clicks (fire or place). |
+
+**Round 6, part 2, 2026-09-26** (Jake: "rec for all"; based on `docs/research/fortnite-building.md`):
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D43 | **Key layout (Q42).** | WASD (always sprint on W), trackpad to look, click to fire, place or select edit tiles, **hold Shift to aim**, Space jump, C crouch/slide, 1/2 guns, **Q/E/F/V wall/ramp/floor/cone**, **G edit**, **R reload or reset edit**, Esc pause. No Ctrl (Ctrl + click is right-click on macOS). |
+| D44 | **Fortnite-style editing (Q43).** | G on a piece enters edit mode; click or drag tiles to select; **release confirms**; R resets. No edit delay. The edited piece keeps its HP fraction. Grids: wall 3×3, floor 2×2, ramp 2×2 path, cone 2×2 corners. |
+| D45 | **Instant full piece HP (Q44).** | No Fortnite-style HP build-up, which protects "a wall soaks ≥ 1 s of rifle fire". |
+| D46 | **Fortnite reach (Q45).** | Build in the 3×3 tiles around you (diagonals included, tunable to 2), from one level down to one level up. This makes double ramps and 90s possible. |
+
 ## Handoff: where to pick up after compaction
 
 - **Next:** Jake launches the Milestone 2 `/goal` with the launcher line in `docs/M2-GOAL.md`.
