@@ -81,6 +81,14 @@ Jake: "it plays really fun … it looked really good." His answers to Q30–Q38:
 | D38 | **Bots are their own milestone (Q36).** | The knight fighting back needs real gameplay decisions, so it's out of scope now (Milestone 3). |
 | D39 | **Scope and order (Q37, Q38).** | Mechanics fixes go into **this** milestone. Order: **mechanics → design → playability.** |
 
+**Round 6 follow-ups, 2026-09-26:**
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D40 | **Hold Shift to aim (Q39).** | ADS is a hold on Shift, not a toggle. V and the two-finger click no longer toggle ADS. |
+| D41 | **Always sprint (Q40).** | "If I'm holding W, I'm sprinting," like Fortnite. Sprint speed whenever moving; no sprint key. Slide is C while moving. |
+| D42 | **No two-finger clicks (Q41).** | The trackpad only looks, aims and clicks (fire or place). |
+
 ## Handoff: where to pick up after compaction
 
 - **Next:** Jake launches the Milestone 2 `/goal` with the launcher line in `docs/M2-GOAL.md`.
