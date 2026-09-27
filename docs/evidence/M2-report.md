@@ -287,3 +287,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **Knight framing:** T05's knight is farther and smaller than in the target, and T03's bolt impact reads beside him rather than on him.
 
   **Next:** round 3, the third focused attempt the brief allows before S1 goes back to Jake with options. Three parallel slices: viewmodel framing and silhouette, station and sky, ground and framing. The five passing views must not regress.
+- 2026-09-27: **round 3, sky slice merged** (`f347c58`), with 407 tests passing and `build-art --check` clean:
+  - **Station:** rebuilt as a massive dark slate gothic cathedral: about 20 towers with spires and pinnacles, buttresses, flush pointed stained glass (a 44×118 m great window), a lit arcade, a ring walkway, and a jagged rock with six crags and seven waterfalls. It fills the upper-right quarter of T01 and T02.
+  - **Island field:** 60 islands, up from 18 (a near ring of 14 plus 46 at 300–900 m), with 47 pouring waterfalls. They share five meshes, including a new castle island and a pebble.
+  - **Planet:** soft lavender with subtle bands and a thin ring.
+  - **T10:** the camera is 250 m from the station, looking up 24°.
+  - **Budget:** far layer 25.4k → 53.4k triangles, opaque batches 15 → 14, halos 25 → 47. A new `tests/far.rs` budget test enforces ≤ 75k triangles, ≤ 16 batches and ≤ 50 halos.
+  - **Open item:** the scenery cloud bank (ground slice) now hides the station's rock and the bottom of T10; the ground builder is re-anchoring it under the station.
