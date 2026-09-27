@@ -176,6 +176,8 @@ pub enum PieceKind {
     Wall,
     Floor,
     Ramp,
+    /// A half-level pyramid roof that shares its cell with a floor and a ramp.
+    Cone,
 }
 
 /// What the character holds: a gun, or a piece to build.
@@ -230,6 +232,12 @@ pub struct PlayerIntent {
     /// by itself when a blocking condition (build mode, a rifle reload) ends.
     pub ads_held: bool,
     pub reload_pressed: bool,
+    /// Enter or leave edit mode on the piece under the crosshair (D44: G, or Esc
+    /// while editing).
+    pub edit_pressed: bool,
+    /// Reset the edited piece under the crosshair, in edit mode or out of it
+    /// (D43: R when looking at an edited piece in reach; otherwise R reloads).
+    pub reset_pressed: bool,
     /// Requested tool change, latched like a press.
     pub select: Option<ActiveTool>,
     /// Look change in radians (yaw, pitch), already scaled by sensitivity.
@@ -243,6 +251,8 @@ impl PlayerIntent {
         self.crouch_pressed = false;
         self.fire_pressed = false;
         self.reload_pressed = false;
+        self.edit_pressed = false;
+        self.reset_pressed = false;
         self.select = None;
     }
 }
@@ -529,6 +539,10 @@ pub enum GameCue {
     AdsChanged { who: Entity, ads: bool },
     PlacementRejected { who: Entity },
     Respawned { who: Entity },
+    /// An edit was confirmed (or a piece reset) on `piece`.
+    PieceEdited { who: Entity, piece: Entity },
+    /// A released edit selection wasn't a valid shape: nothing changed.
+    EditRejected { who: Entity },
 }
 
 // ---------------------------------------------------------------------------

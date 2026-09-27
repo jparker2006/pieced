@@ -8,6 +8,66 @@
     "file": "brick_chunk.glb"
   },
   {
+    "name": "cone_plank",
+    "file": "cone_plank.glb"
+  },
+  {
+    "name": "cone_plank_crack1",
+    "file": "cone_plank_crack1.glb"
+  },
+  {
+    "name": "cone_plank_crack2",
+    "file": "cone_plank_crack2.glb"
+  },
+  {
+    "name": "cone_plank_peak",
+    "file": "cone_plank_peak.glb"
+  },
+  {
+    "name": "cone_plank_peak_crack1",
+    "file": "cone_plank_peak_crack1.glb"
+  },
+  {
+    "name": "cone_plank_peak_crack2",
+    "file": "cone_plank_peak_crack2.glb"
+  },
+  {
+    "name": "cone_plank_ridge",
+    "file": "cone_plank_ridge.glb"
+  },
+  {
+    "name": "cone_plank_ridge_crack1",
+    "file": "cone_plank_ridge_crack1.glb"
+  },
+  {
+    "name": "cone_plank_ridge_crack2",
+    "file": "cone_plank_ridge_crack2.glb"
+  },
+  {
+    "name": "cone_plank_slope",
+    "file": "cone_plank_slope.glb"
+  },
+  {
+    "name": "cone_plank_slope_crack1",
+    "file": "cone_plank_slope_crack1.glb"
+  },
+  {
+    "name": "cone_plank_slope_crack2",
+    "file": "cone_plank_slope_crack2.glb"
+  },
+  {
+    "name": "cone_plank_tent",
+    "file": "cone_plank_tent.glb"
+  },
+  {
+    "name": "cone_plank_tent_crack1",
+    "file": "cone_plank_tent_crack1.glb"
+  },
+  {
+    "name": "cone_plank_tent_crack2",
+    "file": "cone_plank_tent_crack2.glb"
+  },
+  {
     "name": "far_island_a",
     "file": "far_island_a.glb"
   },
@@ -30,6 +90,18 @@
   {
     "name": "floor_plank_crack2",
     "file": "floor_plank_crack2.glb"
+  },
+  {
+    "name": "floor_plank_tiles",
+    "file": "floor_plank_tiles.glb"
+  },
+  {
+    "name": "floor_plank_tiles_crack1",
+    "file": "floor_plank_tiles_crack1.glb"
+  },
+  {
+    "name": "floor_plank_tiles_crack2",
+    "file": "floor_plank_tiles_crack2.glb"
   },
   {
     "name": "gloves",
@@ -66,6 +138,18 @@
   {
     "name": "ramp_plank_crack2",
     "file": "ramp_plank_crack2.glb"
+  },
+  {
+    "name": "ramp_plank_tiles",
+    "file": "ramp_plank_tiles.glb"
+  },
+  {
+    "name": "ramp_plank_tiles_crack1",
+    "file": "ramp_plank_tiles_crack1.glb"
+  },
+  {
+    "name": "ramp_plank_tiles_crack2",
+    "file": "ramp_plank_tiles_crack2.glb"
   },
   {
     "name": "rifle",
@@ -106,5 +190,17 @@
   {
     "name": "wall_brick_crack2",
     "file": "wall_brick_crack2.glb"
+  },
+  {
+    "name": "wall_brick_tiles",
+    "file": "wall_brick_tiles.glb"
+  },
+  {
+    "name": "wall_brick_tiles_crack1",
+    "file": "wall_brick_tiles_crack1.glb"
+  },
+  {
+    "name": "wall_brick_tiles_crack2",
+    "file": "wall_brick_tiles_crack2.glb"
   }
 ]

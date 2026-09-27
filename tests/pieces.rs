@@ -1,8 +1,10 @@
 //! Building pieces' look (docs/M2-SPEC.md → Building): the Blender brick wall
 //! and plank floor and ramp fit the build grid exactly where Milestone 1's
-//! pieces did (so what you see matches the unchanged colliders), every crack
-//! stage and debris chunk loads, and the building visuals give each piece its
-//! shared model, swap models as it cracks, and pop new pieces in.
+//! pieces did (so what you see matches the unchanged colliders), the plank
+//! cone fits its pyramid, every crack stage and debris chunk loads, and the
+//! building visuals give each piece its shared model, swap models as it cracks
+//! or is edited, and pop new pieces in. Every edit is drawn from meshes built
+//! once at load: editing, like building, creates no assets.
 
 use bevy::{
     ecs::system::RunSystemOnce,
@@ -99,7 +101,12 @@ fn piece_models_fit_the_build_grid_in_every_crack_stage() {
              scenes: Res<Assets<WorldAsset>>,
              meshes: Res<Assets<Mesh>>| {
                 let mut out = Vec::new();
-                for kind in [PieceKind::Wall, PieceKind::Floor, PieceKind::Ramp] {
+                for kind in [
+                    PieceKind::Wall,
+                    PieceKind::Floor,
+                    PieceKind::Ramp,
+                    PieceKind::Cone,
+                ] {
                     for stage in 0..3 {
                         let name = piece_model(kind, stage);
                         let scene = scenes.get(&library.get(name).unwrap().scene).unwrap();
@@ -163,6 +170,20 @@ fn piece_models_fit_the_build_grid_in_every_crack_stage() {
                     assert!(p.y <= surface + 0.12, "{what}: {p} floats over the slope");
                 }
             }
+            PieceKind::Cone => {
+                assert!(
+                    lo.x >= -2.01 && hi.x <= 2.01 && lo.z >= -2.01 && hi.z <= 2.01,
+                    "{what}: {lo}..{hi}"
+                );
+                assert!(lo.x < -1.9 && hi.x > 1.9 && lo.z < -1.9 && hi.z > 1.9);
+                assert!(lo.y >= -0.01 && hi.y <= 1.72, "{what}: {lo}..{hi}");
+                // Planks and trims sit on the pyramid (1.5 m), never far above it.
+                for p in positions(&mesh) {
+                    let pyramid = pieced::building::CONE_HEIGHT
+                        * (1.0 - p.x.abs().max(p.z.abs()) / 2.0);
+                    assert!(p.y <= pyramid + 0.24, "{what}: {p} floats over the cone");
+                }
+            }
         }
     }
 }
@@ -178,7 +199,12 @@ fn pieces_get_their_shared_model_crack_and_pop() {
             .any(|k| k == "pieces")
     );
     let assets = app.world().resource::<PieceAssets>().clone();
-    for kind in [PieceKind::Wall, PieceKind::Floor, PieceKind::Ramp] {
+    for kind in [
+        PieceKind::Wall,
+        PieceKind::Floor,
+        PieceKind::Ramp,
+        PieceKind::Cone,
+    ] {
         let meshes = app.world().resource::<Assets<Mesh>>();
         for stage in 0..3 {
             let mesh = meshes.get(assets.mesh(kind, stage)).expect("loaded");
@@ -372,5 +398,156 @@ fn building_cracking_and_breaking_fifty_pieces_creates_no_assets() {
         asset_counts(&app),
         before,
         "placing, cracking and breaking pieces must reuse shared meshes, materials and images"
+    );
+}
+
+#[test]
+fn every_edit_has_shared_meshes_and_edited_pieces_show_them() {
+    use pieced::building::{PieceEdit, edit::valid_edits};
+    let mut app = loaded();
+    let assets = app.world().resource::<PieceAssets>().clone();
+    let meshes = app.world().resource::<Assets<Mesh>>();
+    let mut count = 0;
+    for kind in [
+        PieceKind::Wall,
+        PieceKind::Floor,
+        PieceKind::Ramp,
+        PieceKind::Cone,
+    ] {
+        for e in valid_edits(kind) {
+            let v = assets
+                .edits
+                .get(&(kind, e))
+                .unwrap_or_else(|| panic!("{kind:?} {e:?} has no meshes"));
+            for (stage, handle) in v.meshes.iter().enumerate() {
+                let mesh = meshes.get(handle).expect("loaded");
+                assert!(mesh.attribute(ATTRIBUTE_OUTLINE_NORMAL).is_some());
+                assert!(mesh.attribute(Mesh::ATTRIBUTE_COLOR).is_some());
+                let (lo, hi) = bounds(mesh);
+                let what = format!("{kind:?} {e:?} stage {stage}");
+                // Composed in the full piece's model space, inside its cell
+                // (frame boards may stand a little proud of a wall).
+                assert!(
+                    lo.x >= -2.02 && hi.x <= 2.02 && lo.z >= -2.02 && hi.z <= 2.02,
+                    "{what}: {lo}..{hi}"
+                );
+                // No edited piece draws much more than the full piece.
+                let tris = mesh.indices().map_or(0, |i| i.len() / 3);
+                assert!(tris <= 1100, "{what}: {tris} triangles");
+            }
+            count += 1;
+        }
+    }
+    assert_eq!(count, 22 + 14 + 8 + 14);
+
+    // A piece swaps to its edit's mesh (turned, for ramps and cones) and back.
+    let slot = PieceSlot::cone(GridCell::new(5, 5, 0));
+    let tuning = Tuning::default().building;
+    let piece = app
+        .world_mut()
+        .spawn((
+            Piece {
+                kind: PieceKind::Cone,
+                cell: slot.cell,
+                facing: slot.facing,
+                hp: tuning.max_hp(PieceKind::Cone),
+                max_hp: tuning.max_hp(PieceKind::Cone),
+                crack_stage: 0,
+            },
+            PieceEdit::FULL,
+            InitialCover,
+            slot.transform(),
+        ))
+        .id();
+    app.update();
+    let visual = |app: &mut App| -> (Handle<Mesh>, Quat) {
+        let child = app.world().get::<Children>(piece).expect("a visual child")[0];
+        let e = app.world().entity(child);
+        (
+            e.get::<Mesh3d>().unwrap().0.clone(),
+            e.get::<Transform>().unwrap().rotation,
+        )
+    };
+    assert_eq!(visual(&mut app).0, *assets.mesh(PieceKind::Cone, 0));
+    for e in [PieceEdit::of(&[0]), PieceEdit::of(&[3]), PieceEdit::of(&[1, 3])] {
+        *app.world_mut().get_mut::<PieceEdit>(piece).unwrap() = e;
+        app.update();
+        let (mesh, turn) = visual(&mut app);
+        let (want, want_turn) = assets.visual(PieceKind::Cone, e, 0);
+        assert_eq!((mesh, turn), (want.clone(), want_turn), "{e:?}");
+    }
+    *app.world_mut().get_mut::<PieceEdit>(piece).unwrap() = PieceEdit::FULL;
+    app.update();
+    assert_eq!(visual(&mut app), (assets.mesh(PieceKind::Cone, 0).clone(), Quat::IDENTITY));
+}
+
+#[test]
+fn editing_and_resetting_fifty_times_creates_no_assets() {
+    use pieced::{
+        building::{PieceEdit, clear_pieces, damage_piece, edit::valid_edits, edit_piece, place_piece},
+        shared::AppState,
+    };
+    let mut app = game_with_visuals();
+    update_until(&mut app, "the piece models", |app| {
+        app.world().contains_resource::<PieceAssets>()
+    });
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Playing);
+    for _ in 0..10 {
+        app.update();
+    }
+    clear_pieces(app.world_mut());
+    for _ in 0..5 {
+        app.update();
+    }
+    let before = asset_counts(&app);
+
+    // One of each kind, including cones placed (and broken) along the way.
+    let slots = [
+        PieceSlot::wall(GridCell::new(3, 3, 0), Facing::North),
+        PieceSlot::floor(GridCell::new(5, 3, 1)),
+        PieceSlot::ramp(GridCell::new(7, 3, 0), Facing::East),
+        PieceSlot::cone(GridCell::new(9, 3, 0)),
+    ];
+    let pieces: Vec<(PieceKind, Entity)> = slots
+        .iter()
+        .map(|s| (s.kind, place_piece(app.world_mut(), *s).expect("placed")))
+        .collect();
+    for _ in 0..12 {
+        app.update();
+    }
+    let mut edits = 0;
+    'outer: for round in 0..4 {
+        for &(kind, piece) in &pieces {
+            for e in valid_edits(kind).into_iter().skip(round).step_by(4) {
+                assert!(edit_piece(app.world_mut(), piece, e));
+                app.update();
+                assert!(edit_piece(app.world_mut(), piece, PieceEdit::FULL));
+                app.update();
+                edits += 1;
+                if edits >= 50 {
+                    break 'outer;
+                }
+            }
+            // Crack it a little each round, so edits land on every stage.
+            let max = app.world().get::<Piece>(piece).unwrap().max_hp;
+            damage_piece(app.world_mut(), piece, max * 0.2);
+            app.update();
+        }
+    }
+    assert_eq!(edits, 50);
+    let cone = place_piece(app.world_mut(), PieceSlot::cone(GridCell::new(9, 5, 0))).unwrap();
+    for _ in 0..3 {
+        app.update();
+    }
+    damage_piece(app.world_mut(), cone, 10_000.0);
+    for _ in 0..90 {
+        app.update();
+    }
+    assert_eq!(
+        asset_counts(&app),
+        before,
+        "editing and resetting must reuse the meshes built at load"
     );
 }

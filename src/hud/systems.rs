@@ -15,7 +15,7 @@ use super::{
     style::{ACCENT, DANGER, INK, RIM, SLOT, TEXT, dim},
 };
 use crate::{
-    building::AimedPiece,
+    building::{AimedPiece, EditMode},
     combat::{CombatStats, Loadout},
     menu::MenuState,
     palette,
@@ -99,6 +99,7 @@ fn slot_of(tool: ActiveTool) -> u8 {
         ActiveTool::Build(PieceKind::Wall) => 2,
         ActiveTool::Build(PieceKind::Ramp) => 3,
         ActiveTool::Build(PieceKind::Floor) => 4,
+        ActiveTool::Build(PieceKind::Cone) => 5,
     }
 }
 
@@ -107,6 +108,7 @@ fn piece_name(kind: PieceKind) -> &'static str {
         PieceKind::Wall => "WALL",
         PieceKind::Ramp => "RAMP",
         PieceKind::Floor => "FLOOR",
+        PieceKind::Cone => "CONE",
     }
 }
 
@@ -178,7 +180,16 @@ fn update_status(
     glow: Option<Res<CrystalGlow>>,
     art: Option<Res<UiArt>>,
     player: Option<
-        Single<(&Health, &ActiveTool, Option<&Loadout>, Option<&AimedPiece>), With<Player>>,
+        Single<
+            (
+                &Health,
+                &ActiveTool,
+                Option<&Loadout>,
+                Option<&AimedPiece>,
+                Option<&EditMode>,
+            ),
+            With<Player>,
+        >,
     >,
     mut memory: Local<StatusMemory>,
     mut parts: Query<StatusParts>,
@@ -186,7 +197,8 @@ fn update_status(
     let Some(player) = player else {
         return;
     };
-    let (health, tool, loadout, aimed) = player.into_inner();
+    let (health, tool, loadout, aimed, edit) = player.into_inner();
+    let editing = edit.is_some_and(EditMode::is_editing);
     let hud = &tuning.hud;
     let dt = time.delta_secs();
 
@@ -443,7 +455,12 @@ fn update_status(
             }
             El::BuildBadge => {
                 if let Some(mut v) = vis {
-                    set_visible(&mut v, build);
+                    set_visible(&mut v, build || editing);
+                }
+            }
+            El::BuildBadgeText => {
+                if let Some(mut t) = text {
+                    set_text(&mut t, if editing { "EDIT MODE" } else { "BUILD MODE" });
                 }
             }
             El::PieceGroup => {

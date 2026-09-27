@@ -1,0 +1,69 @@
+{
+  "name": "ramp_plank_tiles_crack2",
+  "kind": "ramp_tiles",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 435,
+  "triangle_budget": 800,
+  "bounds": {
+    "min": [
+      -2.0,
+      -0.056,
+      -1.9995
+    ],
+    "max": [
+      2.0,
+      2.9864,
+      1.9981
+    ]
+  },
+  "parts": {
+    "Left": {
+      "parent": "ramp_plank_tiles_crack2",
+      "bounds": {
+        "min": [
+          -2.0,
+          -0.056,
+          -1.9995
+        ],
+        "max": [
+          0.0,
+          2.9864,
+          1.9981
+        ]
+      },
+      "triangles": 224,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "stump_bark_line",
+        "trunk"
+      ]
+    },
+    "Right": {
+      "parent": "ramp_plank_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.0,
+          -0.056,
+          -1.9995
+        ],
+        "max": [
+          2.0,
+          2.9837,
+          1.9968
+        ]
+      },
+      "triangles": 211,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "stump_bark_line",
+        "trunk"
+      ]
+    }
+  },
+  "attach": {}
+}

@@ -1,5 +1,6 @@
-"""Building pieces: the brick wall, the plank floor and ramp, their crack stages,
-and the debris chunks a broken piece bursts into (targets R4-M1, T09, T01, T03-T08).
+"""Building pieces: the brick wall, the plank floor, ramp and cone, their crack
+stages, the edit tiles edited pieces are drawn from, and the debris chunks a
+broken piece bursts into (targets R4-M1, T09, T01, T03-T08).
 
 Every piece is built on the build grid (`src/shared.rs`: 4 m cells, 3 m levels)
 in the piece's own local space, exactly as `PieceSlot::transform` places it and
@@ -11,7 +12,15 @@ unchanged. In Blender coordinates (x, y, z) -> Bevy (-x, z, y):
   brick faces 0.15 m either side of the centre plane (the collider is 0.2 m);
 - floor: centred on the origin, 4 x 4 m, planks along y, top at z = +0.1;
 - ramp: base centre on the origin, rising 3 m over 4 m toward -y (its front,
-  Bevy -Z), plank tops on the collider's slope.
+  Bevy -Z), plank tops on the collider's slope;
+- cone: base centre on the origin, a 4 x 4 m pyramid 1.5 m tall (half a level),
+  plank tops on the collider's faces.
+
+Edits (D44, `src/building/edit.rs`): an edited piece is drawn from shared
+meshes. Walls, floors and ramps come as tile sets (`*_tiles`: one named part
+per edit tile, cut from the full piece so the tiles together are the piece, with
+wooden trims for the opening's edges); an edited cone is one of four roof
+shapes (`cone_plank_peak`, `_slope`, `_ridge`, `_tent`) that Rust turns to fit.
 
 Crack stages are separate models (`_crack1` at 66% HP: cartoon cracks; `_crack2`
 at 33%: bigger cracks, missing bricks, split planks), so a piece swaps its mesh
@@ -34,6 +43,10 @@ HALF_H = LEVEL / 2
 
 CRACK = "stump_bark_line"  # dark brown ink for cracks and holes
 
+# Tile sets are cut from closed solids, so no box face may be left out while
+# one is built (a cut through an open box couldn't be capped).
+_KEEP_ALL_FACES = False
+
 
 # ---------------------------------------------------------------------------
 # Local helpers
@@ -53,6 +66,8 @@ def add_box(bm, lo, hi, color, xf=None, drop=()):
     verts = bmesh.ops.create_cube(bm, size=1.0, matrix=m)["verts"]
     faces = list({f for v in verts for f in v.link_faces})
     rot = (xf.to_3x3() if xf is not None else Matrix.Identity(3))
+    if _KEEP_ALL_FACES:
+        drop = ()
     keep = []
     dead = []
     for f in faces:
@@ -299,7 +314,8 @@ MISSING_2 = {(7, 0), (7, 1), (6, 0), (4, 3), (3, 4), (1, 1)}
 SHOVED_2 = {(5, 5): (0.04, 8.0), (2, 4): (0.03, -6.0)}
 
 
-def build_wall(root, stage):
+def wall_bmesh(stage):
+    """The brick wall at a crack stage, standing on the ground."""
     bm = palette.new_bmesh()
     wall_core(bm, bite=stage >= 2)
     missing = MISSING_2 if stage >= 2 else ()
@@ -312,7 +328,11 @@ def build_wall(root, stage):
         wall_cracks(bm, CRACKS_2)
     # Built around its centre; stand it on the ground.
     bmesh.ops.translate(bm, vec=(0.0, 0.0, HALF_H), verts=bm.verts)
-    finish(root, bm)
+    return bm
+
+
+def build_wall(root, stage):
+    finish(root, wall_bmesh(stage))
     scene.make_attach("Top", root, (0.0, 0.0, LEVEL))
 
 
@@ -443,7 +463,7 @@ def crack_planks(bm, planks, frames, cracks):
         plank_crack(bm, top, n, pts)
 
 
-def build_floor(root, stage):
+def floor_bmesh(stage):
     bm = palette.new_bmesh()
     r = shapes.rng(31)
     frames, width = floor_frames()
@@ -471,7 +491,11 @@ def build_floor(root, stage):
                 (3, [(0.7, 0.05), (1.0, -0.1), (1.3, 0.02)]),
             ]
         crack_planks(bm, planks, frames, cracks)
-    finish(root, bm)
+    return bm
+
+
+def build_floor(root, stage):
+    finish(root, floor_bmesh(stage))
     scene.make_attach("Top", root, (0.0, 0.0, FLOOR_TOP))
 
 
@@ -548,7 +572,7 @@ def ramp_underlay(bm):
     lofted_bar(bm, secs, "stump_bark")
 
 
-def build_ramp(root, stage):
+def ramp_bmesh(stage):
     bm = palette.new_bmesh()
     r = shapes.rng(47)
     frames, width = ramp_frames()
@@ -575,7 +599,11 @@ def build_ramp(root, stage):
                 (5, [(2.2, 0.05), (2.5, -0.1), (2.8, 0.02)]),
             ]
         crack_planks(bm, planks, frames, cracks)
-    finish(root, bm)
+    return bm
+
+
+def build_ramp(root, stage):
+    finish(root, ramp_bmesh(stage))
     scene.make_attach("Top", root, (0.0, -HALF_W, LEVEL))
 
 
@@ -590,6 +618,393 @@ def build_ramp_plank_crack1(root):
 
 def build_ramp_plank_crack2(root):
     build_ramp(root, 2)
+
+
+# ---------------------------------------------------------------------------
+# Edit tiles
+# ---------------------------------------------------------------------------
+
+def clip(bm, planes):
+    """Cuts `bm` down to the side of every plane (point, normal) where
+    (p - point) . normal <= 0, capping each cut solid with a face of the
+    colour beside it (open surfaces such as cracks are just trimmed)."""
+    layer = palette.face_layer(bm)
+    for co, no in planes:
+        co, no = Vector(co), Vector(no).normalized()
+        geom = bm.verts[:] + bm.edges[:] + bm.faces[:]
+        res = bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=co, plane_no=no,
+                                     clear_outer=True)
+        cut = [e for e in res["geom_cut"]
+               if isinstance(e, bmesh.types.BMEdge) and e.is_valid and e.is_boundary]
+        if not cut:
+            continue
+        filled = bmesh.ops.holes_fill(bm, edges=cut, sides=0)["faces"]
+        for f in filled:
+            f.normal_update()
+            if f.normal.dot(no) < 0:
+                f.normal_flip()
+            if f[layer] == 0:
+                near = [g for e in f.edges for g in e.link_faces if g is not f and g[layer]]
+                if near:
+                    f[layer] = near[0][layer]
+    # Bisecting leaves nothing loose, but drop stray bits anyway.
+    loose = [v for v in bm.verts if not v.link_faces]
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    return bm
+
+
+def keep_between(axis, lo, hi, edge_lo, edge_hi):
+    """Planes keeping lo <= coordinate `axis` <= hi (none at the piece's own
+    outer edges, edge_lo / edge_hi)."""
+    planes = []
+    n = Vector((0.0, 0.0, 0.0))
+    if lo > edge_lo + 1e-4:
+        n = Vector((0.0, 0.0, 0.0))
+        n[axis] = -1.0
+        p = Vector((0.0, 0.0, 0.0))
+        p[axis] = lo
+        planes.append((p, n))
+    if hi < edge_hi - 1e-4:
+        n = Vector((0.0, 0.0, 0.0))
+        n[axis] = 1.0
+        p = Vector((0.0, 0.0, 0.0))
+        p[axis] = hi
+        planes.append((p, n))
+    return planes
+
+
+def tile_part(root, name, make_bm, planes):
+    global _KEEP_ALL_FACES
+    _KEEP_ALL_FACES = True
+    try:
+        bm = make_bm()
+    finally:
+        _KEEP_ALL_FACES = False
+    finish(root, clip(bm, planes), name)
+
+
+# Wall tiles are numbered like src/building/edit.rs: Bevy columns along the
+# wall's +x (Blender -x), rows from the top; a tile is 4/3 x 1 m.
+WALL_TILE_W = CELL / 3
+WALL_TILE_H = LEVEL / 3
+
+
+def wall_tile_planes(tile):
+    c, r = tile % 3, tile // 3
+    x0, x1 = HALF_W - (c + 1) * WALL_TILE_W, HALF_W - c * WALL_TILE_W
+    z0, z1 = LEVEL - (r + 1) * WALL_TILE_H, LEVEL - r * WALL_TILE_H
+    return keep_between(0, x0, x1, -HALF_W, HALF_W) + keep_between(2, z0, z1, 0.0, LEVEL)
+
+
+# The diagonals a triangle edit cuts along (Blender x, z): "A" runs from the
+# Bevy bottom-left to the top-right corner through tiles 6, 4, 2; "B" from the
+# top-left to the bottom-right through tiles 0, 4, 8. "Lo" keeps the side below
+# the diagonal, "Hi" the side above.
+DIAGONALS = {
+    "A": ((HALF_W, 0.0, 0.0), (3.0, 0.0, 4.0), (6, 4, 2)),
+    "B": ((-HALF_W, 0.0, 0.0), (-3.0, 0.0, 4.0), (0, 4, 8)),
+}
+
+
+def wall_trim(root, name, length, depth):
+    """A wooden frame board along Bevy x (Blender -x), centred on the origin:
+    `length` long, 0.12 m across the wall's face, `depth` through it."""
+    bm = palette.new_bmesh()
+    half = length / 2
+    add_box(bm, (-half, -depth / 2, -0.06), (half, depth / 2, 0.06), "trunk")
+    finish(root, bm, name)
+
+
+def build_wall_tiles(root, stage):
+    """Every edit tile of the brick wall (`T0`-`T8`), the half tiles a
+    diagonal cuts (`A2Lo`...`B8Hi`), and the frame boards Rust lines an
+    opening with (`TrimH`, `TrimV`, `TrimD`)."""
+    make = lambda: wall_bmesh(stage)
+    for t in range(9):
+        tile_part(root, f"T{t}", make, wall_tile_planes(t))
+    for key, (p0, n, tiles) in DIAGONALS.items():
+        for t in tiles:
+            for side, sign in (("Lo", 1.0), ("Hi", -1.0)):
+                plane = (Vector(p0), Vector(n) * sign)
+                tile_part(root, f"{key}{t}{side}", make, wall_tile_planes(t) + [plane])
+    wall_trim(root, "TrimH", WALL_TILE_W + 0.12, 0.36)
+    wall_trim(root, "TrimV", WALL_TILE_H + 0.12, 0.35)
+    # A little short of the corners, so its ends stay inside the wall.
+    wall_trim(root, "TrimD", math.hypot(CELL, LEVEL) - 0.2, 0.34)
+
+
+def floor_tile_planes(tile):
+    """Bevy quarter (column from Bevy x, row from Bevy z = Blender y)."""
+    c, r = tile % 2, tile // 2
+    x0, x1 = (0.0, HALF_W) if c == 0 else (-HALF_W, 0.0)
+    y0, y1 = (-HALF_W, 0.0) if r == 0 else (0.0, HALF_W)
+    return keep_between(0, x0, x1, -HALF_W, HALF_W) + keep_between(1, y0, y1, -HALF_W, HALF_W)
+
+
+def build_floor_tiles(root, stage):
+    """The plank floor's four quarters (`Q0`-`Q3`) and the beam Rust lays along
+    a cut edge (`Trim`, 2 m along Bevy x)."""
+    make = lambda: floor_bmesh(stage)
+    for t in range(4):
+        tile_part(root, f"Q{t}", make, floor_tile_planes(t))
+    bm = palette.new_bmesh()
+    add_box(bm, (-HALF_W / 2 - 0.06, -0.07, -0.13), (HALF_W / 2 + 0.06, 0.07, FLOOR_TOP + 0.03),
+            "stump_bark")
+    finish(root, bm, "Trim")
+
+
+def build_ramp_tiles(root, stage):
+    """The plank ramp's left and right halves (Bevy x < 0 and > 0), each with
+    a stringer and a post along its cut side: a half ramp (Rust turns it to
+    rise along the edit's path)."""
+    for name, sign in (("Left", 1.0), ("Right", -1.0)):
+        def make(sign=sign):
+            bm = ramp_bmesh(stage)
+            x = sign * 0.13
+            ramp_stringer(bm, x)
+            add_box(bm, (x - 0.1, -HALF_W + 0.04, 0.0), (x + 0.1, -HALF_W + 0.24, LEVEL - 0.35),
+                    "stump_bark")
+            return bm
+        plane = ((0.0, 0.0, 0.0), (-sign, 0.0, 0.0))
+        tile_part(root, name, make, [plane])
+
+
+def _tiles(builder, stage):
+    def build(root):
+        builder(root, stage)
+    return build
+
+
+# ---------------------------------------------------------------------------
+# Cone (roof)
+# ---------------------------------------------------------------------------
+
+CONE_H = LEVEL / 2
+ROOF_PLANK_W = 0.5  # plank width across the slope
+ROOF_GAP = 0.05
+ROOF_THICK = 0.09
+ROOF_UNDER = 0.1  # the dark underlay sits this far under the plank tops
+
+
+def cone_corner(tile):
+    """A cone tile's ground corner in Blender (x, y), from its Bevy tile index
+    (column from Bevy x, row from Bevy z; Bevy (x, z) is Blender (-x, y))."""
+    bx = -HALF_W + CELL * (tile % 2)
+    bz = -HALF_W + CELL * (tile // 2)
+    return Vector((-bx, bz))
+
+
+def cone_points(raised):
+    """The hull of a cone with `raised` corners (Bevy tiles) lifted to the top:
+    the base square, the raised corners, and the apex, except for a two-corner
+    roof-ramp slope, which is a plain wedge (src/building/edit.rs, cone_points)."""
+    pts = [cone_corner(t).to_3d() for t in range(4)]
+    for t in raised:
+        c = cone_corner(t)
+        pts.append(Vector((c.x, c.y, CONE_H)))
+    adjacent = len(raised) == 2 and ((raised[0] % 2 == raised[1] % 2) != (raised[0] // 2 == raised[1] // 2))
+    if not adjacent:
+        pts.append(Vector((0.0, 0.0, CONE_H)))
+    return pts
+
+
+def hull(points):
+    """Convex hull faces [(corner points, outward normal)] and edges
+    [(a, b, normals of the two faces)] of `points`, coplanar faces merged."""
+    bm = bmesh.new()
+    verts = [bm.verts.new(p) for p in points]
+    res = bmesh.ops.convex_hull(bm, input=verts)
+    loose = list({v for v in res.get("geom_interior", []) + res.get("geom_unused", [])
+                  if isinstance(v, bmesh.types.BMVert)})
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context="VERTS")
+    bmesh.ops.dissolve_limit(bm, angle_limit=math.radians(0.5), verts=bm.verts[:],
+                             edges=bm.edges[:])
+    bm.normal_update()
+    centre = sum((v.co for v in bm.verts), Vector()) / len(bm.verts)
+    faces = []
+    for f in bm.faces:
+        n = f.normal.copy()
+        if n.dot(f.calc_center_median() - centre) < 0:
+            n = -n
+        faces.append(([v.co.copy() for v in f.verts], n))
+    edges = []
+    for e in bm.edges:
+        ns = []
+        for f in e.link_faces:
+            n = f.normal.copy()
+            if n.dot(f.calc_center_median() - centre) < 0:
+                n = -n
+            ns.append(n)
+        edges.append((e.verts[0].co.copy(), e.verts[1].co.copy(), ns))
+    bm.free()
+    return faces, edges
+
+
+def face_frame(n):
+    """(u, v) in a face's plane: u level (along the face), v uphill (or +y on a
+    flat face)."""
+    u = n.cross(Vector((0.0, 0.0, 1.0)))
+    if u.length < 1e-4:
+        u = Vector((1.0, 0.0, 0.0))
+    u.normalize()
+    v = n.cross(u).normalized()
+    if v.z < -1e-6 or (abs(v.z) <= 1e-6 and v.y < 0):
+        v, u = -v, -u
+    return u, v
+
+
+def span_at(poly2d, vc):
+    """The polygon's extent along u on the line v = vc (poly2d: (u, v) corners)."""
+    xs = []
+    for (u0, v0), (u1, v1) in zip(poly2d, poly2d[1:] + poly2d[:1]):
+        if (v0 - vc) * (v1 - vc) <= 0 and abs(v1 - v0) > 1e-9:
+            xs.append(u0 + (vc - v0) / (v1 - v0) * (u1 - u0))
+    return (min(xs), max(xs)) if len(xs) >= 2 else None
+
+
+def roof_planks(bm, faces, r):
+    """Covers every face but the bottom with level planks (rows up each face,
+    each as long as the face is wide there). Returns [(top function, length,
+    normal, row)] per plank, in build order (row 0 is a face's lowest)."""
+    planks = []
+    pitch = ROOF_PLANK_W + ROOF_GAP
+    for poly, n in faces:
+        if n.z < -0.5:
+            continue
+        u, v = face_frame(n)
+        o = poly[0]
+        pts = [((p - o).dot(u), (p - o).dot(v)) for p in poly]
+        vmin = min(q[1] for q in pts)
+        vmax = max(q[1] for q in pts)
+        # Start a little up from the lowest edge so the plank undersides stay
+        # above the ground, and stop short of the top edge (a trim covers it).
+        lo, hi = vmin + 0.12, vmax - 0.05
+        rows = max(1, int(round((hi - lo) / pitch)))
+        step = (hi - lo) / rows
+        width = min(ROOF_PLANK_W, step - ROOF_GAP)
+        for k in range(rows):
+            vc = lo + (k + 0.5) * step
+            # The plank fits the face across its whole width (its ends tuck
+            # under the edge trims instead of poking through them).
+            spans = [span_at(pts, min(max(vc + dv, vmin), vmax)) for dv in (-width / 2, width / 2)]
+            if None in spans:
+                continue
+            u0 = max(sp[0] for sp in spans) + 0.02
+            u1 = min(sp[1] for sp in spans) - 0.02
+            if u1 - u0 < 0.35:
+                continue
+            # Planks on an upright face (a gable) sit a little in, so their
+            # warped ends never poke out of the cell.
+            origin = o + u * u0 + v * vc + n * (0.004 if abs(n.z) > 0.2 else -0.045)
+            top = plank(bm, (origin, u, v, n), u1 - u0, width, ROOF_THICK, r, bow=0.025)
+            planks.append((top, u1 - u0, n, k))
+    return planks
+
+
+def roof_trims(bm, edges):
+    """A wooden trim along every edge off the ground (hips, ridges, gable
+    edges), sitting on the two faces it joins."""
+    for a, b, ns in edges:
+        if a.z < 1e-3 and b.z < 1e-3:
+            continue
+        d = (b - a).normalized()
+        up = sum(ns, Vector()).normalized() if ns else Vector((0.0, 0.0, 1.0))
+        side = d.cross(up).normalized()
+        up = side.cross(d).normalized()
+        if up.z < 0:
+            up = -up
+        w, h = 0.15, 0.08
+        # Stop a hair inside the top corners, and short of a ground corner so
+        # the trim stays inside the cell; nothing dips under the ground.
+        a2 = a + d * (0.2 if a.z < 1e-3 else 0.02)
+        b2 = b - d * (0.2 if b.z < 1e-3 else 0.02)
+        section = [side * -w + up * -0.03, side * w + up * -0.03, side * w + up * h, side * -w + up * h]
+        secs = [[a2 + c for c in section], [b2 + c for c in section]]
+        lim = HALF_W - 0.005
+        for sec in secs:
+            for c in sec:
+                c.x = max(-lim, min(lim, c.x))
+                c.y = max(-lim, min(lim, c.y))
+                c.z = max(c.z, 0.0)
+        lofted_bar(bm, secs, "stump_bark")
+
+
+def roof_caps(bm, points):
+    """A chunky wooden cap on every top corner (the apex, raised corners)."""
+    tops = sorted({(round(p.x, 3), round(p.y, 3), round(p.z, 3)) for p in points if p.z > 0.5})
+    for x, y, z in tops:
+        c = Vector((x, y, z))
+        # Pull corner caps in so they stay inside the cell.
+        c.x = max(-HALF_W + 0.19, min(HALF_W - 0.19, c.x))
+        c.y = max(-HALF_W + 0.19, min(HALF_W - 0.19, c.y))
+        add_box(bm, (c.x - 0.13, c.y - 0.13, z - 0.1), (c.x + 0.13, c.y + 0.13, z + 0.1),
+                "trunk", xf=Matrix.Rotation(math.radians(45), 4, "Z"))
+
+
+def build_roof(root, raised, stage):
+    """A plank roof over the cone hull with `raised` corners: a dark underlay,
+    level planks with nails on every face, trims on every edge, caps on the
+    top corners. Stage 1 cracks planks; stage 2 splits one and cracks more."""
+    bm = palette.new_bmesh()
+    r = shapes.rng(59 + 7 * len(raised) + sum(raised))
+    points = cone_points(raised)
+    faces, edges = hull(points)
+    # The underlay: the hull sunk under the plank tops, so gaps read dark and
+    # the underside (seen from inside a box) is solid.
+    under = []
+    for p in points:
+        q = Vector((p.x * 0.985, p.y * 0.985, max(p.z - ROOF_UNDER, 0.0)))
+        under.append(q)
+    u_faces, _ = hull(under)
+    for poly, n in u_faces:
+        add_poly(bm, poly, "stump_bark", n)
+    planks = roof_planks(bm, faces, r)
+    # Nails near the ends of each face's lowest plank.
+    for i, (top, length, n, row) in enumerate(planks):
+        if length < 1.0 or row != 0:
+            continue
+        for t in (0.22, length - 0.22):
+            if stage >= 2 and i == 2 and t < 1.0:
+                continue  # popped out
+            nail(bm, top(t) - n * 0.004, n, radius=0.075, sides=5, phase=0.4 * i)
+    if stage >= 1:
+        picks = [(1, 0.35), (4, 0.6)] + ([(0, 0.25), (3, 0.5), (6, 0.45), (7, 0.3)] if stage >= 2 else [])
+        for i, at in picks:
+            if i >= len(planks):
+                continue
+            top, length, n, _ = planks[i]
+            a = length * at
+            pts = [(a, -0.1), (a + 0.28, 0.05), (a + 0.5, -0.07), (a + 0.75, 0.06)]
+            pts = [(min(t, length - 0.05), w) for t, w in pts]
+            plank_crack(bm, top, n, pts)
+    if stage >= 2 and len(planks) > 2:
+        # A split plank: a dark gap across it, the broken end sagging.
+        top, length, n, _ = planks[2]
+        a = length * 0.45
+        gap = [top(a, -0.2), top(a + 0.28, -0.2), top(a + 0.22, 0.2), top(a - 0.04, 0.2)]
+        add_poly(bm, [p + n * 0.006 for p in gap], CRACK, n)
+    roof_trims(bm, edges)
+    roof_caps(bm, points)
+    finish(root, bm)
+    scene.make_attach("Top", root, (0.0, 0.0, CONE_H))
+
+
+CONE_SHAPES = {
+    "": [],
+    "_peak": [0],
+    "_slope": [0, 1],
+    "_ridge": [0, 3],
+    "_tent": [0, 1, 2],
+}
+
+
+def _cone_builder(raised, stage):
+    def build(root):
+        build_roof(root, raised, stage)
+    build.__doc__ = f"plank roof, raised corners {raised}, crack stage {stage}"
+    return build
 
 
 # ---------------------------------------------------------------------------
@@ -657,6 +1072,22 @@ ASSETS = [
     Asset("ramp_plank_crack1", "ramp", build_ramp_plank_crack1, "plank ramp at 66% HP"),
     Asset("ramp_plank_crack2", "ramp", build_ramp_plank_crack2,
           "plank ramp at 33% HP: split plank"),
+    *[Asset(f"cone_plank{shape}{suffix}", "cone", _cone_builder(raised, stage), about)
+      for shape, raised in CONE_SHAPES.items()
+      for stage, suffix, about in (
+          (0, "", f"plank cone{shape.replace('_', ', ')}: 4 x 4 m, 1.5 m tall"),
+          (1, "_crack1", f"plank cone{shape.replace('_', ', ')} at 66% HP"),
+          (2, "_crack2", f"plank cone{shape.replace('_', ', ')} at 33% HP"))],
+    *[Asset(f"{name}{suffix}", kind, _tiles(builder, stage), f"{about}{note}")
+      for name, kind, builder, about in (
+          ("wall_brick_tiles", "wall_tiles", build_wall_tiles,
+           "brick wall edit tiles: 9 tiles, 12 diagonal halves, 3 frame boards"),
+          ("floor_plank_tiles", "floor_tiles", build_floor_tiles,
+           "plank floor edit tiles: 4 quarters and a cut-edge beam"),
+          ("ramp_plank_tiles", "ramp_tiles", build_ramp_tiles,
+           "plank ramp edit tiles: left and right halves"))
+      for stage, suffix, note in ((0, "", ""), (1, "_crack1", " at 66% HP"),
+                                  (2, "_crack2", " at 33% HP"))],
     Asset("brick_chunk", "wall", build_brick_chunk, "wall debris: a broken brick"),
     Asset("plank_splinter", "floor", build_plank_splinter, "floor/ramp debris: a snapped plank"),
 ]

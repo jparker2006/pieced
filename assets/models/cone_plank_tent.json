@@ -1,0 +1,60 @@
+{
+  "name": "cone_plank_tent",
+  "kind": "cone",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 624,
+  "triangle_budget": 700,
+  "bounds": {
+    "min": [
+      -1.995,
+      0.0,
+      -1.995
+    ],
+    "max": [
+      1.9987,
+      1.6626,
+      1.995
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "cone_plank_tent",
+      "bounds": {
+        "min": [
+          -1.995,
+          0.0,
+          -1.995
+        ],
+        "max": [
+          1.9987,
+          1.6626,
+          1.995
+        ]
+      },
+      "triangles": 624,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "trunk"
+      ]
+    }
+  },
+  "attach": {
+    "Top": {
+      "parent": "cone_plank_tent",
+      "position": [
+        0.0,
+        1.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

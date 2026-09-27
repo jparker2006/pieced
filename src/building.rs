@@ -4,17 +4,28 @@
 //! - [`SimSet::Building`]: every character's [`BuildTarget`] is refreshed from its
 //!   view, and pieces are placed on a fire press, on turbo (fire held) and, with
 //!   `builder_pro`, on the piece key press.
+//! - [`SimSet::Building`], first: edit mode (D44). `edit_pressed` on a piece in
+//!   reach opens its edit grid; a click or a drag selects tiles and releasing
+//!   confirms a valid shape at once (collider, piece map and, through
+//!   [`PieceEdit`], the mesh follow); `reset_pressed` restores an edited piece,
+//!   in edit mode or out of it. See [`edit`] for the grids and shapes.
 //! - [`SimSet::Resolve`]: [`PieceHit`] requests are applied, cracks and
-//!   destruction are reported, and each character's [`AimedPiece`] is refreshed.
+//!   destruction are reported, and each character's [`AimedPiece`] and
+//!   [`EditTarget`] are refreshed.
 //!
 //! Presentation lives in [`visuals`] (client only).
 
+pub mod edit;
+pub mod edit_grid;
 mod grid;
 mod mesh;
 mod targeting;
 pub mod visuals;
 
-pub use grid::{EdgeAxis, EdgeKey, MapEntry, PieceMap, PieceSlot, SlotKey, ramp_surface_height};
+pub use edit::{EditShape, PieceEdit};
+pub use grid::{
+    CONE_HEIGHT, EdgeAxis, EdgeKey, MapEntry, PieceMap, PieceSlot, SlotKey, ramp_surface_height,
+};
 pub use targeting::{
     BuildCandidate, LEVEL_SNAP, Placement, build_target, capsule_overlaps_box, check_placement,
     feet_level, target_slot,
@@ -39,6 +50,7 @@ pub struct BuildTuning {
     pub wall_hp: f32,
     pub floor_hp: f32,
     pub ramp_hp: f32,
+    pub cone_hp: f32,
     /// Crack stage 1 at or below this HP fraction.
     pub crack_stage_1: f32,
     /// Crack stage 2 at or below this HP fraction.
@@ -58,6 +70,9 @@ pub struct BuildTuning {
     pub trap_height: f32,
     /// How far the crosshair looks for a piece to report in [`AimedPiece`] (m).
     pub aim_range: f32,
+    /// How far along the crosshair a piece can be edited or reset from (m):
+    /// the far edge of the next tile, from anywhere in your own.
+    pub edit_reach: f32,
 }
 
 impl Default for BuildTuning {
@@ -66,6 +81,7 @@ impl Default for BuildTuning {
             wall_hp: 200.0,
             floor_hp: 170.0,
             ramp_hp: 170.0,
+            cone_hp: 170.0,
             crack_stage_1: 0.66,
             crack_stage_2: 0.33,
             rebuild_lock: 0.15,
@@ -76,6 +92,7 @@ impl Default for BuildTuning {
             trap_radius: 0.36,
             trap_height: 1.85,
             aim_range: 30.0,
+            edit_reach: 7.5,
         }
     }
 }
@@ -86,6 +103,7 @@ impl BuildTuning {
             PieceKind::Wall => self.wall_hp,
             PieceKind::Floor => self.floor_hp,
             PieceKind::Ramp => self.ramp_hp,
+            PieceKind::Cone => self.cone_hp,
         }
     }
 
@@ -182,6 +200,125 @@ pub struct AimedPieceInfo {
 #[derive(Component, Debug, Default)]
 pub struct InitialCover;
 
+/// A character's edit mode (D44). Gameplay drives it from [`PlayerIntent`];
+/// the edit grid overlay and the HUD read it.
+#[derive(Component, Debug, Default, Clone, PartialEq)]
+pub struct EditMode {
+    /// The open edit grid, while editing.
+    pub session: Option<EditSession>,
+    /// The primary action stays blocked until it is released after edit mode
+    /// ended mid-click, so that click never fires a gun or places a piece.
+    pub hold_fire: bool,
+}
+
+impl EditMode {
+    pub fn is_editing(&self) -> bool {
+        self.session.is_some()
+    }
+
+    /// Whether the primary action belongs to editing (no firing or placing).
+    pub fn blocks_fire(&self) -> bool {
+        self.session.is_some() || self.hold_fire
+    }
+}
+
+/// An open edit grid on one piece.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EditSession {
+    pub piece: Entity,
+    pub slot: PieceSlot,
+    /// The piece's edit when the grid opened.
+    pub base: PieceEdit,
+    /// The tile under the crosshair.
+    pub hovered: Option<u8>,
+    /// The click or drag in progress, while the primary action is held.
+    pub drag: Option<EditDrag>,
+}
+
+/// Tiles crossed by one click-and-drag in edit mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EditDrag {
+    /// Walls, floors and cones: the state painted onto every tile crossed
+    /// (the opposite of the first tile's).
+    pub paint: bool,
+    /// The tiles crossed.
+    pub tiles: u16,
+    /// Ramps: the stair path, in order (`len` tiles).
+    pub path: [u8; 4],
+    pub len: u8,
+}
+
+impl EditDrag {
+    fn start(session: &EditSession, tile: u8) -> Self {
+        Self {
+            paint: !session.base.has(tile),
+            tiles: 1 << tile,
+            path: [tile, 0, 0, 0],
+            len: 1,
+        }
+    }
+
+    /// Adds a tile the crosshair crossed (a ramp path only grows to a tile
+    /// beside its last one).
+    fn cross(&mut self, kind: PieceKind, tile: u8) {
+        if self.tiles & (1 << tile) != 0 {
+            return;
+        }
+        if kind == PieceKind::Ramp {
+            let last = self.path[self.len as usize - 1];
+            let beside = (last % 2 == tile % 2) != (last / 2 == tile / 2);
+            if !beside || self.len as usize >= self.path.len() {
+                return;
+            }
+            self.path[self.len as usize] = tile;
+            self.len += 1;
+        }
+        self.tiles |= 1 << tile;
+    }
+}
+
+impl EditSession {
+    /// The edit the grid shows now: the piece's edit with the drag painted on
+    /// (walls, floors, cones), or the path being dragged (ramps).
+    pub fn selection(&self) -> PieceEdit {
+        let Some(drag) = self.drag else {
+            return self.base;
+        };
+        if self.slot.kind == PieceKind::Ramp {
+            return PieceEdit {
+                tiles: drag.tiles,
+                start: drag.path[0],
+            };
+        }
+        let tiles = if drag.paint {
+            self.base.tiles | drag.tiles
+        } else {
+            self.base.tiles & !drag.tiles
+        };
+        PieceEdit { tiles, start: 0 }
+    }
+
+    /// Whether releasing now would apply the selection.
+    pub fn selection_valid(&self) -> bool {
+        edit::is_valid(self.slot.kind, self.selection())
+    }
+}
+
+/// The piece a character would edit or reset (its full shape under the
+/// crosshair, within `edit_reach`), refreshed every fixed tick. The input
+/// adapter reads it to send R as a reset instead of a reload.
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq)]
+pub struct EditTarget(pub Option<EditTargetInfo>);
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EditTargetInfo {
+    pub entity: Entity,
+    pub kind: PieceKind,
+    /// The piece is edited (R resets it).
+    pub edited: bool,
+    pub distance: f32,
+}
+
 // ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
@@ -196,11 +333,13 @@ impl Plugin for BuildingPlugin {
             .add_systems(Startup, spawn_initial_cover)
             .add_systems(
                 FixedUpdate,
-                update_targets_and_place.in_set(SimSet::Building),
+                (update_edit_modes, update_targets_and_place)
+                    .chain()
+                    .in_set(SimSet::Building),
             )
             .add_systems(
                 FixedUpdate,
-                (apply_piece_hits, update_aimed_pieces)
+                (apply_piece_hits, update_aimed_pieces, update_edit_targets)
                     .chain()
                     .in_set(SimSet::Resolve),
             );
@@ -212,6 +351,8 @@ fn attach_builder_components(add: On<Add, Character>, mut commands: Commands) {
         BuildTarget::default(),
         BuildTimer::default(),
         AimedPiece::default(),
+        EditMode::default(),
+        EditTarget::default(),
     ));
 }
 
@@ -243,6 +384,7 @@ fn spawn_piece(
                 PieceKind::Wall => "Wall",
                 PieceKind::Floor => "Floor",
                 PieceKind::Ramp => "Ramp",
+                PieceKind::Cone => "Cone",
             }),
             Piece {
                 kind: slot.kind,
@@ -252,6 +394,7 @@ fn spawn_piece(
                 max_hp: hp,
                 crack_stage: 0,
             },
+            PieceEdit::FULL,
             slot.transform(),
             RigidBody::Static,
             slot.collider(tuning),
@@ -277,6 +420,7 @@ fn update_targets_and_place(
             &PlayerIntent,
             &mut BuildTarget,
             &mut BuildTimer,
+            Option<&EditMode>,
         ),
         With<Character>,
     >,
@@ -288,13 +432,22 @@ fn update_targets_and_place(
     let tuning = &tuning.building;
     map.prune_locks(tick);
     let feet: Vec<Vec3> = characters.iter().map(|t| t.translation).collect();
-    for (entity, transform, eye, look, tool, intent, mut target, mut timer) in &mut builders {
+    for (entity, transform, eye, look, tool, intent, mut target, mut timer, edit) in &mut builders
+    {
+        let editing = edit.is_some_and(EditMode::is_editing);
         let ActiveTool::Build(kind) = *tool else {
             if target.candidate.is_some() {
                 target.candidate = None;
             }
             continue;
         };
+        if editing {
+            // The edit grid replaces the ghost.
+            if target.candidate.is_some() {
+                target.candidate = None;
+            }
+            continue;
+        }
         let (eye_pos, dir) = eye_ray(transform, eye, look);
         let candidate = build_target(
             eye_pos,
@@ -307,6 +460,10 @@ fn update_targets_and_place(
             tuning,
         );
         target.candidate = Some(candidate);
+        if edit.is_some_and(EditMode::blocks_fire) {
+            // The click that ended an edit places nothing until it's released.
+            continue;
+        }
 
         let pressed = intent.fire_pressed || (tuning.builder_pro && intent.select == Some(*tool));
         let turbo_ready = timer
@@ -332,6 +489,220 @@ fn update_targets_and_place(
             });
         } else if pressed {
             cues.write(GameCue::PlacementRejected { who: entity });
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Edit mode
+// ---------------------------------------------------------------------------
+
+/// The piece a view ray would edit: the nearest piece whose full, unedited
+/// shape the ray enters within `edit_reach`, unless world geometry (the
+/// ground, a rock) is nearer (`world_hit`, a distance along the same ray).
+pub fn edit_target(
+    eye: Vec3,
+    dir: Vec3,
+    map: &PieceMap,
+    world_hit: Option<f32>,
+    tuning: &BuildTuning,
+) -> Option<(MapEntry, f32)> {
+    let reach = tuning.edit_reach;
+    let near = reach + crate::shared::CELL_SIZE;
+    let best = map
+        .iter()
+        .filter(|e| e.slot.center().distance(eye) <= near)
+        .filter_map(|e| {
+            let d = edit::full_shape_hit(&e.slot, eye, dir, tuning)?;
+            (d <= reach).then_some((*e, d))
+        })
+        .min_by(|a, b| a.1.total_cmp(&b.1))?;
+    match world_hit {
+        Some(w) if w < best.1 => None,
+        _ => Some(best),
+    }
+}
+
+fn world_hit(spatial: &SpatialQuery, eye: Vec3, dir: Dir3, reach: f32) -> Option<f32> {
+    let filter = SpatialQueryFilter::from_mask(Layer::World);
+    spatial
+        .cast_ray(eye, dir, reach, true, &filter)
+        .map(|h| h.distance)
+}
+
+/// Gives a piece its edit: the collider and the piece map follow at once (the
+/// visuals follow [`PieceEdit`]). HP is untouched, so its fraction is kept.
+fn apply_edit(
+    entity: Entity,
+    edit: PieceEdit,
+    pieces: &mut Query<(&Piece, &mut PieceEdit)>,
+    commands: &mut Commands,
+    map: &mut PieceMap,
+    tuning: &BuildTuning,
+) -> bool {
+    let Ok((piece, mut current)) = pieces.get_mut(entity) else {
+        return false;
+    };
+    if *current == edit || !edit::is_valid(piece.kind, edit) {
+        return false;
+    }
+    *current = edit;
+    // Inserted before this tick's physics step, so the next one moves and
+    // shoots against the edited shape.
+    commands
+        .entity(entity)
+        .insert(edit::edited_collider(&piece.slot(), edit, tuning));
+    map.set_edit(piece.slot().key(), entity, edit);
+    true
+}
+
+fn leave_edit_mode(mode: &mut EditMode, intent: &PlayerIntent) {
+    mode.session = None;
+    mode.hold_fire = intent.fire;
+}
+
+fn update_edit_modes(
+    tuning: Res<Tuning>,
+    spatial: SpatialQuery,
+    mut map: ResMut<PieceMap>,
+    mut characters: Query<
+        (
+            Entity,
+            &Transform,
+            &EyeHeight,
+            &LookAngles,
+            &PlayerIntent,
+            &mut EditMode,
+        ),
+        With<Character>,
+    >,
+    mut pieces: Query<(&Piece, &mut PieceEdit)>,
+    mut commands: Commands,
+    mut cues: MessageWriter<GameCue>,
+) {
+    let tuning = &tuning.building;
+    for (who, transform, eye, look, intent, mut mode) in &mut characters {
+        let (eye_pos, dir) = eye_ray(transform, eye, look);
+        if mode.hold_fire && !intent.fire && !intent.fire_pressed {
+            mode.hold_fire = false;
+        }
+        // The piece broke, you walked away from it, or you picked a tool.
+        if let Some(session) = mode.session {
+            let gone = pieces.get(session.piece).is_err();
+            let far = session.slot.center().distance(eye_pos) > tuning.edit_reach + 3.0;
+            if gone || far || intent.select.is_some() {
+                leave_edit_mode(&mut mode, intent);
+            }
+        }
+        let target = || {
+            let hit = world_hit(&spatial, eye_pos, dir, tuning.edit_reach);
+            edit_target(eye_pos, *dir, &map, hit, tuning)
+        };
+
+        if intent.reset_pressed {
+            // In edit mode: the piece being edited. Otherwise the edited piece
+            // under the crosshair (Fortnite's reset without entering edit mode).
+            let piece = match mode.session {
+                Some(session) => Some(session.piece),
+                None => target().filter(|(e, _)| e.edit.is_edited()).map(|(e, _)| e.entity),
+            };
+            if let Some(piece) = piece
+                && apply_edit(
+                    piece,
+                    PieceEdit::FULL,
+                    &mut pieces,
+                    &mut commands,
+                    &mut map,
+                    tuning,
+                )
+            {
+                cues.write(GameCue::PieceEdited { who, piece });
+            }
+            if mode.is_editing() {
+                leave_edit_mode(&mut mode, intent);
+            }
+            continue;
+        }
+        if intent.edit_pressed {
+            if mode.is_editing() {
+                leave_edit_mode(&mut mode, intent);
+                continue;
+            }
+            if let Some((entry, _)) = target() {
+                mode.session = Some(EditSession {
+                    piece: entry.entity,
+                    slot: entry.slot,
+                    base: pieces.get(entry.entity).map_or(entry.edit, |(_, e)| *e),
+                    hovered: None,
+                    drag: None,
+                });
+                mode.hold_fire = false;
+            }
+        }
+
+        let Some(session) = mode.session.as_mut() else {
+            continue;
+        };
+        session.hovered = edit::hovered_tile(&session.slot, eye_pos, *dir, tuning);
+        if intent.fire_pressed
+            && session.drag.is_none()
+            && let Some(tile) = session.hovered
+        {
+            session.drag = Some(EditDrag::start(session, tile));
+        }
+        let kind = session.slot.kind;
+        if let (Some(drag), Some(tile)) = (session.drag.as_mut(), session.hovered) {
+            drag.cross(kind, tile);
+        }
+        if session.drag.is_none() || intent.fire {
+            continue;
+        }
+        // Released: confirm (D44: release confirms, no delay).
+        let selection = session.selection();
+        let piece = session.piece;
+        if selection == session.base {
+            mode.session = None;
+        } else if edit::is_valid(kind, selection) {
+            if apply_edit(
+                piece,
+                selection,
+                &mut pieces,
+                &mut commands,
+                &mut map,
+                tuning,
+            ) {
+                cues.write(GameCue::PieceEdited { who, piece });
+            }
+            mode.session = None;
+        } else {
+            // Not a Fortnite shape: nothing changes and the grid stays open.
+            session.drag = None;
+            cues.write(GameCue::EditRejected { who });
+        }
+    }
+}
+
+fn update_edit_targets(
+    spatial: SpatialQuery,
+    tuning: Res<Tuning>,
+    map: Res<PieceMap>,
+    mut characters: Query<(&Transform, &EyeHeight, &LookAngles, &mut EditTarget)>,
+    pieces: Query<&Piece>,
+) {
+    let tuning = &tuning.building;
+    for (transform, eye, look, mut target) in &mut characters {
+        let (origin, dir) = eye_ray(transform, eye, look);
+        let hit = world_hit(&spatial, origin, dir, tuning.edit_reach);
+        let info = edit_target(origin, *dir, &map, hit, tuning)
+            .filter(|(e, _)| pieces.contains(e.entity))
+            .map(|(e, distance)| EditTargetInfo {
+                entity: e.entity,
+                kind: e.slot.kind,
+                edited: e.edit.is_edited(),
+                distance,
+            });
+        if target.0 != info {
+            target.0 = info;
         }
     }
 }
@@ -527,6 +898,27 @@ pub fn place_piece(world: &mut World, slot: PieceSlot) -> Result<Entity, Placeme
     });
     world.flush();
     Ok(entity)
+}
+
+/// Gives `piece` an edit immediately, as a confirmed edit does (collider and
+/// piece map at once, HP untouched). Returns false (and changes nothing) for a
+/// missing piece or an edit that isn't a valid shape for its kind.
+pub fn edit_piece(world: &mut World, piece: Entity, edit: PieceEdit) -> bool {
+    let tuning = world.resource::<Tuning>().building.clone();
+    let Some(p) = world.get::<Piece>(piece).copied() else {
+        return false;
+    };
+    if !edit::is_valid(p.kind, edit) {
+        return false;
+    }
+    world.entity_mut(piece).insert((
+        edit,
+        edit::edited_collider(&p.slot(), edit, &tuning),
+    ));
+    world
+        .resource_mut::<PieceMap>()
+        .set_edit(p.slot().key(), piece, edit);
+    true
 }
 
 /// Requests `amount` structure damage on `piece`, exactly as combat does. It is

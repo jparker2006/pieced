@@ -129,6 +129,7 @@ fn ui_icons_and_logo_are_committed_listed_and_embedded() {
         ("icons/wall_brick.png", "icons.py", 128),
         ("icons/ramp_plank.png", "icons.py", 128),
         ("icons/floor_plank.png", "icons.py", 128),
+        ("icons/cone_plank.png", "icons.py", 128),
         ("icons/crystal_blue.png", "icons.py", 64),
         ("icons/crystal_violet.png", "icons.py", 64),
         ("icons/heart.png", "icons.py", 64),

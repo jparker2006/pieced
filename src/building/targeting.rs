@@ -142,7 +142,8 @@ pub fn target_slot(
                 wall(ahead(0), d_front + CELL_SIZE)
             }
         }
-        PieceKind::Floor | PieceKind::Ramp => {
+        // Cones target like floors (docs/research/fortnite-building.md, R11).
+        PieceKind::Floor | PieceKind::Ramp | PieceKind::Cone => {
             let own_ground = base as f32 * LEVEL_HEIGHT;
             let ahead_ground = ahead_level as f32 * LEVEL_HEIGHT;
             let cell = if slope < -1e-4 {

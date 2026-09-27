@@ -3,6 +3,7 @@
 //! Disabled while a scenario drives the player.
 
 use crate::{
+    building::{EditMode, EditTarget},
     scenario::ScenarioRun,
     shared::{ActiveTool, Ads, AppState, PieceKind, Player, PlayerIntent, WeaponKind},
     tuning::Tuning,
@@ -99,10 +100,13 @@ fn pause_controls(
     state: Res<State<AppState>>,
     mut next: ResMut<NextState<AppState>>,
     window: Option<Single<&Window, With<PrimaryWindow>>>,
+    edit: Option<Single<&EditMode, With<Player>>>,
 ) {
     let focused = window.map(|w| w.focused).unwrap_or(true);
+    // In edit mode Esc leaves edit mode instead of pausing (device_to_intent).
+    let editing = edit.is_some_and(|e| e.is_editing());
     match state.get() {
-        AppState::Playing if keys.just_pressed(KeyCode::Escape) || !focused => {
+        AppState::Playing if (keys.just_pressed(KeyCode::Escape) && !editing) || !focused => {
             next.set(AppState::Paused);
         }
         AppState::Paused if keys.just_pressed(KeyCode::Escape) && focused => {
@@ -149,13 +153,28 @@ fn device_to_intent(
     motion: Res<AccumulatedMouseMotion>,
     tuning: Res<Tuning>,
     mut ignore: ResMut<IgnoreNextLook>,
-    player: Option<Single<(&mut PlayerIntent, &ActiveTool, &Ads), With<Player>>>,
+    player: Option<
+        Single<
+            (
+                &mut PlayerIntent,
+                &ActiveTool,
+                &Ads,
+                Option<&EditMode>,
+                Option<&EditTarget>,
+            ),
+            With<Player>,
+        >,
+    >,
 ) {
     let Some(player) = player else {
         return;
     };
-    let (mut intent, tool, ads) = player.into_inner();
-    buttons_to_intent(&keys, &mouse, &mut intent);
+    let (mut intent, tool, ads, edit, target) = player.into_inner();
+    let context = EditContext {
+        editing: edit.is_some_and(EditMode::is_editing),
+        aiming_at_edit: target.is_some_and(|t| t.0.is_some_and(|t| t.edited)),
+    };
+    buttons_to_intent_in(&keys, &mouse, context, &mut intent);
 
     if std::mem::take(&mut ignore.0) {
         return;
@@ -169,14 +188,38 @@ fn device_to_intent(
 ///   movement decides when that applies (forward, standing, not aiming).
 /// - Holding either Shift aims down sights (D40: a hold, never a toggle).
 /// - Space jumps; C crouches, and a C press while sprinting slides.
-/// - The physical click fires or places; R reloads; 1 / 2 and Q / E / F pick tools.
-/// - The secondary (right) click and V do nothing (D40, D42).
+/// - The physical click fires or places; R reloads; 1 / 2 and Q / E / F / V
+///   pick tools (V is the cone, D43).
+/// - G enters or leaves edit mode (D44); see [`buttons_to_intent_in`] for R and
+///   Esc while editing.
+/// - The secondary (right) click does nothing (D40, D42).
 ///
 /// Held fields are overwritten; press edges are OR-ed in, so they stay latched
 /// until a fixed tick consumes them. Look is handled separately.
 pub fn buttons_to_intent(
     keys: &ButtonInput<KeyCode>,
     mouse: &ButtonInput<MouseButton>,
+    intent: &mut PlayerIntent,
+) {
+    buttons_to_intent_in(keys, mouse, EditContext::default(), intent);
+}
+
+/// What the edit keys act on this frame, from the player's edit state.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EditContext {
+    /// The player is in edit mode.
+    pub editing: bool,
+    /// An edited piece is under the crosshair, within edit reach.
+    pub aiming_at_edit: bool,
+}
+
+/// [`buttons_to_intent`] with the edit keys resolved like Fortnite's: R resets
+/// instead of reloading while editing or while aiming at an edited piece in
+/// reach, and Esc leaves edit mode (instead of pausing) while editing.
+pub fn buttons_to_intent_in(
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    edit: EditContext,
     intent: &mut PlayerIntent,
 ) {
     let axis =
@@ -195,7 +238,14 @@ pub fn buttons_to_intent(
     intent.fire = mouse.pressed(MouseButton::Left);
     intent.fire_pressed |= mouse.just_pressed(MouseButton::Left);
     intent.ads_held = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    intent.reload_pressed |= keys.just_pressed(KeyCode::KeyR);
+    let r = keys.just_pressed(KeyCode::KeyR);
+    if edit.editing || edit.aiming_at_edit {
+        intent.reset_pressed |= r;
+    } else {
+        intent.reload_pressed |= r;
+    }
+    intent.edit_pressed |= keys.just_pressed(KeyCode::KeyG)
+        || (edit.editing && keys.just_pressed(KeyCode::Escape));
 
     let selections = [
         (KeyCode::Digit1, ActiveTool::Weapon(WeaponKind::Rifle)),
@@ -203,6 +253,7 @@ pub fn buttons_to_intent(
         (KeyCode::KeyQ, ActiveTool::Build(PieceKind::Wall)),
         (KeyCode::KeyE, ActiveTool::Build(PieceKind::Ramp)),
         (KeyCode::KeyF, ActiveTool::Build(PieceKind::Floor)),
+        (KeyCode::KeyV, ActiveTool::Build(PieceKind::Cone)),
     ];
     for (key, tool) in selections {
         if keys.just_pressed(key) {
@@ -262,6 +313,7 @@ mod tests {
             (KeyCode::KeyQ, ActiveTool::Build(PieceKind::Wall)),
             (KeyCode::KeyE, ActiveTool::Build(PieceKind::Ramp)),
             (KeyCode::KeyF, ActiveTool::Build(PieceKind::Floor)),
+            (KeyCode::KeyV, ActiveTool::Build(PieceKind::Cone)),
             (KeyCode::Digit2, ActiveTool::Weapon(WeaponKind::Pump)),
             (KeyCode::Digit1, ActiveTool::Weapon(WeaponKind::Rifle)),
         ] {
@@ -311,14 +363,56 @@ mod tests {
     }
 
     #[test]
-    fn right_click_and_v_do_nothing() {
+    fn right_click_does_nothing_and_v_picks_the_cone() {
         let mut keys = ButtonInput::<KeyCode>::default();
         let mut mouse = ButtonInput::<MouseButton>::default();
         let mut intent = PlayerIntent::default();
         mouse.press(MouseButton::Right);
-        keys.press(KeyCode::KeyV);
         buttons_to_intent(&keys, &mouse, &mut intent);
         assert_eq!(intent, PlayerIntent::default());
+        keys.press(KeyCode::KeyV);
+        buttons_to_intent(&keys, &mouse, &mut intent);
+        assert_eq!(
+            intent,
+            PlayerIntent {
+                select: Some(ActiveTool::Build(PieceKind::Cone)),
+                ..default()
+            },
+            "V only picks the cone (D43)"
+        );
+    }
+
+    #[test]
+    fn g_edits_and_r_resets_or_reloads_like_fortnite() {
+        let mouse = ButtonInput::<MouseButton>::default();
+        let press = |key: KeyCode, edit: EditContext| {
+            let mut keys = ButtonInput::<KeyCode>::default();
+            keys.press(key);
+            let mut intent = PlayerIntent::default();
+            buttons_to_intent_in(&keys, &mouse, edit, &mut intent);
+            intent
+        };
+        let idle = EditContext::default();
+        let editing = EditContext {
+            editing: true,
+            aiming_at_edit: false,
+        };
+        let aiming = EditContext {
+            editing: false,
+            aiming_at_edit: true,
+        };
+        assert!(press(KeyCode::KeyG, idle).edit_pressed);
+        assert!(press(KeyCode::KeyG, editing).edit_pressed, "G again leaves");
+        // R reloads, except on an edited piece or in edit mode, where it resets.
+        let r = press(KeyCode::KeyR, idle);
+        assert!(r.reload_pressed && !r.reset_pressed);
+        for context in [editing, aiming] {
+            let r = press(KeyCode::KeyR, context);
+            assert!(r.reset_pressed && !r.reload_pressed, "{context:?}");
+        }
+        // Esc leaves edit mode; otherwise it's the pause key (not an intent).
+        assert!(press(KeyCode::Escape, editing).edit_pressed);
+        assert_eq!(press(KeyCode::Escape, idle), PlayerIntent::default());
     }
 
     #[test]

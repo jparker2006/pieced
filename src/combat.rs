@@ -21,6 +21,7 @@
 //! avian.
 
 use crate::{
+    building::EditMode,
     rng::{Rng, SimRng},
     shared::{
         ActiveTool, Ads, Character, DamageDealt, DamageTarget, Eliminated, EyeHeight, GameCue,
@@ -469,13 +470,17 @@ fn weapon_step(
             &EyeHeight,
             &LookAngles,
             Has<Downed>,
+            Option<&EditMode>,
         ),
         With<Character>,
     >,
 ) {
     let dt = TICK_SECONDS;
     let ct = &tuning.combat;
-    for (entity, mut loadout, mut ads, intent, tool, transform, eye, look, downed) in &mut q {
+    for (entity, mut loadout, mut ads, intent, tool, transform, eye, look, downed, edit) in &mut q {
+        // In edit mode the click selects edit tiles (D44): no shots, no aim.
+        let editing = edit.is_some_and(EditMode::is_editing);
+        let fire_blocked = edit.is_some_and(EditMode::blocks_fire);
         let lo = &mut *loadout;
         if downed {
             lo.pump_buffer = None;
@@ -545,6 +550,10 @@ fn weapon_step(
             // Trigger: the rifle is full-auto while held; the pump is semi-auto with
             // an early-press buffer.
             let wants_fire = match kind {
+                _ if fire_blocked => {
+                    lo.pump_buffer = None;
+                    false
+                }
                 WeaponKind::Rifle => intent.fire || intent.fire_pressed,
                 WeaponKind::Pump => {
                     if intent.fire_pressed {
@@ -614,7 +623,7 @@ fn weapon_step(
         // instead (movement, D41).
         let rifle_reloading =
             *tool == ActiveTool::Weapon(WeaponKind::Rifle) && lo.rifle.is_reloading();
-        if tool.is_build() || rifle_reloading {
+        if tool.is_build() || rifle_reloading || editing {
             want_ads = false;
         }
         if want_ads != ads.0 {

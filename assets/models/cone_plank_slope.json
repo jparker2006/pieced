@@ -1,0 +1,60 @@
+{
+  "name": "cone_plank_slope",
+  "kind": "cone",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 416,
+  "triangle_budget": 700,
+  "bounds": {
+    "min": [
+      -1.995,
+      -0.0268,
+      -1.9954
+    ],
+    "max": [
+      1.995,
+      1.6512,
+      1.97
+    ]
+  },
+  "parts": {
+    "Body": {
+      "parent": "cone_plank_slope",
+      "bounds": {
+        "min": [
+          -1.995,
+          -0.0268,
+          -1.9954
+        ],
+        "max": [
+          1.995,
+          1.6512,
+          1.97
+        ]
+      },
+      "triangles": 416,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "trunk"
+      ]
+    }
+  },
+  "attach": {
+    "Top": {
+      "parent": "cone_plank_slope",
+      "position": [
+        0.0,
+        1.5,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}
