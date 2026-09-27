@@ -308,7 +308,14 @@ pub struct FarModelSlot {
     pub scale: f32,
     pub kind: FarKind,
     pub waterfall: bool,
+    /// Its waterfalls end in a mist halo (not for islands past [`MIST_RANGE`]).
+    pub mist: bool,
 }
+
+/// Islands farther than this from the arena centre (m) pour their waterfalls
+/// without a mist halo: it would be a few pixels there, and leaving it out
+/// lets the distant waterfalls batch back to back on their shared strip mesh.
+pub const MIST_RANGE: f32 = 500.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FarKind {
@@ -323,6 +330,7 @@ pub enum FarKind {
 pub struct FarModel {
     pub kind: FarKind,
     pub waterfall: bool,
+    pub mist: bool,
 }
 
 /// The soft glow band on the horizon.
@@ -369,6 +377,7 @@ pub fn spawn_far_view(mut commands: Commands, layout: Res<FarLayout>) {
                     scale: spec.scale,
                     kind: FarKind::Ship,
                     waterfall: false,
+                    mist: false,
                 },
                 ChildOf(station),
             ));
@@ -401,12 +410,14 @@ pub fn spawn_far_view(mut commands: Commands, layout: Res<FarLayout>) {
 }
 
 fn slot(piece: &FarPiece, kind: FarKind, waterfall: bool) -> FarModelSlot {
+    let near = kind != FarKind::Island || piece.position.xz().length() < MIST_RANGE;
     FarModelSlot {
         model: piece.model,
         anchor: piece.anchor,
         scale: piece.scale,
         kind,
         waterfall,
+        mist: waterfall && near,
     }
 }
 
@@ -438,6 +449,7 @@ fn attach_far_models(
             FarModel {
                 kind: slot.kind,
                 waterfall: slot.waterfall,
+                mist: slot.mist,
             },
             ChildOf(anchor),
         ));
@@ -770,15 +782,16 @@ fn attach_halo(model: &FarModel, point: &str) -> Option<(Halo, Option<GlassGlow>
         return Some((Halo::new(color, size, 0.3), Some(glow(phase, low, high))));
     }
     if point.starts_with("Mist") {
-        if !model.waterfall {
+        if !model.mist {
             return None;
         }
-        let size = if model.kind == FarKind::Station {
-            46.0
+        // A soft, wide puff where the water dissolves, not a bright bead.
+        let (size, intensity) = if model.kind == FarKind::Station {
+            (54.0, 0.55)
         } else {
-            18.0
+            (24.0, 0.4)
         };
-        return Some((Halo::new(cartoon::WATERFALL_BLUE, size, 0.9), None));
+        return Some((Halo::new(cartoon::WATERFALL_BLUE, size, intensity), None));
     }
     if point == "Engine" {
         return Some((Halo::new(cartoon::CRYSTAL_BLUE, 9.0, 2.2), None));

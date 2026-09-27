@@ -5,7 +5,8 @@
 //! deterministic and generated within its load-time budget.
 //!
 //! All of it runs headless: `FarMotionPlugin` plus the far view's anchors from
-//! `spawn_far_view`, stepped with a manual clock. No GPU, window or models.
+//! `spawn_far_view`, stepped with a manual clock. No GPU, window or models. The
+//! far layer's triangle and batch budget is checked from the model sidecars.
 
 use bevy::{core_pipeline::Skybox, prelude::*, time::TimeUpdateStrategy};
 use pieced::{
@@ -15,6 +16,7 @@ use pieced::{
         generate_galaxy, glass_panes, spawn_far_view,
     },
     look::{FarMaterial, LookSettings},
+    models::Sidecar,
     perf_knobs::PerfKnobs,
     render::QualityPreset,
 };
@@ -341,6 +343,94 @@ fn the_galaxy_is_deterministic_and_generates_within_budget() {
         core.iter().map(|&c| c as u32).sum::<u32>() > 600,
         "{core:?}"
     );
+}
+
+/// The far layer's budget (performance first, docs/M2-SPEC.md): the whole far
+/// view stays within 75k triangles, and however many islands float, the opaque
+/// far models draw as at most 16 batches, because every island instance shares
+/// its model's meshes and the one island material (Bevy instances equal mesh
+/// and material pairs) and the station is a handful of merged parts. Every
+/// waterfall draws from one shared strip mesh with one material.
+#[test]
+fn the_far_layer_stays_within_its_triangle_and_batch_budget() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/models");
+    let side = |name: &str| {
+        Sidecar::parse(&std::fs::read_to_string(dir.join(format!("{name}.json"))).unwrap()).unwrap()
+    };
+    let layout = FarLayout::default();
+    let falls = |s: &Sidecar| {
+        s.parts
+            .iter()
+            .filter(|(n, _)| n.starts_with("Waterfall"))
+            .map(|(_, p)| p.triangles)
+            .sum::<u32>()
+    };
+    let station = side("station");
+    let planet = side("planet");
+    let ship = side("ship");
+    let ships: usize = layout.ships.iter().map(|s| s.starts.len()).sum();
+    let mut triangles = station.triangles + planet.triangles + ship.triangles * ships as u32;
+    let mut island_models = std::collections::BTreeSet::new();
+    let mut waterfalls = station
+        .parts
+        .keys()
+        .filter(|n| n.starts_with("Waterfall"))
+        .count();
+    // Additive halos: the station's glows and mists, the ships' engines, the
+    // planet's atmosphere, and the mists of the islands inside MIST_RANGE.
+    let mut halos = station
+        .attach
+        .keys()
+        .filter(|n| n.starts_with("Glow") || n.starts_with("Mist"))
+        .count()
+        + ships
+        + 1;
+    for island in layout.all_islands() {
+        let s = side(island.piece.model);
+        island_models.insert(island.piece.model);
+        triangles += s.triangles - if island.waterfall { 0 } else { falls(&s) };
+        if island.waterfall {
+            let n = s
+                .parts
+                .keys()
+                .filter(|n| n.starts_with("Waterfall"))
+                .count();
+            waterfalls += n;
+            if island.piece.position.xz().length() < pieced::far::MIST_RANGE {
+                halos += n;
+            }
+        }
+    }
+    let horizon = pieced::far::horizon_mesh(layout.horizon_radius)
+        .indices()
+        .unwrap()
+        .len() as u32
+        / 3;
+    triangles += horizon;
+    // Opaque batches: each distinct (mesh, material) among the far models.
+    let opaque = |s: &Sidecar| {
+        s.parts
+            .keys()
+            .filter(|n| !n.starts_with("Waterfall") && n.as_str() != "Trail")
+            .count()
+    };
+    let batches = opaque(&station)
+        + opaque(&planet)
+        + opaque(&ship)
+        + island_models
+            .iter()
+            .map(|m| opaque(&side(m)))
+            .sum::<usize>();
+    println!(
+        "far layer: {triangles} triangles, {} islands from {} models, {waterfalls} waterfalls \
+         (one mesh), {halos} halos, {batches} opaque batches",
+        layout.all_islands().count(),
+        island_models.len()
+    );
+    assert!(triangles <= 75_000, "{triangles} far triangles");
+    assert!(batches <= 16, "{batches} opaque far batches");
+    assert!(halos <= 50, "{halos} far halos");
+    assert!(island_models.len() <= 5);
 }
 
 /// Writes the galaxy as an equirectangular panorama and a pinhole spawn view,
