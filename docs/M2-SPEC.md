@@ -414,6 +414,16 @@ After his first play session, Jake approved **gameplay changes to building and c
 - hold-Shift ADS, auto-sprint and slide work, and the right click is inert;
 - every M1 building test still passes (G4).
 
+### Amendment B (2026-09-26): the beauty pass (D47–D51)
+
+After S1 round 1 (mean 2.5), Jake approved a design pass to close the gap to the targets:
+- **Shading:** 3-tone soft gradients, specular highlights on metal and crystal, baked AO, 2× outlines, color grading.
+- **Texture and density:** painted-looking textures (grain, bricks, grass) and dense set dressing (tufts, flowers, bushes, framing trees, clouds under the island).
+- **Knight:** an expressive knight with a tall cosmetic hat, a robe and big hit reactions.
+- **Guns and spells:** ornate guns with sparking crystal chambers, and spell bursts 2–3× bigger.
+
+**S5 changes:** the hat is cosmetic and excluded from the hitbox fit (like Fortnite cosmetics); every other part keeps the 5 cm rule. The performance bar (S2) is unchanged, so every addition must be cheap: baked AO, shared textures, instanced props, capped effects.
+
 ## Testing Decisions
 
 - **Seams:** the same as Milestone 1: headless simulation (primary), native scenarios (evidence), and Jake (feel and scoring). Tests assert behavior a player would notice, deterministically.
