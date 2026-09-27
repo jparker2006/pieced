@@ -121,15 +121,19 @@ from `art/palette.json`, sampled from the target images by
 | `models/ramp_plank_tiles_crack2.json` | `art/blender/assets/pieces.py` | Sidecar |
 | `models/far_island_a.glb` | `art/blender/assets/far.py` | Far island: grass top, three trees, waterfall |
 | `models/far_island_a.json` | `art/blender/assets/far.py` | Sidecar |
-| `models/far_island_b.glb` | `art/blender/assets/far.py` | Far island with a gothic chapel tower and a waterfall |
+| `models/far_island_b.glb` | `art/blender/assets/far.py` | Far island with a little gothic castle, a tree and a waterfall |
 | `models/far_island_b.json` | `art/blender/assets/far.py` | Sidecar |
-| `models/far_island_c.glb` | `art/blender/assets/far.py` | Small craggy islet with a tree and a thin waterfall |
+| `models/far_island_c.glb` | `art/blender/assets/far.py` | Small craggy island with a tree and a thin waterfall |
 | `models/far_island_c.json` | `art/blender/assets/far.py` | Sidecar |
-| `models/planet.glb` | `art/blender/assets/far.py` | Ringed lavender planet, radius 90 m |
+| `models/far_island_d.glb` | `art/blender/assets/far.py` | Big far island: a castle, a grove and two waterfalls |
+| `models/far_island_d.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/far_islet.glb` | `art/blender/assets/far.py` | Tiny floating pebble with a grass top |
+| `models/far_islet.json` | `art/blender/assets/far.py` | Sidecar |
+| `models/planet.glb` | `art/blender/assets/far.py` | Soft lavender banded gas giant with a thin ring, radius 90 m |
 | `models/planet.json` | `art/blender/assets/far.py` | Sidecar |
 | `models/ship.glb` | `art/blender/assets/far.py` | Small starship with an additive engine streak |
 | `models/ship.json` | `art/blender/assets/far.py` | Sidecar |
-| `models/station.glb` | `art/blender/assets/far.py` | Stained-glass cathedral station: spires, four glass sails, ring walkway, floating rock, waterfalls |
+| `models/station.glb` | `art/blender/assets/far.py` | Gothic cathedral station: slate stone, spires and pinnacles, buttresses, flush stained glass with a great jewel window, arcade, ring walkway, columnar floating rock, waterfalls |
 | `models/station.json` | `art/blender/assets/far.py` | Sidecar |
 
 ## Shaders (`assets/shaders/`)

@@ -3,18 +3,18 @@
   "kind": "planet",
   "source": "art/blender/assets/far.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 1512,
+  "triangles": 1672,
   "triangle_budget": 2000,
   "bounds": {
     "min": [
-      -169.2174,
-      0.1403,
-      -177.1405
+      -142.392,
+      0.1402,
+      -147.8959
     ],
     "max": [
-      169.2174,
-      179.8597,
-      177.1405
+      142.392,
+      179.8598,
+      147.8959
     ]
   },
   "parts": {
@@ -22,43 +22,42 @@
       "parent": "planet",
       "bounds": {
         "min": [
-          -89.6659,
-          0.1403,
-          -89.958
+          -89.7699,
+          0.1402,
+          -89.9452
         ],
         "max": [
-          89.6659,
-          179.8597,
-          89.958
+          89.7699,
+          179.8598,
+          89.9452
         ]
       },
-      "triangles": 840,
+      "triangles": 1224,
       "colors": [
-        "galaxy_purple",
-        "glass_pink",
-        "glass_violet",
-        "planet_violet"
+        "far_planet",
+        "far_planet_band",
+        "far_planet_light",
+        "far_planet_shade"
       ]
     },
     "Rings": {
       "parent": "planet",
       "bounds": {
         "min": [
-          -169.2174,
-          12.1614,
-          -177.1405
+          -142.392,
+          30.4965,
+          -147.8959
         ],
         "max": [
-          169.2174,
-          167.8386,
-          177.1405
+          142.392,
+          149.5035,
+          147.8959
         ]
       },
-      "triangles": 672,
+      "triangles": 448,
       "colors": [
-        "cloud",
-        "galaxy_purple",
-        "glass_violet"
+        "far_planet_band",
+        "far_planet_ring"
       ]
     }
   },
