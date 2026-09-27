@@ -22,6 +22,7 @@ use pieced::{
         },
         hat::HatProp,
         material::SpellMaterial,
+        sim::FxRng,
         sim::{
             BOLT_ARRIVAL_FRAMES, HatBody, RIFLE_SCREEN_FLIGHT, apparent_size, axial_billboard,
             bolt_progress, orbit_offset, pellet_flight, rifle_flight, screen_to_path,
@@ -32,7 +33,6 @@ use pieced::{
             RIFLE_TRAIL_SPARKLES, SpellAssets, SpellGlow, SpellHalo, SpellSolid, SpellTiming,
             SpellsPlugin, pool_counts,
         },
-        sim::FxRng,
     },
     hud::{HitFeedbackStats, HudPlugin},
     look::{Halo, ModelDressed, ToonMaterial},
@@ -595,7 +595,9 @@ fn glow_shapes_near(game: &mut Game, p: Vec3, r: f32) -> (usize, f32) {
         .query_filtered::<(&Transform, &Visibility), With<SpellGlow>>()
         .iter(world)
         .filter(|(t, v)| **v == Visibility::Visible && t.translation.distance(p) < r)
-        .fold((0, 0.0f32), |(n, big), (t, _)| (n + 1, big.max(t.scale.max_element())))
+        .fold((0, 0.0f32), |(n, big), (t, _)| {
+            (n + 1, big.max(t.scale.max_element()))
+        })
 }
 
 /// Amendment B: a body hit is 2–3× the first pass's burst (its starburst was
@@ -653,9 +655,7 @@ fn the_pump_fans_out_dozens_of_sparks_in_front_of_the_gun() {
         .iter(world)
         .filter(|(t, v)| {
             let d = t.translation - shot.origin;
-            **v == Visibility::Visible
-                && d.length() < 6.0
-                && d.normalize_or_zero().dot(aim) > 0.85
+            **v == Visibility::Visible && d.length() < 6.0 && d.normalize_or_zero().dot(aim) > 0.85
         })
         .count();
     assert!(
@@ -749,18 +749,26 @@ fn a_crystal_chamber_crackles_with_its_magazine_and_holds_still_when_frozen() {
     let assets = game.asset_counts();
 
     let (full_lit, full_glow) = crackle(&mut game, 90);
-    game.app
-        .world_mut()
-        .insert_resource(CrystalGlow { rifle: 0.25, pump: 1.0 });
+    game.app.world_mut().insert_resource(CrystalGlow {
+        rifle: 0.25,
+        pump: 1.0,
+    });
     let (empty_lit, empty_glow) = crackle(&mut game, 90);
-    assert!(full_lit > 0.75, "a full crystal keeps its arcs lit ({full_lit})");
+    assert!(
+        full_lit > 0.75,
+        "a full crystal keeps its arcs lit ({full_lit})"
+    );
     assert!(empty_lit < 0.35, "an empty one sputters ({empty_lit})");
-    assert!(full_glow > 3.0 * empty_glow, "glow {full_glow} vs {empty_glow}");
+    assert!(
+        full_glow > 3.0 * empty_glow,
+        "glow {full_glow} vs {empty_glow}"
+    );
 
     // The arcs re-strike: over a few frames they turn up somewhere new.
-    game.app
-        .world_mut()
-        .insert_resource(CrystalGlow { rifle: 1.0, pump: 1.0 });
+    game.app.world_mut().insert_resource(CrystalGlow {
+        rifle: 1.0,
+        pump: 1.0,
+    });
     let rolls = |game: &Game| {
         let state = game.world().resource::<ChamberState>();
         (0..CHAMBER_ARCS)
@@ -784,13 +792,19 @@ fn a_crystal_chamber_crackles_with_its_magazine_and_holds_still_when_frozen() {
     }
     game.app.world_mut().remove_resource::<GalleryFreeze>();
 
-    assert_eq!(game.entity_counts(), entities, "no effect entity was spawned");
+    assert_eq!(
+        game.entity_counts(),
+        entities,
+        "no effect entity was spawned"
+    );
     assert_eq!(game.asset_counts(), assets, "no mesh or material was made");
 }
 
 #[test]
 fn arcs_strike_more_often_and_brighter_as_the_crystal_fills() {
-    let chances: Vec<f32> = (0..=10).map(|i| arc_chance(0.25 + 0.075 * i as f32)).collect();
+    let chances: Vec<f32> = (0..=10)
+        .map(|i| arc_chance(0.25 + 0.075 * i as f32))
+        .collect();
     assert!(chances.windows(2).all(|w| w[1] >= w[0]), "{chances:?}");
     assert!(chances[0] < 0.2 && chances[10] > 0.99);
     let mut rng = FxRng::new(3);

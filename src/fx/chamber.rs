@@ -29,11 +29,9 @@ use crate::{
     look::{Halo, ModelDressed, NoOutline},
     render::VIEWMODEL_LAYER,
     shared::{FreezableTime, WeaponKind},
-    viewmodel::{CrystalGlow, VmModel, ViewmodelSet, crystal_color, models::gun_spec},
+    viewmodel::{CrystalGlow, ViewmodelSet, VmModel, crystal_color, models::gun_spec},
 };
-use bevy::{
-    camera::visibility::RenderLayers, light::NotShadowCaster, mesh::MeshTag, prelude::*,
-};
+use bevy::{camera::visibility::RenderLayers, light::NotShadowCaster, mesh::MeshTag, prelude::*};
 use std::f32::consts::PI;
 
 /// Lightning arcs per chamber.
@@ -130,7 +128,7 @@ pub fn arc_transform(strike: &ArcStrike, socket: Vec3) -> Transform {
 /// how big its twinkle makes it (0..=1).
 pub fn mote_pose(i: usize, t: f32) -> (Vec3, f32) {
     let k = i as f32;
-    let a = t * (1.1 + 0.37 * k) * if i % 2 == 0 { 1.0 } else { -1.0 } + k * 1.9;
+    let a = t * (1.1 + 0.37 * k) * if i.is_multiple_of(2) { 1.0 } else { -1.0 } + k * 1.9;
     let r = 0.031 + 0.01 * (t * 1.3 + k * 2.1).sin();
     let z = (0.045 - 0.03 * k) + 0.012 * (t * 0.9 + k).sin();
     let twinkle = (t * (7.0 + k) + k * 1.7).sin().abs();
@@ -308,9 +306,8 @@ fn animate_chamber_energy(
         match piece.role {
             EnergyRole::Glow => {
                 if let Some(mut halo) = halo {
-                    let intensity = GLOW_HALO_INTENSITY
-                        * level
-                        * (glow_breath(clock) + 0.25 * chamber.flare);
+                    let intensity =
+                        GLOW_HALO_INTENSITY * level * (glow_breath(clock) + 0.25 * chamber.flare);
                     let want = Halo::new(crystal_color(kind), GLOW_HALO_SIZE, intensity);
                     if *halo != want {
                         *halo = want;

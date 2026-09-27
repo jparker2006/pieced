@@ -332,12 +332,24 @@ fn make_assets(
         sparkle_gold: add(sparkle(GOLD, GOLD_CORE)),
         sparkle_violet: add(sparkle(VIOLET, VIOLET_CORE)),
         burst_blue: [
-            add(starburst(14, 0x1, BOLT_BLUE, &[BOLT_BLUE, BOLT_DEEP, BOLT_CORE], 0.11)),
+            add(starburst(
+                14,
+                0x1,
+                BOLT_BLUE,
+                &[BOLT_BLUE, BOLT_DEEP, BOLT_CORE],
+                0.11,
+            )),
             add(starburst(11, 0x2, BOLT_BLUE, &[BOLT_DEEP, BOLT_BLUE], 0.12)),
         ],
         burst_gold: add(starburst(14, 0x3, GOLD, &[GOLD, GOLD_DEEP], 0.13)),
         rays_gold: add(starburst(10, 0x4, GOLD_CORE, &[GOLD_DEEP, GOLD], 0.035)),
-        burst_pellet: add(starburst(12, 0x5, VIOLET, &[VIOLET, GOLD, VIOLET_DEEP], 0.12)),
+        burst_pellet: add(starburst(
+            12,
+            0x5,
+            VIOLET,
+            &[VIOLET, GOLD, VIOLET_DEEP],
+            0.12,
+        )),
         burst_cyan: add(starburst(14, 0x6, GLASS, &[GLASS, GLASS_EDGE], 0.11)),
         streak_blue: add(streak(Color::WHITE, BOLT_CORE, BOLT_BLUE)),
         streak_gold: add(streak(GOLD_CORE, GOLD, GOLD_DEEP)),
@@ -1052,8 +1064,7 @@ impl Emitter<'_> {
             s.p.life = self.rng.range(0.24, 0.48);
             // Every fourth one is a big star (T03's trail of stars).
             let big = if i % 4 == 2 { 2.4 } else { 1.0 };
-            s.p.size =
-                Vec3::splat(apparent_size(0.08, d, 0.065) * self.rng.range(0.7, 1.35) * big);
+            s.p.size = Vec3::splat(apparent_size(0.08, d, 0.065) * self.rng.range(0.7, 1.35) * big);
             s.p.birth_scale = 0.3;
             s.p.shrink_start = 0.5;
             s.face = Face::Billboard {
@@ -1089,14 +1100,14 @@ impl Emitter<'_> {
             self.assets.streak_gold.clone(),
             self.assets.streak_violet.clone(),
         ];
-        let aim = dirs
-            .iter()
-            .copied()
-            .sum::<Vec3>()
-            .normalize_or(Vec3::NEG_Z);
+        let aim = dirs.iter().copied().sum::<Vec3>().normalize_or(Vec3::NEG_Z);
         for i in 0..PUMP_FAN_SPARKS {
             // Most follow a pellet; some fill the cone between them.
-            let base = if i % 3 == 2 { aim } else { dirs[i % dirs.len()] };
+            let base = if i % 3 == 2 {
+                aim
+            } else {
+                dirs[i % dirs.len()]
+            };
             let d = self.rng.cone(base, if i % 3 == 2 { 0.32 } else { 0.16 });
             let out = self.rng.range(0.1, 3.2);
             let mut s = Spark::new(start + d * out, &meshes[i % 5]);
@@ -1328,7 +1339,16 @@ impl Emitter<'_> {
             self.assets.streak_gold.clone(),
         ];
         let w = apparent_size(0.05, d, 0.0042);
-        self.sparks(point, out, 1.0, BODY_SPARKS, (5.0, 11.0), &meshes, w, w * 6.0);
+        self.sparks(
+            point,
+            out,
+            1.0,
+            BODY_SPARKS,
+            (5.0, 11.0),
+            &meshes,
+            w,
+            w * 6.0,
+        );
         let twinkles = [
             self.assets.sparkle_blue.clone(),
             self.assets.sparkle_white.clone(),
@@ -1393,7 +1413,16 @@ impl Emitter<'_> {
             self.assets.streak_blue.clone(),
         ];
         let w = apparent_size(0.055, d, 0.0048);
-        self.sparks(point, out, 1.0, HEAD_SPARKS, (5.0, 11.0), &meshes, w, w * 6.0);
+        self.sparks(
+            point,
+            out,
+            1.0,
+            HEAD_SPARKS,
+            (5.0, 11.0),
+            &meshes,
+            w,
+            w * 6.0,
+        );
         let twinkles = [
             self.assets.sparkle_gold.clone(),
             self.assets.sparkle_white.clone(),
@@ -1520,7 +1549,14 @@ impl Emitter<'_> {
             self.assets.sparkle_blue.clone(),
         ];
         self.sparkles(center, 1.0, 12, 0.12, &twinkles);
-        self.flash(center, HALO_CYAN, apparent_size(2.0, d, 0.16), 1.5, 0.24, 0.3);
+        self.flash(
+            center,
+            HALO_CYAN,
+            apparent_size(2.0, d, 0.16),
+            1.5,
+            0.24,
+            0.3,
+        );
         self.dizzy_stars(target);
     }
 
