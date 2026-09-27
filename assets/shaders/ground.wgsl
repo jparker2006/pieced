@@ -1,6 +1,6 @@
 // Pieced island ground (src/look/ground.rs): toon-lit painted grass (the same
 // two bands, violet shadow and teal fill as toon.wgsl, no rim) plus a faint
-// glowing build grid drawn in world space. `grid_line_intensity` in ground.rs
+// glowing build grid drawn in world space (a pale core in a green glow). `grid_line_intensity` in ground.rs
 // mirrors the line math on the CPU; keep them in step.
 //
 // The painted look (GROUND_DETAIL) samples the generated detail texture in
@@ -27,6 +27,8 @@ struct Ground {
     base_color: vec4<f32>,
     // rgb: line colour; w: line strength.
     grid_color: vec4<f32>,
+    // rgb: glow colour.
+    glow_color: vec4<f32>,
     // xyz: unit vector toward the key light; w: band threshold (N·L).
     key_direction: vec4<f32>,
     // rgb: key colour; w: band half-width.
@@ -125,9 +127,9 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         let glow = max(gx, gz);
         let dist = length(view.world_position.xz - world);
         let fade = 1.0 - smoothstep(ground.params.z, ground.params.w, dist);
-        let line = ground.grid_color.rgb;
-        rgb = mix(rgb, line, clamp(core * ground.grid_color.w * fade, 0.0, 1.0));
-        rgb = rgb + line * glow * ground.params.y * fade;
+        // A pale core in a soft green halo.
+        rgb = mix(rgb, ground.grid_color.rgb, clamp(core * ground.grid_color.w * fade, 0.0, 1.0));
+        rgb = rgb + ground.glow_color.rgb * glow * ground.params.y * fade;
     }
 
     var out = vec4<f32>(mix(rgb, grade(rgb), ground.grading.x), 1.0);

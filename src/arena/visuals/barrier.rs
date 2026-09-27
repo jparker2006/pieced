@@ -51,7 +51,7 @@ fn linear(color: Color, w: f32) -> Vec4 {
 impl Default for BarrierMaterial {
     fn default() -> Self {
         Self {
-            color: linear(cartoon::BARRIER_CYAN, 0.26),
+            color: linear(cartoon::BARRIER_CYAN, 0.13),
             rune_color: linear(cartoon::GHOST_BLUE, 0.9),
             reveal: Vec4::new(REVEAL_FULL, REVEAL_END, BARRIER_HEIGHT, 1.0),
             touch: Vec4::new(0.9, 0.4, 0.8, 0.0),

@@ -143,7 +143,8 @@ fn spawn_island(
         bushes,
         prop_bushes,
         clouds: cloud_sectors,
-        decor,
+        mut decor,
+        knoll,
     } = island;
     let (c, m) = (&mut commands, &mut *meshes);
     spawn_part(c, m, "Island top", top, &ground, false);
@@ -161,6 +162,12 @@ fn spawn_island(
     }
     for sector in cloud_sectors {
         spawn_part(c, m, "Clouds", sector, &clouds, false);
+    }
+    if let Some(knoll) = knoll {
+        spawn_part(c, m, "Knoll top", knoll.top, &ground, false);
+        spawn_part(c, m, "Knoll", knoll.rock, &cliffs, true);
+        spawn_part(c, m, "Knoll grass", knoll.grass, &grass, false);
+        decor.extend(knoll.decor);
     }
     let dense = preset_look(tuning.graphics.preset).dense_grass;
     let mut extras = Vec::new();

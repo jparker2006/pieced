@@ -17,7 +17,7 @@
 //! 18k triangles of extra tufts. All of it is static: merged meshes sharing
 //! six materials, split into chunks so the camera culls what it can't see.
 
-use super::geo::{Geo, Rgba, blob, fbm2, lin, mix, noise2, shade, smoothstep};
+use super::geo::{Geo, Rgba, blob, fbm2, lin, mix, noise2, shade, smooth_blob, smoothstep};
 use crate::{palette::cartoon, rng::Rng, shared::ARENA_HALF};
 use bevy::prelude::*;
 use std::f32::consts::{FRAC_PI_2, TAU};
@@ -38,9 +38,9 @@ pub const ISLAND_TRIANGLE_BUDGET: usize = 130_000;
 /// side: tufts and flowers are split into this grid so the camera culls them.
 const CHUNK_SPAN: f32 = 80.0;
 const CHUNKS: usize = 4;
-/// The island's edge is never closer than this to the arena (m): the lip in
-/// the middle of the close edge ([`LIP_Z`]), where the grass ends just past
-/// the barrier.
+/// The island's edge is never closer than this to the arena (m): the lip at
+/// the north end of the close edge ([`LIP_Z`]), where the grass ends just
+/// past the barrier.
 pub const MIN_MARGIN: f32 = 0.9;
 /// The close edge's margin (m) either side of the lip.
 pub const CLOSE_MARGIN: f32 = 2.7;
@@ -50,14 +50,14 @@ pub const BASE_MARGIN: f32 = 9.0;
 /// sides at the same spacing so the two meshes share their seam vertices.
 pub const GROUND_STEP: f32 = 2.0;
 /// Where the island's edge comes closest to the arena: the east side between
-/// these z, [`CLOSE_MARGIN`] past the barrier.
-pub const CLOSE_EDGE_Z: (f32, f32) = (-4.0, 12.0);
-/// The middle of the close edge narrows further, between these z, to a lip
-/// [`MIN_MARGIN`] past the barrier: the grass stops at the cliff right behind
-/// the curtain. The island-edge view (T11) looks along it, at the rounded
-/// cliffs where the island steps back out at its north end. Only the edge
-/// samples inside the close edge move, so the margin's models stay put.
-pub const LIP_Z: (f32, f32) = (0.0, 8.0);
+/// these z, [`CLOSE_MARGIN`] past the barrier (the lip at its north end is
+/// narrower still).
+pub const CLOSE_EDGE_Z: (f32, f32) = (-8.0, 4.0);
+/// The north end of the close edge narrows further, between these z, to a
+/// lip [`MIN_MARGIN`] past the barrier: the grass stops at the cliff right
+/// behind the curtain. The island-edge view (T11) looks along it, at the
+/// cliff face where the island steps straight back out at its north end.
+pub const LIP_Z: (f32, f32) = (-8.0, 0.0);
 
 /// The Milestone 1 sun (west-southwest, late afternoon). The Milestone 2 key
 /// light is `look::ToonLighting`; this stays for the Milestone 1 gallery's
@@ -90,13 +90,16 @@ pub fn margin_at(base: Vec2, dir: Vec2) -> f32 {
         2.3 * (3.0 * a + 0.7).sin() + 1.4 * (5.0 * a + 2.1).sin() + 0.7 * (11.0 * a + 4.0).sin();
     let mut m = BASE_MARGIN + lobes;
     // The close edge: a stretch of the east side where the cliff drops right
-    // behind the barrier, narrowing to a lip in its middle.
+    // behind the barrier, narrowing to a lip at its north end. North of the
+    // lip the island steps straight back out to its full width, so that
+    // step's cliff face looks south, back along the lip (T11).
     if dir.x > 0.5 {
-        let (z0, z1) = CLOSE_EDGE_Z;
-        let t = smoothstep(z0 - 6.0, z0, base.y) * (1.0 - smoothstep(z1, z1 + 6.0, base.y));
-        m += (CLOSE_MARGIN - m) * t;
+        let (_, z1) = CLOSE_EDGE_Z;
         let (l0, l1) = LIP_Z;
-        let u = smoothstep(l0 - 4.0, l0, base.y) * (1.0 - smoothstep(l1, l1 + 4.0, base.y));
+        let open = if base.y >= l0 - 1.0 { 1.0 } else { 0.0 };
+        let t = (1.0 - smoothstep(z1, z1 + 6.0, base.y)) * open;
+        m += (CLOSE_MARGIN - m) * t;
+        let u = (1.0 - smoothstep(l1, l1 + 4.0, base.y)) * open;
         m += (MIN_MARGIN - m) * u;
     }
     m.max(MIN_MARGIN)
@@ -216,6 +219,24 @@ pub struct Island {
     pub clouds: Vec<Geo>,
     /// Trees, big rocks and stumps on the margin.
     pub decor: Vec<Decor>,
+    /// The little floating knoll the station view (T10) looks up from.
+    pub knoll: Option<Knoll>,
+}
+
+/// A small floating hill out over the void, carrying trees, a stump, rocks
+/// and bushes: the grassy rise the station view (T10) looks up from, framing
+/// the bottom of its shot as the painted hillside does. From the arena it is
+/// one more small floating island.
+#[derive(Debug, Default)]
+pub struct Knoll {
+    /// Its grassy top (the island's ground material, no grid).
+    pub top: Geo,
+    /// Its cliffs and bushes (toon, outlined).
+    pub rock: Geo,
+    /// Grass tufts and flowers.
+    pub grass: Geo,
+    /// Trees, a stump and rocks standing on it.
+    pub decor: Vec<Decor>,
 }
 
 impl Island {
@@ -225,26 +246,35 @@ impl Island {
         let decor = decor(&outline, &mut rng.fork(3));
         let mut tufts = tufts(&outline, 5200, 0.55, &mut rng.fork(4));
         base_clumps(&mut tufts, &outline, &decor, &mut rng.fork(8));
+        let mut bushes = bushes(&outline, &decor, &mut rng.fork(9));
+        let mut flowers = flowers(&outline, &mut rng.fork(6));
+        edge_cover(&mut bushes, &mut flowers, &mut tufts, &mut rng.fork(12));
         Island {
             ground: ground(&outline, &mut rng.fork(1)),
             skirt: skirt(&outline, &mut rng.fork(2)),
-            bushes: bushes(&outline, &decor, &mut rng.fork(9)),
+            bushes,
             prop_bushes: prop_bushes(&mut rng.fork(10)),
             clouds: clouds(&outline, &mut rng.fork(11)),
             decor,
             tufts,
             dense_tufts: tufts_dense(&outline, &mut rng.fork(5)),
-            flowers: flowers(&outline, &mut rng.fork(6)),
+            flowers,
             pebbles: pebbles(&outline, &mut rng.fork(7)),
+            knoll: station_view_knoll(&outline, &mut rng.fork(13)),
         }
     }
 
     /// Triangles drawn on the Battery preset (models aside).
     pub fn triangles(&self) -> usize {
-        [&self.ground, &self.skirt, &self.pebbles, &self.prop_bushes]
-            .iter()
-            .map(|g| g.tri_count())
-            .sum::<usize>()
+        let knoll = self
+            .knoll
+            .as_ref()
+            .map_or(0, |k| k.top.tri_count() + k.rock.tri_count() + k.grass.tri_count());
+        knoll
+            + [&self.ground, &self.skirt, &self.pebbles, &self.prop_bushes]
+                .iter()
+                .map(|g| g.tri_count())
+                .sum::<usize>()
             + [&self.tufts, &self.flowers, &self.bushes, &self.clouds]
                 .iter()
                 .flat_map(|v| v.iter())
@@ -334,40 +364,65 @@ fn push_up(g: &mut Geo, p: [Vec3; 3], c: [Rgba; 3]) {
 // The cliff skirt
 // ---------------------------------------------------------------------------
 
-/// Ring profile under the rim: (height, outward offset, shrink toward the
-/// island's centre, colour band). Bands: 0 grass lip, 1 cliff, 2 underside.
-const SKIRT: [(f32, f32, f32, u8); 12] = [
+/// Ring profile under the rim (T01, T11): (height, outward offset, shrink
+/// toward the island's centre, band). Bands: 0 the grass lip, bulging out over
+/// the cliff; 1 its ragged fringe, dripping down by a per-column amount; 2 the
+/// shadow tucked in under the overhang; 3 the rock face, in strata: each
+/// stratum steps out into a ledge (a lit top) and tucks back in under it; 4
+/// the underside, tapering to a point far below.
+const SKIRT: [(f32, f32, f32, u8); 16] = [
     (0.0, 0.0, 1.0, 0),
-    (-0.2, 0.32, 1.0, 0),
-    (-0.6, 0.24, 1.0, 0),
-    (-0.8, -0.12, 1.0, 1),
-    (-2.6, 0.5, 1.0, 1),
-    (-5.0, -0.2, 1.0, 1),
-    (-7.5, 0.45, 0.99, 1),
-    (-10.5, -0.4, 0.97, 1),
-    (-15.0, 0.0, 0.86, 2),
-    (-22.0, 0.0, 0.64, 2),
-    (-31.0, 0.0, 0.36, 2),
-    (-42.0, 0.0, 0.06, 2),
+    (-0.14, 0.26, 1.0, 0),
+    (-0.36, 0.4, 1.0, 0),
+    (-0.52, 0.3, 1.0, 1),
+    (-0.66, -0.06, 1.0, 2),
+    (-1.5, 0.1, 1.0, 3),
+    (-2.5, -0.02, 1.0, 3),
+    (-2.8, 0.34, 1.0, 3),
+    (-4.4, 0.12, 1.0, 3),
+    (-4.7, 0.42, 1.0, 3),
+    (-6.8, 0.06, 0.99, 3),
+    (-7.2, 0.3, 0.99, 3),
+    (-10.5, -0.4, 0.97, 3),
+    (-15.0, 0.0, 0.86, 4),
+    (-26.0, 0.0, 0.56, 4),
+    (-42.0, 0.0, 0.06, 4),
 ];
+
+/// How far (m) the grass fringe drips below its ring, per outline column: a
+/// ragged, scalloped hem of grass hanging over the rock (T11).
+fn fringe_drip(i: usize) -> f32 {
+    0.08 + 0.3 * noise2(i as f32 * 0.83, 3.1, 57) + 0.12 * noise2(i as f32 * 2.9, 7.7, 58)
+}
+
+/// Whether an outline column is a vertical crack in the rock face (pushed in
+/// and darker): clusters of cracks every few metres, like the painted cliffs'
+/// rock columns.
+fn crack(i: usize) -> bool {
+    noise2(i as f32 * 1.7, 0.5, 59) > 0.62
+}
 
 fn skirt(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
     let count = outline.len();
     let rings = SKIRT.len();
     // Per-column bulge noise so the cliff reads as rounded lumps and columns.
-    let lumps: Vec<f32> = (0..count).map(|_| rng.range(-0.35, 0.45)).collect();
+    let lumps: Vec<f32> = (0..count).map(|_| rng.range(-0.3, 0.4)).collect();
     let mut grid = vec![vec![Vec3::ZERO; count]; rings];
     for (i, s) in outline.iter().enumerate() {
         let edge = s.edge();
         let smooth = (lumps[i] + lumps[(i + 1) % count] + lumps[(i + count - 1) % count]) / 3.0;
         for (k, &(y, out, shrink, band)) in SKIRT.iter().enumerate() {
-            let wobble = if band == 1 {
-                smooth * (1.0 + 0.4 * noise2(i as f32 * 0.9, k as f32 * 1.3, 61))
-            } else {
-                0.0
+            let (wobble, dy) = match band {
+                1 => (0.0, -fringe_drip(i)),
+                3 => (
+                    smooth * (1.0 + 0.4 * noise2(i as f32 * 0.9, k as f32 * 1.3, 61))
+                        - if crack(i) { 0.22 } else { 0.0 },
+                    0.0,
+                ),
+                _ => (0.0, 0.0),
             };
             let flat = edge.with_y(0.0) * shrink;
-            grid[k][i] = flat + s.normal * (out + wobble) * shrink + Vec3::Y * y;
+            grid[k][i] = flat + s.normal * (out + wobble) * shrink + Vec3::Y * (y + dy);
         }
     }
     // Smooth normals per grid vertex (rounded cartoon rock), from the quads
@@ -384,18 +439,27 @@ fn skirt(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
         }
     }
     let grass = lin(cartoon::GRASS);
+    let lit_grass = lin(cartoon::GRASS_LIGHT);
     let dirt = lin(cartoon::CLIFF_DIRT);
-    let groove = shade(dirt, 0.86);
+    let tucked = lin(cartoon::CLIFF_DIRT_SHADOW);
     let under = shade(dirt, 0.8);
     let mut g = Geo::default();
     for k in 0..rings - 1 {
         for i in 0..count {
             let j = (i + 1) % count;
             let band = SKIRT[k].3.max(SKIRT[k + 1].3);
+            // Strata: each stratum a shade of its own, ledge tops (the quads
+            // stepping out as they go down) lit, cracks dark.
+            let stratum = [1.0, 0.9, 1.04, 0.86, 0.97, 0.9, 1.0, 0.88][k % 8];
+            let ledge = SKIRT[k + 1].1 > SKIRT[k].1 + 0.15;
             let color = match band {
-                0 => shade(grass, if k == 0 { 1.0 } else { 0.9 }),
-                1 if i % 3 == 0 => groove,
-                1 => shade(dirt, 1.0 + 0.04 * ((i * 7 + k * 3) % 5) as f32 / 4.0),
+                0 if k == 0 => mix(grass, lit_grass, 0.5),
+                0 => grass,
+                1 => shade(grass, 0.82),
+                2 => tucked,
+                3 if crack(i) || crack(j) => shade(dirt, 0.72),
+                3 if ledge => shade(dirt, 1.1),
+                3 => shade(dirt, stratum),
                 _ => under,
             };
             let v = |kk: usize, ii: usize| (grid[kk][ii], normals[kk][ii].normalize_or(Vec3::Y));
@@ -418,10 +482,11 @@ fn skirt(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
 // ---------------------------------------------------------------------------
 
 /// Tree canopy radius at scale 1 (tree_a.json), and its trunk's root flare.
-const TREE_CANOPY: f32 = 2.0;
+const TREE_CANOPY: f32 = 2.55;
 const TREE_TRUNK: f32 = 1.1;
-/// The same for the broad, round tree_b (tree_b.json).
-const TREE_B_CANOPY: f32 = 2.45;
+/// The same for the big, broad tree_b (tree_b.json): its crown reaches
+/// further out over its long limb.
+const TREE_B_CANOPY: f32 = 3.05;
 const TREE_B_TRUNK: f32 = 1.2;
 
 /// Whether a margin model is a tree.
@@ -551,8 +616,82 @@ const DECOR: [DecorKind; 10] = [
     },
 ];
 
+/// A margin model placed by hand to frame a gallery view: a big tree at the
+/// edge of the shot, a rock or stump near its foot. The targets frame every
+/// shot this way (T01, T03, T04, T05, T11); the views stand near the arena's
+/// edge so these fall at the frame's edges (`scenario::gallery`).
+struct Framing {
+    model: &'static str,
+    x: f32,
+    z: f32,
+    yaw_deg: f32,
+    scale: f32,
+}
+
+const fn framing(model: &'static str, x: f32, z: f32, yaw_deg: f32, scale: f32) -> Framing {
+    Framing {
+        model,
+        x,
+        z,
+        yaw_deg,
+        scale,
+    }
+}
+
+/// The hand-placed framing models, by the view they frame.
+const FRAMING: [Framing; 9] = [
+    // T01, from the west edge: a big tree at the left of the shot, a rock and
+    // a stump under it.
+    framing("tree_b", -28.6, 4.2, 200.0, 1.7),
+    framing("rock_a", -26.0, 8.4, 150.0, 1.4),
+    framing("stump_a", -25.6, 6.1, 0.0, 1.25),
+    // T05, from the north-west corner: a big tree at the left.
+    framing("tree_b", -28.0, -28.0, 150.0, 1.55),
+    // T03, from the north edge: a tree at the top left, over the fort, a
+    // stump under it.
+    framing("tree_a", 3.6, -29.2, 20.0, 1.75),
+    framing("stump_a", 6.4, -25.6, 60.0, 1.2),
+    // T11, looking north along the east lip: a big tree at the top left, on
+    // the north margin.
+    framing("tree_b", 18.0, -29.3, 110.0, 1.6),
+    // T04, from the south-east: a tree at the right edge, a stump before it.
+    framing("tree_a", 29.5, 12.5, 120.0, 1.6),
+    framing("stump_a", 26.5, 14.0, 30.0, 1.2),
+];
+
+/// Whether a margin point is where the island steps back out north of the
+/// lip: no trees there, so the island-edge view (T11) sees the step's cliff,
+/// the void and the station over it.
+fn in_clear_sky(p: Vec2) -> bool {
+    p.x > ARENA_HALF && (LIP_Z.0 - 12.0..LIP_Z.0).contains(&p.y)
+}
+
+/// A model's footprint radius at scale 1 (m) and its blob shadow radius.
+fn footprint(model: &str) -> (f32, f32) {
+    match model {
+        "tree_a" => (TREE_CANOPY, 1.9),
+        "tree_b" => (TREE_B_CANOPY, 2.2),
+        "rock_a" => (0.95, 1.35),
+        "rock_b" => (1.07, 1.45),
+        _ => (0.64, 0.9),
+    }
+}
+
 fn decor(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Decor> {
-    let mut placed: Vec<Decor> = Vec::new();
+    let mut placed: Vec<Decor> = FRAMING
+        .iter()
+        .map(|f| {
+            let (foot, shadow) = footprint(f.model);
+            Decor {
+                model: f.model,
+                transform: Transform::from_xyz(f.x, 0.0, f.z)
+                    .with_rotation(Quat::from_rotation_y(f.yaw_deg.to_radians()))
+                    .with_scale(Vec3::splat(f.scale)),
+                shadow: shadow * f.scale,
+                radius: foot * f.scale,
+            }
+        })
+        .collect();
     let reach = ARENA_HALF + BASE_MARGIN + 5.0;
     for kind in &DECOR {
         let tree = is_tree(kind.model);
@@ -572,6 +711,9 @@ fn decor(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Decor> {
             };
             let edge = edge_distance(p.x, p.y);
             if edge < inner || inside_rim(outline, p) < rim_foot + 0.9 {
+                continue;
+            }
+            if tree && in_clear_sky(p) {
                 continue;
             }
             if let Some(band) = kind.ring {
@@ -745,40 +887,87 @@ fn base_clumps(chunks: &mut [Geo], outline: &[EdgeSample], decor: &[Decor], rng:
     }
 }
 
-/// A round cartoon bush: a few overlapping faceted puffs, their upward faces
-/// blotched with the lighter, yellower foliage as the painted bushes are.
+/// A round, leafy cartoon bush (T01, T05): a crown puff on top of a ring of
+/// smaller ones, so its outline is scalloped like the painted bushes. Each
+/// puff shades round and is sunlit on top as the tree crowns are: a
+/// yellow-green cap (`GRASS_LIGHT`), lighter flanks (`FOLIAGE_LIGHT`), leaf
+/// green below, blended softly over each puff. Faces buried inside a
+/// neighbouring puff are dropped. About
+/// 1.35 × `size` tall, reaching about 1.3 × `size` from its root.
 fn bush(geo: &mut Geo, at: Vec3, size: f32, rng: &mut Rng) {
     bush_of(geo, at, size, 3 + (rng.next_u64() % 2) as usize, rng);
 }
 
-fn bush_of(geo: &mut Geo, at: Vec3, size: f32, puffs: usize, rng: &mut Rng) {
+fn bush_of(geo: &mut Geo, at: Vec3, size: f32, ring: usize, rng: &mut Rng) {
     let leaf = lin(cartoon::FOLIAGE);
-    let sun = lin(cartoon::FOLIAGE_LIGHT);
+    let flank = lin(cartoon::FOLIAGE_LIGHT);
+    let sun = lin(cartoon::GRASS_LIGHT);
     let seed = rng.next_u64() as u32;
-    for k in 0..puffs {
-        let r = size * if k == 0 { 1.0 } else { rng.range(0.6, 0.8) };
-        let offset = if k == 0 {
-            Vec3::ZERO
-        } else {
-            let a = rng.range(0.0, TAU);
-            Vec3::new(a.cos(), 0.0, a.sin()) * size * rng.range(0.55, 0.85)
-        };
-        let c = at + offset + Vec3::Y * r * 0.55;
+    let squash = Vec3::new(1.0, 0.82, 1.0);
+    // (centre, radius) of every puff: the crown, then the ring round it, and
+    // for the big foreground bushes (`ring` ≥ 6) smaller puffs between the
+    // two, so the outline scallops like the painted leaf clumps.
+    let mut puffs = vec![(at + Vec3::Y * size * 0.74, size * 0.72)];
+    let spin = rng.range(0.0, TAU);
+    let small = if ring >= 6 { 0.8 } else { 1.0 };
+    for k in 0..ring {
+        let a = spin + TAU * k as f32 / ring as f32 + rng.range(-0.3, 0.3);
+        let r = size * rng.range(0.5, 0.62) * small;
+        let out = size * rng.range(0.55, 0.68);
+        puffs.push((
+            at + Vec3::new(a.cos() * out, r * 0.62, a.sin() * out),
+            r,
+        ));
+    }
+    if ring >= 6 {
+        for k in 0..4 {
+            let a = spin + TAU * (k as f32 + 0.5) / 4.0 + rng.range(-0.3, 0.3);
+            let r = size * rng.range(0.34, 0.42);
+            let out = size * rng.range(0.42, 0.52);
+            puffs.push((
+                at + Vec3::new(a.cos() * out, size * rng.range(0.78, 0.9), a.sin() * out),
+                r,
+            ));
+        }
+    }
+    let buried = |p: Vec3, own: usize| {
+        puffs.iter().enumerate().any(|(j, &(c, r))| {
+            j != own && ((p - c) / (squash * r * 0.94)).length_squared() < 1.0
+        })
+    };
+    for (k, &(c, r)) in puffs.iter().enumerate() {
         let mut shape = rng.fork(k as u64 + 31);
         let tone = rng.range(0.95, 1.06);
-        blob(
-            geo,
+        let mut one = Geo::default();
+        smooth_blob(
+            &mut one,
             1,
             |v| {
                 let v = Vec3::new(v.x, v.y.max(-0.55), v.z);
-                c + v * r * Vec3::new(1.0, 0.82, 1.0) * shape.range(0.93, 1.07)
+                c + v * r * squash * shape.range(0.9, 1.08)
             },
-            |n| {
-                let c = shade(leaf, tone * (0.97 + 0.08 * n.y.max(0.0)));
-                let lit = n.y > 0.45 && noise2(n.x * 2.3 + k as f32 * 3.7, n.z * 2.3, seed) > 0.45;
-                if lit { mix(c, sun, 0.8) } else { c }
+            |u| u / squash,
+            |u| {
+                // Sunlit cap, lighter flanks, leaf green, darker underneath.
+                let dapple = noise2(u.x * 2.3 + k as f32 * 3.7, u.z * 2.3, seed) * 0.25;
+                let h = u.y + dapple;
+                let c = if h > 0.3 {
+                    mix(flank, sun, 0.75 * smoothstep(0.45, 0.85, h))
+                } else {
+                    mix(leaf, flank, smoothstep(-0.05, 0.3, h))
+                };
+                shade(c, tone * (0.78 + 0.22 * smoothstep(-0.6, 0.1, u.y)))
             },
         );
+        for t in 0..one.tri_count() {
+            let corners = [0, 1, 2].map(|i| Vec3::from_array(one.positions[t * 3 + i]));
+            if corners.iter().all(|&p| buried(p, k)) {
+                continue;
+            }
+            geo.positions.extend_from_slice(&one.positions[t * 3..t * 3 + 3]);
+            geo.normals.extend_from_slice(&one.normals[t * 3..t * 3 + 3]);
+            geo.colors.extend_from_slice(&one.colors[t * 3..t * 3 + 3]);
+        }
     }
 }
 
@@ -792,13 +981,18 @@ fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Vec<Geo> {
     let reach = ARENA_HALF + BASE_MARGIN + 5.0;
     let mut made = 0;
     let mut attempts = 0;
-    while made < 110 && attempts < 60_000 {
+    while made < 96 && attempts < 60_000 {
         attempts += 1;
         let p = Vec2::new(rng.range(-reach, reach), rng.range(-reach, reach));
         let size = rng.range(0.6, 1.1);
         let foot = size * 1.8;
         let edge = edge_distance(p.x, p.y);
-        if edge < foot + EDGE_CLEARANCE || inside_rim(outline, p) < foot + 0.3 {
+        let to_rim = inside_rim(outline, p);
+        if edge < foot + EDGE_CLEARANCE || to_rim < foot + 0.3 {
+            continue;
+        }
+        // The lip stays clean grass over the cliff (T11).
+        if edge + to_rim < 4.5 {
             continue;
         }
         // Bushes gather at tree and rock bases, along the rim, and in a
@@ -811,7 +1005,7 @@ fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Vec<Geo> {
             };
             d.transform.translation.xz().distance(p) < reach
         });
-        let near_rim = inside_rim(outline, p) < foot + 2.0;
+        let near_rim = to_rim < foot + 2.0;
         let hedge = edge < foot + EDGE_CLEARANCE + 1.2;
         if !(near_tree || near_rim || hedge) {
             continue;
@@ -877,7 +1071,7 @@ fn flowers(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
         (lin(cartoon::FLOWER_PINK), lin(cartoon::SPELL_GOLD)),
     ];
     // Flowers grow in little clusters of one kind.
-    for _ in 0..260 {
+    for _ in 0..235 {
         let Some((p, on_floor)) = island_point(outline, rng, 0.6) else {
             continue;
         };
@@ -902,6 +1096,227 @@ fn flowers(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
     geo
 }
 
+/// Tallest bush allowed in an edge-cover patch on the arena floor (m).
+pub const EDGE_BUSH_MAX_HEIGHT: f32 = 0.62;
+/// Edge-cover patches stay within this distance of the arena's edge (m), so
+/// the middle of the arena stays open lawn.
+pub const EDGE_COVER_BAND: f32 = 4.5;
+
+/// Low ground cover on the arena floor where a gallery view stands: a few
+/// small bushes just inside the arena's edge (never taller than
+/// [`EDGE_BUSH_MAX_HEIGHT`], within [`EDGE_COVER_BAND`] of the edge, no
+/// collision), flowers and thick tufts. They fill the foot of the shot the way
+/// the painted foreground bushes do (T01, T03, T05, T11). (x, z, radius,
+/// bushes).
+const EDGE_COVER: [(f32, f32, f32, usize); 5] = [
+    // T01: the bottom left of the shot from the west edge.
+    (-21.6, 11.4, 1.3, 4),
+    (-22.5, 8.6, 0.9, 2),
+    // T05: the bottom left, in the north-west.
+    (-21.5, -17.2, 1.0, 3),
+    // T11: the bottom left, on the east edge.
+    (22.2, -2.0, 0.9, 3),
+    // T03: flowers and tufts only, mid-field at the bottom left of the shot.
+    (-2.6, -15.2, 1.2, 0),
+];
+
+fn edge_cover(bushes: &mut [Geo], flowers: &mut [Geo], tufts: &mut [Geo], rng: &mut Rng) {
+    // A bush stands about 1.35 × its size tall.
+    let largest = EDGE_BUSH_MAX_HEIGHT / 1.4;
+    let petals = [
+        (lin(cartoon::GLOVE_WHITE), lin(cartoon::STAR_GOLD)),
+        (lin(cartoon::SPELL_GOLD), lin(cartoon::STAR_GOLD)),
+        (lin(cartoon::FLOWER_PINK), lin(cartoon::SPELL_GOLD)),
+    ];
+    for &(x, z, radius, count) in &EDGE_COVER {
+        let centre = Vec2::new(x, z);
+        let inside = |p: Vec2| {
+            p.x.abs() < ARENA_HALF - 0.3 && p.y.abs() < ARENA_HALF - 0.3
+        };
+        for k in 0..count {
+            let a = TAU * k as f32 / count as f32 + rng.range(-0.5, 0.5);
+            let p = centre + Vec2::new(a.cos(), a.sin()) * radius * rng.range(0.2, 0.75);
+            let size = largest * rng.range(0.72, 1.0);
+            if inside(p) {
+                bush_of(
+                    &mut bushes[chunk(p.x, p.y)],
+                    Vec3::new(p.x, 0.0, p.y),
+                    size,
+                    6,
+                    rng,
+                );
+            }
+        }
+        for _ in 0..14 {
+            let a = rng.range(0.0, TAU);
+            let p = centre + Vec2::new(a.cos(), a.sin()) * radius * rng.range(0.3, 1.5);
+            if inside(p) {
+                tuft(
+                    &mut tufts[chunk(p.x, p.y)],
+                    Vec3::new(p.x, 0.0, p.y),
+                    rng.range(0.16, FLOOR_CLUTTER_MAX_HEIGHT - 0.01),
+                    rng,
+                );
+            }
+        }
+        let (petal, heart) = petals[(rng.next_u64() % petals.len() as u64) as usize];
+        for _ in 0..7 {
+            let a = rng.range(0.0, TAU);
+            let p = centre + Vec2::new(a.cos(), a.sin()) * radius * rng.range(0.6, 1.6);
+            if inside(p) {
+                flower(
+                    &mut flowers[chunk(p.x, p.y)],
+                    Vec3::new(p.x, 0.0, p.y),
+                    rng.range(0.09, 0.13),
+                    petal,
+                    heart,
+                    rng,
+                );
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The station view's knoll (T10)
+// ---------------------------------------------------------------------------
+
+/// Where the station view (T10) looks from and at, from the gallery's table:
+/// the knoll follows its camera. `None` if the view isn't a fixed camera out
+/// over the void.
+fn station_view(outline: &[EdgeSample]) -> Option<(Vec3, Vec3)> {
+    use crate::scenario::gallery::{Framing as View, views};
+    let view = views().into_iter().find(|v| v.id == "T10")?;
+    let View::Fixed { eye, look_at } = view.framing else {
+        return None;
+    };
+    (inside_rim(outline, eye.xz()) < -25.0).then_some((eye, look_at))
+}
+
+/// The knoll's height (m) above its base plane at a point `(u, v)` in the
+/// view's frame (u right, v forward, metres from the camera's foot): a low
+/// rounded hill, rising at the left, sloping away ahead.
+fn knoll_height(u: f32, v: f32) -> f32 {
+    let dome = 1.0 - ((u / 26.0).powi(2) + ((v - 12.0) / 22.0).powi(2));
+    let left = smoothstep(0.0, -18.0, u) * 1.6;
+    (dome.max(0.0).sqrt() * 2.2 + left * dome.max(0.0)).max(0.0)
+}
+
+fn station_view_knoll(outline: &[EdgeSample], rng: &mut Rng) -> Option<Knoll> {
+    let (eye, look_at) = station_view(outline)?;
+    let ahead = (look_at - eye).with_y(0.0).normalize_or(Vec3::NEG_Z);
+    let right = ahead.cross(Vec3::Y);
+    // The camera stands on the hill's crest: its foot 1.8 m under the eye,
+    // where the hill is about 2.2 m high.
+    let base = eye - Vec3::Y * (1.8 + knoll_height(0.0, 0.0));
+    let at = |u: f32, v: f32| base + right * u + ahead * v + Vec3::Y * knoll_height(u, v);
+    let mut knoll = Knoll::default();
+    // The top: a polar grid round the hill's middle, (12 m ahead), out to an
+    // oval rim.
+    let centre = (0.0, 12.0);
+    let (rings, sides) = (5, 20);
+    let rim_at = |a: f32| {
+        let wobble = 1.0 + 0.08 * (3.0 * a + 1.3).sin() + 0.05 * (5.0 * a + 0.4).sin();
+        (26.0 * a.cos() * wobble, 22.0 * a.sin() * wobble)
+    };
+    let point = |ring: usize, side: usize| {
+        let a = TAU * side as f32 / sides as f32;
+        let t = ring as f32 / rings as f32;
+        let (ru, rv) = rim_at(a);
+        at(centre.0 + ru * t, centre.1 + rv * t)
+    };
+    let grass = lin(cartoon::GRASS);
+    for r in 0..rings {
+        for sd in 0..sides {
+            let n = (sd + 1) % sides;
+            let (a, b) = (point(r, sd), point(r, n));
+            let (c, d) = (point(r + 1, n), point(r + 1, sd));
+            for tri in [[a, c, d], [a, b, c]] {
+                let nrm = (tri[1] - tri[0]).cross(tri[2] - tri[0]);
+                if nrm.length_squared() < 1e-8 {
+                    continue;
+                }
+                let tri = if nrm.y < 0.0 { [tri[0], tri[2], tri[1]] } else { tri };
+                let nrm = (tri[1] - tri[0]).cross(tri[2] - tri[0]).normalize();
+                knoll.top.tri_raw(tri, [nrm; 3], [grass; 3]);
+            }
+        }
+    }
+    // Its cliffs: the island skirt's profile, scaled down, under the rim.
+    let rim: Vec<Vec3> = (0..sides).map(|sd| point(rings, sd)).collect();
+    let mid = base + ahead * centre.1;
+    let dirt = lin(cartoon::CLIFF_DIRT);
+    let profile = [(0.0, 0.0, 0), (-0.5, 0.35, 1), (-0.8, -0.05, 2), (-3.5, 0.3, 3), (-7.0, -0.2, 3), (-16.0, -9.0, 4)];
+    let ring_at = |k: usize| -> Vec<Vec3> {
+        let (dy, out, _) = profile[k];
+        rim.iter()
+            .map(|&p| {
+                let o = (p - mid).with_y(0.0).normalize_or(Vec3::X);
+                if k + 1 == profile.len() {
+                    mid.with_y(p.y) + (p - mid).with_y(0.0) * 0.25 + Vec3::Y * dy
+                } else {
+                    p + o * out + Vec3::Y * dy
+                }
+            })
+            .collect()
+    };
+    for k in 0..profile.len() - 1 {
+        let (top, bottom) = (ring_at(k), ring_at(k + 1));
+        let color = match profile[k].2.max(profile[k + 1].2) {
+            0 | 1 => shade(grass, 0.88),
+            2 => lin(cartoon::CLIFF_DIRT_SHADOW),
+            3 => shade(dirt, if k % 2 == 0 { 1.0 } else { 0.9 }),
+            _ => shade(dirt, 0.8),
+        };
+        for sd in 0..sides {
+            let n = (sd + 1) % sides;
+            knoll.rock.quad(top[sd], bottom[sd], bottom[n], top[n], color);
+        }
+    }
+    // What stands on it: a big tree at the left of the shot and a smaller one
+    // beside it with a stump and rocks at their feet, a tree at the right,
+    // and bushes along the crest (T10).
+    let models: [(&str, f32, f32, f32, f32); 7] = [
+        ("tree_b", -10.5, 9.0, 40.0, 1.5),
+        ("tree_a", -8.5, 16.5, 200.0, 1.05),
+        ("stump_a", -6.2, 11.0, 0.0, 1.3),
+        ("rock_b", -9.2, 13.4, 120.0, 1.2),
+        ("rock_a", 5.5, 15.0, 60.0, 1.0),
+        ("tree_a", 13.0, 10.5, 310.0, 1.35),
+        ("tree_a", 15.0, 21.0, 90.0, 1.1),
+    ];
+    for (model, u, v, yaw, scale) in models {
+        let (foot, shadow) = footprint(model);
+        knoll.decor.push(Decor {
+            model,
+            transform: Transform::from_translation(at(u, v))
+                .with_rotation(Quat::from_rotation_y(yaw.to_radians()))
+                .with_scale(Vec3::splat(scale)),
+            shadow: shadow * scale,
+            radius: foot * scale,
+        });
+    }
+    for (u, v, size) in [
+        (-2.5, 14.0, 1.0),
+        (1.5, 16.5, 0.9),
+        (-4.0, 18.5, 0.8),
+        (7.5, 13.0, 1.1),
+        (9.5, 16.0, 0.9),
+        (-12.0, 13.5, 1.0),
+        (15.5, 14.0, 0.9),
+    ] {
+        bush(&mut knoll.rock, at(u, v), size, rng);
+    }
+    for _ in 0..140 {
+        let (u, v) = (rng.range(-20.0, 20.0), rng.range(2.0, 28.0));
+        let p = at(u, v);
+        if knoll_height(u, v) > 0.3 {
+            tuft(&mut knoll.grass, p, rng.range(0.25, 0.5), rng);
+        }
+    }
+    Some(knoll)
+}
+
 /// Two or three small bushes hugging the foot of every solid arena prop
 /// (T01, T05): tucked mostly under the prop's own footprint, no taller than
 /// [`PROP_BUSH_MAX_HEIGHT`], so they dress the cover without changing it.
@@ -909,11 +1324,11 @@ fn prop_bushes(rng: &mut Rng) -> Geo {
     let mut geo = Geo::default();
     for prop in crate::arena::ARENA_PROPS {
         let foot = prop.kind.footprint_radius();
-        // A two-puff bush reaches about 1.75 × its size from its root and
-        // stands about 1.45 × its size tall.
-        let largest = 0.4_f32
-            .min((PROP_BUSH_REACH + 0.4 * foot) / 1.75)
-            .min(0.9 * prop.kind.height().min(PROP_BUSH_MAX_HEIGHT) / 1.45);
+        // A bush reaches about 1.3 × its size from its root and stands
+        // about 1.35 × its size tall.
+        let largest = 0.42_f32
+            .min((PROP_BUSH_REACH + 0.4 * foot) / 1.3)
+            .min(0.9 * prop.kind.height().min(PROP_BUSH_MAX_HEIGHT) / 1.35);
         let n = 2 + (rng.next_u64() % 2) as usize;
         let spin = rng.range(0.0, TAU);
         for k in 0..n {
@@ -1008,7 +1423,7 @@ fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
     fn put(geo: &mut [Geo], c: Vec3, r: f32, puffs: usize, rng: &mut Rng) {
         let yaw = rng.range(0.0, TAU);
         let mut one = Geo::default();
-        let segments = if c.xz().length() < 90.0 { 12 } else { 8 };
+        let segments = if c.xz().length() < 90.0 { 10 } else { 8 };
         cloud(&mut one, Vec3::ZERO, r, puffs, segments, rng);
         let t = Transform::from_translation(c).with_rotation(Quat::from_rotation_y(yaw));
         geo[sector(c)].append(&one, &t);
@@ -1120,7 +1535,7 @@ mod tests {
         // elsewhere the margin is wide enough for trees.
         let east = outline
             .iter()
-            .filter(|s| s.normal.x > 0.99 && (0.0..8.0).contains(&s.base.z))
+            .filter(|s| s.normal.x > 0.99 && (LIP_Z.0..LIP_Z.1).contains(&s.base.z))
             .map(|s| s.margin)
             .fold(0.0, f32::max);
         assert!(east < 1.2, "close edge margin {east}");
@@ -1382,5 +1797,76 @@ mod tests {
         }
         assert!(tris < ISLAND_TRIANGLE_BUDGET, "island has {tris} triangles");
         assert_eq!(a.tufts.len(), CHUNKS * CHUNKS);
+    }
+}
+
+#[cfg(test)]
+mod dump_map {
+    use super::*;
+
+    /// TEMP (round 3): prints the island's triangle counts by layer.
+    #[test]
+    #[ignore]
+    fn print_island_triangles() {
+        let a = Island::generate();
+        let sum = |v: &Vec<Geo>| v.iter().map(Geo::tri_count).sum::<usize>();
+        let k = a.knoll.as_ref().map_or(0, |k| k.top.tri_count() + k.rock.tri_count() + k.grass.tri_count());
+        println!(
+            "TRIS total {} ground {} skirt {} tufts {} dense {} flowers {} bushes {} prop_bushes {} clouds {} pebbles {} knoll {} decor {} knoll_decor {}",
+            a.triangles(), a.ground.tri_count(), a.skirt.tri_count(), sum(&a.tufts), sum(&a.dense_tufts),
+            sum(&a.flowers), sum(&a.bushes), a.prop_bushes.tri_count(), sum(&a.clouds), a.pebbles.tri_count(), k,
+            a.decor.len(), a.knoll.as_ref().map_or(0, |k| k.decor.len())
+        );
+        let mut models = std::collections::BTreeMap::new();
+        for d in a.decor.iter().chain(a.knoll.iter().flat_map(|k| k.decor.iter())) {
+            *models.entry(d.model).or_insert(0) += 1;
+        }
+        println!("MODELS {models:?}");
+    }
+
+    /// TEMP (round 3 planning): dumps the island layout for a top-down map.
+    #[test]
+    #[ignore]
+    fn dump_island_layout() {
+        let Ok(path) = std::env::var("PIECED_MAP_DUMP") else {
+            return;
+        };
+        let island = Island::generate();
+        let rim: Vec<[f32; 2]> = outline().iter().map(|s| s.edge().xz().to_array()).collect();
+        let decor: Vec<serde_json::Value> = island
+            .decor
+            .iter()
+            .map(|d| {
+                serde_json::json!({
+                    "model": d.model,
+                    "x": d.transform.translation.x,
+                    "z": d.transform.translation.z,
+                    "scale": d.transform.scale.x,
+                    "radius": d.radius,
+                })
+            })
+            .collect();
+        let props: Vec<serde_json::Value> = crate::arena::ARENA_PROPS
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "model": p.kind.model(),
+                    "x": p.position.x,
+                    "z": p.position.z,
+                    "radius": p.kind.footprint_radius(),
+                })
+            })
+            .collect();
+        let bushes: Vec<[f32; 3]> = island
+            .bushes
+            .iter()
+            .flat_map(|g| g.positions.chunks(80 * 3))
+            .map(|c| {
+                let p = c.iter().map(|p| Vec3::from_array(*p)).sum::<Vec3>() / c.len() as f32;
+                [p.x, p.z, 1.0]
+            })
+            .collect();
+        let json = serde_json::json!({ "rim": rim, "decor": decor, "props": props, "bushes": bushes });
+        std::fs::write(path, serde_json::to_string(&json).unwrap()).unwrap();
     }
 }
