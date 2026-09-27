@@ -7,7 +7,9 @@
 //! `models::spawn_model`, toon-dressed and ink-outlined by `look`, with the
 //! knight's warm-rim material), a [`BlobShadow`] under the boots, and the
 //! knight's [`KnightAnim`], fed each frame with the owner's velocity, grounded
-//! state, jumps, landings, hits and elimination (see `crate::knight`). When the
+//! state, jumps, landings, hits, shield breaks and elimination (see
+//! `crate::knight`). The knight's hit take hops and slides the model under the
+//! figure; the figure itself always stands on its owner's feet. When the
 //! owner is eliminated the knight shows X eyes for `knight::KO_TIME`, then the
 //! figure hides until respawn, when it pops back in.
 
@@ -244,6 +246,9 @@ pub fn animate_knights(
                 headshot: hit.headshot,
             },
         ));
+        if hit.shield_broke {
+            events.push((hit.target, KnightEvent::ShieldBreak));
+        }
     }
     for cue in cues.read() {
         match *cue {

@@ -28,9 +28,9 @@ from `art/palette.json`, sampled from the target images by
 | `models/manifest.json` | `art/blender/build.py` | Every model the game loads (`[{name, file}]`) |
 | `models/axis_probe.glb` | `art/blender/assets/probe.py` | Orientation test fixture: `Forward` empty 1 m in front |
 | `models/axis_probe.json` | `art/blender/assets/probe.py` | Sidecar |
-| `models/knight.glb` | `art/blender/assets/knight.py` | The knight-wizard enemy, 1.86 m, fitted to the dummy's hitboxes; named parts, joint pivots and eye states |
+| `models/knight.glb` | `art/blender/assets/knight.py` | The knight-wizard enemy, 2.13 m to the tip of his tall cosmetic hat, fitted to the dummy's hitboxes (the hat excluded); robe, cape, named parts, joint pivots and eye states |
 | `models/knight.json` | `art/blender/assets/knight.py` | Sidecar |
-| `models/knight_hat.glb` | `art/blender/assets/knight.py` | The knight's `Hat` on its own, pivot at the brim's base: the prop that drops off him when he's eliminated |
+| `models/knight_hat.glb` | `art/blender/assets/knight.py` | The knight's tall `Hat` (with its floppy `HatTip`) on its own, pivot at the brim's base: the prop that drops off him when he's eliminated |
 | `models/knight_hat.json` | `art/blender/assets/knight.py` | Sidecar |
 | `models/gloves.glb` | `art/blender/assets/gloves.py` | White four-finger cartoon gloves (`GloveR`, `GloveL`) with dark sleeves; each pivots on its grip frame |
 | `models/gloves.json` | `art/blender/assets/gloves.py` | Sidecar |
