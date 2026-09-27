@@ -301,3 +301,13 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **Pump:** a long trumpet bell that reads as a horn from the side, a ribbed wooden grip, and the violet chamber in view.
   - **Gloves:** bigger and puffier, with dark sleeves.
   - **Budget:** rifle 6,776, pump 6,984, gloves 1,904 triangles. The gun budget is raised from 6k to 8k in the spec, `registry.py` and `tests/models.rs`.
+- 2026-09-27: **round 3, ground slice merged** (`402e7e8`), with 410 tests passing; clippy (`-D warnings`), `fmt --check` and `build-art --check` are clean:
+  - **Trees:** round, lobed crowns of separate smooth puffs with sunlit tops; curvy trunks with rooted feet and forking limbs.
+  - **Rocks and stumps:** smooth rounded boulders (warm tops, cool grey flanks); stumps with grooved bark, four roots and a ring top. Footprints and heights are unchanged, so D29 colliders are unchanged.
+  - **Framing:** 8 hand-placed margin trees, rocks and stumps; low non-colliding bushes, flowers and tufts just inside the edge, kept 3 m from spawns; a small floating knoll with trees and rocks under T10.
+  - **Grid:** a pale core with a soft green glow. **Island edge:** a grassy overhang over brown stratified rock. **Barrier:** fainter face-on so the cliff shows through. **Cloud bank:** anchored 110 m under the station's platform.
+  - **Cameras:** T01, T03, T04, T05 and T11 moved to framed spots (T05's knight now 3.6 m out; T03 captures 3 frames after the shot so the burst lands on him). T02, T06–T10 and T12 keep their cameras.
+  - **Budget:** merged scenery 116.7k → 122.2k triangles (cap 130k), still 6 shared materials. New scenery tests: edge cover stays low and off the spawns, every view is framed by a tree, and the knoll sits under T10.
+  - **Known gap:** T11's cliff face is one wide slab with horizontal strata, where the target paints vertical rock columns.
+
+  **All three round 3 slices are merged.** Next: the round 3 board for Jake.
