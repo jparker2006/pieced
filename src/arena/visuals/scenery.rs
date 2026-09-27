@@ -1366,6 +1366,20 @@ mod tests {
         assert_eq!(a.skirt.colors, b.skirt.colors);
         assert_eq!(a.decor, b.decor);
         let tris = a.triangles();
+        // Each layer within its share of the budget.
+        let sum = |v: &Vec<Geo>| v.iter().map(Geo::tri_count).sum::<usize>();
+        let layers = [
+            ("tufts", sum(&a.tufts), 45_000),
+            ("extra tufts (Plugged in)", sum(&a.dense_tufts), 25_000),
+            ("flowers", sum(&a.flowers), 20_000),
+            ("bushes", sum(&a.bushes), 36_000),
+            ("prop bushes", a.prop_bushes.tri_count(), 6_000),
+            ("clouds", sum(&a.clouds), 30_000),
+            ("pebbles", a.pebbles.tri_count(), 20_000),
+        ];
+        for (name, n, cap) in layers {
+            assert!(n <= cap, "{name}: {n} triangles, over {cap}");
+        }
         assert!(tris < ISLAND_TRIANGLE_BUDGET, "island has {tris} triangles");
         assert_eq!(a.tufts.len(), CHUNKS * CHUNKS);
     }

@@ -102,6 +102,11 @@ pub struct GroundMaterial {
     pub stroke_strength: f32,
     /// Brightness of a full-strength blade stroke (× the grass colour).
     pub stroke_shade: f32,
+    /// How much of the shared colour grade ([`super::grade`]) the lawn takes
+    /// (0..1). The palette's grass is sampled from the targets' finished
+    /// lawns, and the full grade's vibrance pushes it toward lime; half keeps
+    /// its punch while landing near the targets' green (T01, T09, T11).
+    pub grade_amount: f32,
     /// Managed copy of [`ToonLighting`]; don't set by hand.
     pub lighting: ToonLight,
 }
@@ -130,6 +135,7 @@ impl Default for GroundMaterial {
             patch_light_amount: 1.0,
             stroke_strength: 0.9,
             stroke_shade: 0.52,
+            grade_amount: 0.5,
             lighting: ToonLight::default(),
         }
     }
@@ -186,6 +192,8 @@ pub struct GroundUniform {
     patch_light: Vec4,
     /// x: stroke tile (m), y: patch tile (m), z: stroke strength, w: stroke shade.
     detail: Vec4,
+    /// x: grade amount.
+    grading: Vec4,
 }
 
 /// `color` ÷ the palette grass, per linear channel: what the shader multiplies
@@ -224,6 +232,7 @@ impl From<&GroundMaterial> for GroundUniform {
                 m.stroke_strength,
                 m.stroke_shade,
             ),
+            grading: Vec4::new(m.grade_amount, 0.0, 0.0, 0.0),
         }
     }
 }
@@ -674,6 +683,10 @@ mod tests {
             assert!(c.y > c.x && c.y > c.z, "{c}");
         }
         assert!((0.0..1.0).contains(&m.stroke_shade));
+        assert!(
+            (0.0..=1.0).contains(&u.grading.x) && u.grading.x > 0.0,
+            "graded"
+        );
     }
 
     #[test]

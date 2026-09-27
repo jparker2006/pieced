@@ -8,8 +8,9 @@
 // turned against each other so the tile never repeats visibly), B and A soft
 // noise at patch scale for darker and lighter, yellower lawn.
 //
-// The final colour takes the same colour grade as every toon and far surface
-// (pieced::grade), so the lawn matches them in wide shots.
+// The final colour takes the colour grade every toon and far surface takes
+// (pieced::grade), mixed in by the material's grade amount (as the far layer
+// does), so the lawn matches them in wide shots without turning lime.
 
 #import bevy_pbr::{
     forward_io::VertexOutput,
@@ -45,6 +46,8 @@ struct Ground {
     patch_light: vec4<f32>,
     // x: stroke tile (m), y: patch tile (m), z: stroke strength, w: stroke shade.
     detail: vec4<f32>,
+    // x: grade amount.
+    grading: vec4<f32>,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> ground: Ground;
@@ -127,7 +130,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         rgb = rgb + line * glow * ground.params.y * fade;
     }
 
-    var out = vec4<f32>(grade(rgb), 1.0);
+    var out = vec4<f32>(mix(rgb, grade(rgb), ground.grading.x), 1.0);
 #ifdef TONEMAP_IN_SHADER
     out = tone_mapping(out, view.color_grading);
 #endif
