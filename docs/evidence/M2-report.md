@@ -182,3 +182,15 @@ Every number here names its run folder, the commit, and the power and Low Power 
   > "Okay, it plays really fun. I think the rebuild mechanics need to act a little bit more like Fortnite, like when I ramp up, I feel just infinite ramp, stuff like that. I was just shooting the robot. It was really fun. It looked really good."
 
   A feedback grill (Q30–Q38: ramp rush, missing Fortnite building, guns, aim, movement, visual issues, bots, scope, priority) was sent to Jake. Waiting on his answers.
+- 2026-09-26: **controls merged** (D40–D42), with 340 tests passing:
+  - hold Shift to aim;
+  - sprint whenever W is held (diagonals too; strafe and back move at run speed, as in Fortnite), and aiming stops the sprint;
+  - C while sprinting slides;
+  - the right click is inert (`tests/controls.rs`).
+
+  Also fixed a load-sensitive test (`tests/pieces.rs` pop timing now uses fixed frames). The ramp rush (targeting) and editing + cone slices are in progress.
+- 2026-09-26 (evening): Jake is closing his laptop. **In flight** (uncommitted, in worktrees):
+  - `m2-ramp-rush`: the ramp rush, targeting, reach, 90s and the 1×1 box (5 files);
+  - `m2-edit-cone`: editing and the cone (78 files).
+
+  If their agents stop when the Mac sleeps, resume each from its worktree: commit the work in progress, `git merge main`, finish, run the gates, report. Then merge ramp-rush first, then edit-cone, rebuild the play binary, and ask Jake to test building (S8 fix loop). Jake's gates are still pending: the go window, S1 scores, the S2 battery run, S8.
