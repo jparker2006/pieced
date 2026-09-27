@@ -105,14 +105,14 @@ pub mod cartoon {
     pub const FAR_PLANET_BAND: Color = rgb(0x9E, 0x8A, 0xD4);
     pub const FAR_PLANET_LIGHT: Color = rgb(0xCB, 0xBB, 0xEE);
     pub const FAR_PLANET_RING: Color = rgb(0xD6, 0xCC, 0xF2);
-    pub const FAR_PLANET_SHADOW: Color = rgb(0x75, 0x63, 0xB4);
+    pub const FAR_PLANET_SHADE: Color = rgb(0x75, 0x63, 0xB4);
     pub const FAR_ROCK: Color = rgb(0x8A, 0x6A, 0x58);
     pub const FAR_ROCK_DARK: Color = rgb(0x3D, 0x3A, 0x56);
-    pub const FAR_ROCK_SHADOW: Color = rgb(0x58, 0x4F, 0x6C);
+    pub const FAR_ROCK_SHADE: Color = rgb(0x58, 0x4F, 0x6C);
     pub const FAR_STONE: Color = rgb(0x56, 0x60, 0x87);
     pub const FAR_STONE_DARK: Color = rgb(0x26, 0x2A, 0x48);
     pub const FAR_STONE_LIGHT: Color = rgb(0x7E, 0x86, 0xA8);
-    pub const FAR_STONE_SHADOW: Color = rgb(0x38, 0x3E, 0x62);
+    pub const FAR_STONE_SHADE: Color = rgb(0x38, 0x3E, 0x62);
     pub const FLOWER_PINK: Color = rgb(0xF5, 0x9A, 0xC0);
     pub const FOLIAGE: Color = rgb(0x65, 0x97, 0x40);
     pub const FOLIAGE_LIGHT: Color = rgb(0x69, 0x98, 0x2C);
@@ -209,14 +209,14 @@ pub mod cartoon {
         ("far_planet_band", FAR_PLANET_BAND),
         ("far_planet_light", FAR_PLANET_LIGHT),
         ("far_planet_ring", FAR_PLANET_RING),
-        ("far_planet_shadow", FAR_PLANET_SHADOW),
+        ("far_planet_shade", FAR_PLANET_SHADE),
         ("far_rock", FAR_ROCK),
         ("far_rock_dark", FAR_ROCK_DARK),
-        ("far_rock_shadow", FAR_ROCK_SHADOW),
+        ("far_rock_shade", FAR_ROCK_SHADE),
         ("far_stone", FAR_STONE),
         ("far_stone_dark", FAR_STONE_DARK),
         ("far_stone_light", FAR_STONE_LIGHT),
-        ("far_stone_shadow", FAR_STONE_SHADOW),
+        ("far_stone_shade", FAR_STONE_SHADE),
         ("flower_pink", FLOWER_PINK),
         ("foliage", FOLIAGE),
         ("foliage_light", FOLIAGE_LIGHT),

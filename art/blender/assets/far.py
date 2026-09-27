@@ -54,10 +54,12 @@ SHADOW_OF = {
     "brick": "brick_shadow",
 }
 
-# Three-tone ramps (lit, mid, shadow) for the far stone and rock.
-STONE = ("far_stone_light", "far_stone", "far_stone_shadow")
-SPIRE = ("far_stone", "far_stone_shadow", "far_stone_dark")
-ROCK = ("far_rock", "far_rock_shadow", "far_rock_dark")
+# Three-tone ramps (lit, mid, shadow) for the far stone and rock. The far
+# shadow tones are named `_shade`, not `_shadow`: a `_shadow` pair would shift
+# the palette's shared shadow tint that the UI renders use (lib/raster.py).
+STONE = ("far_stone_light", "far_stone", "far_stone_shade")
+SPIRE = ("far_stone", "far_stone_shade", "far_stone_dark")
+ROCK = ("far_rock", "far_rock_shade", "far_rock_dark")
 
 # Jewel glass (T10): the great window's rings and the towers' lancets.
 JEWELS = ["far_glass_blue", "far_glass_teal", "far_glass_gold", "far_glass_magenta",
@@ -1038,7 +1040,7 @@ PLANET_TILT = Matrix.Rotation(math.radians(-20.0), 4, "Y") @ Matrix.Rotation(mat
 # Soft bands by latitude in the planet's frame, lit from above (its pole leans
 # toward the key light), so the limb darkens smoothly downward with no stepped
 # terminator: (lowest latitude, colour).
-BANDS = [(-1.01, "far_planet_shadow"), (-0.5, "far_planet_band"), (-0.3, "far_planet"),
+BANDS = [(-1.01, "far_planet_shade"), (-0.5, "far_planet_band"), (-0.3, "far_planet"),
          (-0.2, "far_planet_band"), (-0.04, "far_planet"), (0.3, "far_planet_light"),
          (0.4, "far_planet"), (0.52, "far_planet_light")]
 
