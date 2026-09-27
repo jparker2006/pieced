@@ -35,6 +35,9 @@
       "triangles": 584,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]

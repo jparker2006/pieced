@@ -3,7 +3,7 @@
   "kind": "floor_tiles",
   "source": "art/blender/assets/pieces.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 416,
+  "triangles": 492,
   "triangle_budget": 700,
   "bounds": {
     "min": [
@@ -13,7 +13,7 @@
     ],
     "max": [
       2.0,
-      0.134,
+      0.146,
       2.0
     ]
   },
@@ -28,14 +28,17 @@
         ],
         "max": [
           0.0,
-          0.134,
+          0.146,
           0.0
         ]
       },
-      "triangles": 97,
+      "triangles": 111,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "stump_bark_line",
         "trunk"
@@ -51,14 +54,17 @@
         ],
         "max": [
           2.0,
-          0.134,
+          0.146,
           0.0
         ]
       },
-      "triangles": 111,
+      "triangles": 123,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "stump_bark_line",
         "trunk"
@@ -74,14 +80,17 @@
         ],
         "max": [
           0.0,
-          0.1318,
+          0.1438,
           2.0
         ]
       },
-      "triangles": 96,
+      "triangles": 120,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "stump_bark_line",
         "trunk"
@@ -97,14 +106,17 @@
         ],
         "max": [
           2.0,
-          0.1291,
+          0.1411,
           2.0
         ]
       },
-      "triangles": 100,
+      "triangles": 126,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "stump_bark_line",
         "trunk"

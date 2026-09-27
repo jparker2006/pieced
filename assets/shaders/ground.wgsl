@@ -1,7 +1,12 @@
-// Pieced island ground (src/look/ground.rs): toon-lit grass (the same two
-// bands, violet shadow and teal fill as toon.wgsl, no rim) plus a faint
+// Pieced island ground (src/look/ground.rs): toon-lit painted grass (the same
+// two bands, violet shadow and teal fill as toon.wgsl, no rim) plus a faint
 // glowing build grid drawn in world space. `grid_line_intensity` in ground.rs
 // mirrors the line math on the CPU; keep them in step.
+//
+// The painted look (GROUND_DETAIL) samples the generated detail texture in
+// world space: R dark blade strokes and G light dabs at blade scale (twice,
+// turned against each other so the tile never repeats visibly), B and A soft
+// noise at patch scale for darker and lighter, yellower lawn.
 
 #import bevy_pbr::{
     forward_io::VertexOutput,
@@ -29,9 +34,17 @@ struct Ground {
     bounds: vec4<f32>,
     // x: glow width, y: glow strength, z: fade start, w: fade end.
     params: vec4<f32>,
+    // rgb: dark patch colour / grass; w: amount.
+    patch_dark: vec4<f32>,
+    // rgb: light patch colour / grass; w: amount.
+    patch_light: vec4<f32>,
+    // x: stroke tile (m), y: patch tile (m), z: stroke strength, w: stroke shade.
+    detail: vec4<f32>,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> ground: Ground;
+@group(#{MATERIAL_BIND_GROUP}) @binding(1) var detail_texture: texture_2d<f32>;
+@group(#{MATERIAL_BIND_GROUP}) @binding(2) var detail_sampler: sampler;
 
 // Distance (m) to the nearest line of pitch `cell` along one axis.
 fn line_distance(coord: f32, cell: f32) -> f32 {
@@ -52,6 +65,30 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 #ifdef VERTEX_COLORS
     albedo = albedo * in.color.rgb;
 #endif
+    let world = in.world_position.xz;
+
+#ifdef GROUND_DETAIL
+    // Patches: darker lawn where B is high, lighter, yellower lawn where A is.
+    let patch_uv = world / ground.detail.y;
+    let dark_field = textureSample(detail_texture, detail_sampler, patch_uv).b;
+    let light_field = textureSample(
+        detail_texture, detail_sampler, patch_uv * 1.37 + vec2<f32>(0.31, 0.57)).a;
+    let dark_amt = smoothstep(0.5, 0.78, dark_field) * ground.patch_dark.w;
+    let light_amt = smoothstep(0.5, 0.74, light_field) * ground.patch_light.w;
+    albedo = albedo * mix(vec3<f32>(1.0), ground.patch_dark.rgb, dark_amt);
+    albedo = albedo * mix(vec3<f32>(1.0), ground.patch_light.rgb, light_amt * (1.0 - dark_amt));
+
+    // Blade strokes and light dabs, two layers turned against each other.
+    let blade_uv = world / ground.detail.x;
+    let turned = mat2x2<f32>(0.80, 0.60, -0.60, 0.80) * world / (ground.detail.x * 0.63)
+        + vec2<f32>(0.37, 0.71);
+    let a = textureSample(detail_texture, detail_sampler, blade_uv).rg;
+    let b = textureSample(detail_texture, detail_sampler, turned).rg;
+    let strokes = clamp(a.x + b.x * 0.75, 0.0, 1.0) * ground.detail.z;
+    let dabs = clamp(a.y + b.y * 0.6, 0.0, 1.0) * ground.detail.z * (1.0 - strokes);
+    albedo = albedo * mix(1.0, ground.detail.w, strokes);
+    albedo = albedo * mix(vec3<f32>(1.0), ground.patch_light.rgb * 1.08, dabs);
+#endif
 
     let n = normalize(in.world_normal);
     let ndl = dot(n, ground.key_direction.xyz);
@@ -63,7 +100,6 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     var rgb = mix(shadow, bright, lit);
 
     // The build grid, in world space.
-    let world = in.world_position.xz;
     let hw = ground.grid.w;
     let inside = step(ground.bounds.x - hw, world.x) * step(world.x, ground.bounds.z + hw)
         * step(ground.bounds.y - hw, world.y) * step(world.y, ground.bounds.w + hw);

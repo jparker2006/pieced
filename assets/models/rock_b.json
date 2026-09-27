@@ -3,7 +3,7 @@
   "kind": "rock",
   "source": "art/blender/assets/props.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 196,
+  "triangles": 230,
   "triangle_budget": 300,
   "bounds": {
     "min": [
@@ -32,9 +32,11 @@
           0.65
         ]
       },
-      "triangles": 196,
+      "triangles": 230,
       "colors": [
-        "rock"
+        "rock",
+        "rock_dark",
+        "tuft"
       ]
     }
   },

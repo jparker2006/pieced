@@ -24,8 +24,13 @@ shapes (`cone_plank_peak`, `_slope`, `_ridge`, `_tent`) that Rust turns to fit.
 
 Crack stages are separate models (`_crack1` at 66% HP: cartoon cracks; `_crack2`
 at 33%: bigger cracks, missing bricks, split planks), so a piece swaps its mesh
-when it cracks. Mortar lines are geometry: through-bricks stand 4 cm proud of a
-mortar core, so the toon bands light each brick's edges.
+when it cracks. Mortar lines are geometry: through-bricks stand 6.5 cm proud of
+a mortar core, so the toon bands light each brick's edges.
+
+Painted texture (D48) is baked into the face colours, costing no triangles:
+bricks vary in shade (brick, brick_light, brick_dark) and every brick's top face
+is the pale brick_top highlight; plank tops vary between two woods and carry
+thin, wavy plank_grain strokes; nail heads are steel domes with a bright cap.
 """
 
 import math
@@ -111,9 +116,10 @@ def crack(bm, at, n, pts, width, color=CRACK):
         add_poly(bm, quad, color, n)
 
 
-def nail(bm, centre, up, radius=0.09, height=0.03, sides=6, phase=0.0):
-    """A big cartoon nail head: a low faceted dome (a frustum) on a surface.
-    `centre` sits on the surface; `up` is the surface normal."""
+def nail(bm, centre, up, radius=0.11, height=0.042, sides=6, phase=0.0):
+    """A big cartoon nail head: a low faceted steel dome (a frustum) on a
+    surface, its cap the bright nail_highlight glint (R4, T09). `centre` sits
+    on the surface; `up` is the surface normal."""
     up = Vector(up).normalized()
     t = up.orthogonal().normalized()
     b = up.cross(t)
@@ -132,7 +138,8 @@ def nail(bm, centre, up, radius=0.09, height=0.03, sides=6, phase=0.0):
         centroid = f.calc_center_median()
         if f.normal.dot(centroid - (c - up * 0.02)) < 0:
             f.normal_flip()
-    palette.tag(bm, faces + [cap], "nail_head")
+    palette.tag(bm, faces, "nail_head")
+    palette.tag(bm, [cap], "nail_highlight")
 
 
 def lofted_bar(bm, sections, color):
@@ -185,7 +192,7 @@ def finish(root, bm, name="Body"):
 COURSES = 8
 GAP = 0.055  # mortar joint
 FACE = 0.15  # brick faces this far either side of the centre plane
-CORE = 0.11  # the mortar core's faces
+CORE = 0.085  # the mortar core's faces (deep joints show each brick's lit top)
 PITCH_Z = (LEVEL + GAP) / COURSES
 BRICKS = 5  # full bricks in an even course
 PITCH_X = (CELL + GAP) / BRICKS
@@ -231,11 +238,33 @@ def brick_tilt(r, course):
     return Matrix.Rotation(math.radians(r.uniform(-limit, limit)), 4, "Y")
 
 
+# Each brick's shade, drawn per brick (two plain bricks to one light and one
+# dark, as in R4 and T09), never the same as the brick before it in its course.
+BRICK_SHADES = ("brick", "brick", "brick_light", "brick_dark")
+
+
+def brick_shades(seed):
+    """{(course, index): palette name} for every brick of the layout, missing
+    or not, so every crack stage and edit tile shows the same bricks."""
+    r = shapes.rng(seed + 3)
+    shades = {}
+    last = None
+    for (c, i, *_rest) in brick_layout(seed):
+        if i == 0:
+            last = None
+        pick = r.choice([s for s in BRICK_SHADES if s != last])
+        shades[(c, i)] = pick
+        last = pick
+    return shades
+
+
 def wall_bricks(bm, seed, missing=(), shoved=None):
     """Lays the bricks (minus `missing` (course, index) pairs); `shoved` maps
     (course, index) to (push, twist degrees): bricks knocked half out of the
-    wall. Returns the holes left by missing bricks."""
+    wall. Each brick takes its shade, and its top face the brick_top
+    highlight. Returns the holes left by missing bricks."""
     r = shapes.rng(seed + 1)
+    shades = brick_shades(seed)
     shoved = shoved or {}
     holes = []
     for (c, i, x0, x1, z0, z1) in brick_layout(seed):
@@ -249,7 +278,8 @@ def wall_bricks(bm, seed, missing=(), shoved=None):
             xf = (Matrix.Translation((0.0, -push, 0.0))
                   @ Matrix.Rotation(math.radians(twist), 4, "Z") @ tilt)
         drop = ("-z",) if c == 0 else ()
-        add_box(bm, (x0, -FACE, z0), (x1, FACE, z1), "brick", xf=xf, drop=drop)
+        faces = add_box(bm, (x0, -FACE, z0), (x1, FACE, z1), shades[(c, i)], xf=xf, drop=drop)
+        palette.tag(bm, [f for f in faces if f.normal.z > 0.7], "brick_top")
     return holes
 
 
@@ -354,7 +384,7 @@ def build_wall_brick_crack2(root):
 # ---------------------------------------------------------------------------
 
 def plank(bm, frame, length, width, thick, r, bow=0.03, twist=0.012, color="plank",
-          span=None, drop=(0.0, 0.0)):
+          span=None, drop=(0.0, 0.0), top_color="trunk"):
     """A warped plank along the frame's u axis: two segments meeting at a
     slightly sagging middle, so the ends lift ("bent ends"), with a small twist.
 
@@ -362,7 +392,8 @@ def plank(bm, frame, length, width, thick, r, bow=0.03, twist=0.012, color="plan
     along u for `length`, is `width` wide along v and `thick` along -n (its top
     face lies on the plane through origin with normal n). `span` = (a, b)
     builds only that part of the length (a split plank); `drop` = (at a, at b)
-    sinks it along -n, linearly (a broken end sagging or prised up)."""
+    sinks it along -n, linearly (a broken end sagging or prised up). Its sunlit
+    top face is `top_color`."""
     origin, u, v, n = (Vector(x) for x in frame)
     a, b = span if span is not None else (0.0, length)
     mid = length / 2
@@ -385,7 +416,7 @@ def plank(bm, frame, length, width, thick, r, bow=0.03, twist=0.012, color="plan
         sections.append(corners)
     _, faces = lofted_bar(bm, sections, color)
     # The sunlit top reads lighter than the plank's edges (targets R4-M1, T09).
-    palette.tag(bm, [f for f in faces if f.normal.dot(n) > 0.8], "trunk")
+    palette.tag(bm, [f for f in faces if f.normal.dot(n) > 0.8], top_color)
 
     def top(t, across=0.0):
         """A point on the plank's top face, `t` along it and `across` its width."""
@@ -402,6 +433,61 @@ def plank(bm, frame, length, width, thick, r, bow=0.03, twist=0.012, color="plan
 def plank_crack(bm, top, n, pts, w=0.05):
     """A crack along a plank's top face: pts are (along, across) in metres."""
     crack(bm, lambda p: top(p[0], p[1]), n, pts, w)
+
+
+# Plank tops alternate between two woods, as the boards in R4 and T09 do.
+PLANK_TOPS = ("trunk", "plank_light")
+
+
+def plank_top(seed, i):
+    """The top colour of plank `i` of a piece (the same at every crack stage)."""
+    return PLANK_TOPS[shapes.rng(seed * 31 + i).randrange(len(PLANK_TOPS))]
+
+
+def grain(bm, top, n, t0, t1, across, width, segs, seed):
+    """A painted wood-grain stroke on a plank's top (R4, T09): a thin, wavy
+    plank_grain line from `t0` to `t1` along the plank, about `across` off its
+    centre line, tapering to a point at both ends and lifted a hair off the
+    wood. `segs` segments cost 2 * segs - 2 triangles."""
+    r = shapes.rng(seed)
+    n = Vector(n).normalized()
+    phase = r.uniform(0.0, 2 * math.pi)
+    wobble = width * r.uniform(1.2, 2.2)
+    pts = []
+    for k in range(segs + 1):
+        f = k / segs
+        t = t0 + (t1 - t0) * f
+        pts.append(Vector(top(t, across + wobble * math.sin(phase + f * 2.6))) + n * 0.004)
+    half = [0.5 * width * math.sin(math.pi * k / segs) ** 0.6 for k in range(segs + 1)]
+    for k in range(segs):
+        a, b = pts[k], pts[k + 1]
+        perp = n.cross((b - a).normalized()).normalized()
+        if k == 0:
+            quad = [a, b - perp * half[1], b + perp * half[1]]
+        elif k == segs - 1:
+            quad = [a - perp * half[k], b, a + perp * half[k]]
+        else:
+            quad = [a - perp * half[k], b - perp * half[k + 1], b + perp * half[k + 1],
+                    a + perp * half[k]]
+        add_poly(bm, quad, "plank_grain", n)
+
+
+def grain_planks(bm, planks, frames, width, seed, per_plank, segs):
+    """`per_plank` grain strokes on every plank (only on its longest unbroken
+    span, so a split plank's gap stays clean). Deterministic per plank, so
+    every crack stage shows the same grain."""
+    for i, (_, _, _, n) in enumerate(frames):
+        (a, b), top = max(planks[i], key=lambda st: st[0][1] - st[0][0])
+        if b - a < 0.8:
+            continue
+        r = shapes.rng(seed * 97 + i)
+        for k in range(per_plank):
+            lo = a + (b - a) * r.uniform(0.05, 0.2)
+            hi = b - (b - a) * r.uniform(0.05, 0.2)
+            side = (-1.0) ** (i + k)
+            across = side * width * r.uniform(0.12, 0.3)
+            grain(bm, top, n, lo, hi, across, r.uniform(0.026, 0.036), segs,
+                  seed * 1009 + i * 13 + k)
 
 
 # Floor: 5 planks along y (Bevy local z), nailed to two beams at the ends.
@@ -421,18 +507,21 @@ def floor_frames():
     return frames, width
 
 
-def lay_planks(bm, frames, width, thick, r, split, split_drops):
+def lay_planks(bm, frames, width, thick, r, split, split_drops, seed):
     """Lays one plank per frame; plank `split` is snapped in two (the stubs
     sag or prise up by `split_drops`). Returns each plank's list of
     (span, top function)."""
     planks = []
     for i, frame in enumerate(frames):
+        wood = plank_top(seed, i)
         if i == split:
             (a_span, a_drop), (b_span, b_drop) = split_drops
-            planks.append([(a_span, plank(bm, frame, CELL, width, thick, r, span=a_span, drop=a_drop)),
-                           (b_span, plank(bm, frame, CELL, width, thick, r, span=b_span, drop=b_drop))])
+            planks.append([(a_span, plank(bm, frame, CELL, width, thick, r, span=a_span, drop=a_drop,
+                                          top_color=wood)),
+                           (b_span, plank(bm, frame, CELL, width, thick, r, span=b_span, drop=b_drop,
+                                          top_color=wood))])
         else:
-            planks.append([((0.0, CELL), plank(bm, frame, CELL, width, thick, r))])
+            planks.append([((0.0, CELL), plank(bm, frame, CELL, width, thick, r, top_color=wood))])
     return planks
 
 
@@ -476,7 +565,8 @@ def floor_bmesh(stage):
             "stump_bark")
     split = 2 if stage >= 2 else None
     planks = lay_planks(bm, frames, width, FLOOR_THICK, r, split,
-                        (((0.0, 1.55), (0.0, -0.03)), ((2.3, CELL), (0.075, 0.0))))
+                        (((0.0, 1.55), (0.0, -0.03)), ((2.3, CELL), (0.075, 0.0))), 31)
+    grain_planks(bm, planks, frames, width, 31, 2, 4)
     skip = {(4, 0.38), (2, CELL - 0.38)} if stage >= 2 else set()
     nail_planks(bm, planks, frames, (0.38, CELL - 0.38), skip)
     if stage >= 1:
@@ -584,9 +674,10 @@ def ramp_bmesh(stage):
     ramp_underlay(bm)
     split = 2 if stage >= 2 else None
     planks = lay_planks(bm, frames, width, RAMP_THICK, r, split,
-                        (((0.0, 1.5), (0.0, -0.035)), ((2.25, CELL), (0.07, 0.0))))
+                        (((0.0, 1.5), (0.0, -0.035)), ((2.25, CELL), (0.07, 0.0))), 47)
+    grain_planks(bm, planks, frames, width, 47, 1, 4)
     skip = {(4, 0.28)} if stage >= 2 else set()
-    nail_planks(bm, planks, frames, (0.28, CELL - 0.28), skip, radius=0.085, sides=5)
+    nail_planks(bm, planks, frames, (0.28, CELL - 0.28), skip, radius=0.1, sides=5)
     if stage >= 1:
         cracks = [
             (1, [(0.9, -0.1), (1.2, 0.05), (1.45, -0.08), (1.75, 0.06)]),
@@ -864,10 +955,10 @@ def span_at(poly2d, vc):
     return (min(xs), max(xs)) if len(xs) >= 2 else None
 
 
-def roof_planks(bm, faces, r):
+def roof_planks(bm, faces, r, seed):
     """Covers every face but the bottom with level planks (rows up each face,
     each as long as the face is wide there). Returns [(top function, length,
-    normal, row)] per plank, in build order (row 0 is a face's lowest)."""
+    normal, row, width)] per plank, in build order (row 0 is a face's lowest)."""
     planks = []
     pitch = ROOF_PLANK_W + ROOF_GAP
     for poly, n in faces:
@@ -898,8 +989,9 @@ def roof_planks(bm, faces, r):
             # Planks on an upright face (a gable) sit a little in, so their
             # warped ends never poke out of the cell.
             origin = o + u * u0 + v * vc + n * (0.004 if abs(n.z) > 0.2 else -0.045)
-            top = plank(bm, (origin, u, v, n), u1 - u0, width, ROOF_THICK, r, bow=0.025)
-            planks.append((top, u1 - u0, n, k))
+            top = plank(bm, (origin, u, v, n), u1 - u0, width, ROOF_THICK, r, bow=0.025,
+                        top_color=plank_top(seed, len(planks)))
+            planks.append((top, u1 - u0, n, k, width))
     return planks
 
 
@@ -967,9 +1059,18 @@ def build_roof(root, raised, stage):
         add_poly(bm, [(-1.95, y - 0.025, -0.004), (1.95, y - 0.025, -0.004),
                       (1.95, y + 0.025, -0.004), (-1.95, y + 0.025, -0.004)],
                  CRACK, (0.0, 0.0, -1.0))
-    planks = roof_planks(bm, faces, r)
+    planks = roof_planks(bm, faces, r, 59 + sum(raised))
+    # Grain on the longest sloping planks (not the gables', which sit close to
+    # the cell's edge), as many as the shape's triangle budget leaves room for
+    # (the same at every crack stage).
+    sloping = [i for i, p in enumerate(planks) if abs(p[2].z) > 0.2]
+    longest = sorted(sloping, key=lambda i: (-round(planks[i][1], 3), i))
+    for i in longest[:ROOF_GRAINS[tuple(raised)]]:
+        top, length, n, _, width = planks[i]
+        grain(bm, top, n, length * 0.15, length * 0.85, width * (0.2 if i % 2 else -0.2),
+              0.03, 4 if length > 2.0 else 3, 7717 + 31 * i + sum(raised))
     # Nails near the ends of each face's lowest plank.
-    for i, (top, length, n, row) in enumerate(planks):
+    for i, (top, length, n, row, _) in enumerate(planks):
         if length < 1.0 or row != 0:
             continue
         for t in (0.22, length - 0.22):
@@ -981,14 +1082,14 @@ def build_roof(root, raised, stage):
         for i, at in picks:
             if i >= len(planks):
                 continue
-            top, length, n, _ = planks[i]
+            top, length, n, _, _ = planks[i]
             a = length * at
             pts = [(a, -0.1), (a + 0.28, 0.05), (a + 0.5, -0.07), (a + 0.75, 0.06)]
             pts = [(min(t, length - 0.05), w) for t, w in pts]
             plank_crack(bm, top, n, pts)
     if stage >= 2 and len(planks) > 2:
         # A split plank: a dark gap across it, the broken end sagging.
-        top, length, n, _ = planks[2]
+        top, length, n, _, _ = planks[2]
         a = length * 0.45
         gap = [top(a, -0.2), top(a + 0.28, -0.2), top(a + 0.22, 0.2), top(a - 0.04, 0.2)]
         add_poly(bm, [p + n * 0.006 for p in gap], CRACK, n)
@@ -997,6 +1098,10 @@ def build_roof(root, raised, stage):
     finish(root, bm)
     scene.make_attach("Top", root, (0.0, 0.0, CONE_H))
 
+
+# Grain strokes per roof shape, each 4-6 triangles: what the cone budget (700)
+# leaves over the shape's stage-2 model.
+ROOF_GRAINS = {(): 16, (0,): 10, (0, 1): 16, (0, 3): 14, (0, 1, 2): 4}
 
 CONE_SHAPES = {
     "": [],

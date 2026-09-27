@@ -3,7 +3,7 @@
   "kind": "floor_tiles",
   "source": "art/blender/assets/pieces.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 424,
+  "triangles": 504,
   "triangle_budget": 700,
   "bounds": {
     "min": [
@@ -13,7 +13,7 @@
     ],
     "max": [
       2.0,
-      0.13,
+      0.1411,
       2.0
     ]
   },
@@ -28,14 +28,17 @@
         ],
         "max": [
           0.0,
-          0.1276,
+          0.1396,
           0.0
         ]
       },
-      "triangles": 103,
+      "triangles": 120,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "trunk"
       ]
@@ -50,14 +53,17 @@
         ],
         "max": [
           2.0,
-          0.1291,
+          0.1411,
           0.0
         ]
       },
-      "triangles": 103,
+      "triangles": 120,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "trunk"
       ]
@@ -72,14 +78,17 @@
         ],
         "max": [
           0.0,
-          0.1276,
+          0.1396,
           2.0
         ]
       },
-      "triangles": 103,
+      "triangles": 126,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "trunk"
       ]
@@ -94,14 +103,17 @@
         ],
         "max": [
           2.0,
-          0.1291,
+          0.1411,
           2.0
         ]
       },
-      "triangles": 103,
+      "triangles": 126,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "trunk"
       ]
