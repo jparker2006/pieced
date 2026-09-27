@@ -1,6 +1,6 @@
 # Milestone 3 "Waves": report
 
-**Status:** NOT STARTED. The contract is `docs/M3-SPEC.md`, and the brief is `docs/M3-GOAL.md`.
+**Status:** IN PROGRESS. The goal launched 2026-09-27. The contract is `docs/M3-SPEC.md`, and the brief is `docs/M3-GOAL.md`.
 
 Every number here names its source (session folder or test), the commit, and the power and Low Power Mode state. Failures and reruns are recorded, not deleted.
 
@@ -42,3 +42,17 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
 |---|---|---|---|
 
 ## Log
+
+- 2026-09-27: **goal launched** in the grill session.
+  - **Chunk 0** (session frame log, cold/warm launch, boot breakdown) was dispatched to a builder (`m3-session-log`).
+  - **Chunk 4** (castle to D94's `M3-C4`, and the magical sky) was dispatched as the background art slice (`m3-castle-sky`).
+- 2026-09-27: **shared skeleton merged** (`9db8ae4`):
+  - `GameMode` (Practice stays the default in tests and scenarios; `--waves` / `--practice`);
+  - `grunt.rs` with `GruntTuning` and the `GruntStats::for_wave` scaling (tested: wave 25 ≈ 196 HP, speed capped below the sprint, aim reaches "Hard" at wave 15);
+  - `orb.rs` with `Wand` and `Orb` (the gun step skips wand carriers);
+  - `waves.rs` with `WavesTuning` (tested: 440 grunts through wave 20);
+  - the new tuning sections are never saved to `settings.json`, since it already stores every other gameplay number and would freeze these;
+  - `GameCue::WandWindup` / `OrbFired`, and `Sim::waves`.
+
+  `cargo test --locked`: 0 failures; clippy and fmt are clean.
+- 2026-09-27: **chunk 1 dispatched** as three parallel slices: A, the grunt brain (`m3-grunt-brain`); B, the orb, wand and feedback (`m3-orb-wand`); C, the run, pool, death, restart and pump knockback (`m3-run`).
