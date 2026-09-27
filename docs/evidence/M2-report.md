@@ -16,7 +16,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
 | S6 Feedback timing | PARTIAL | `tests/spells.rs`: impact, hitmarker and damage number on the hit tick; bolt ≤ 2 frames, with the real `HudPlugin`. Native `fx_check` `scenario.s6` pending (go window) |
 | S7 No regressions (G1, G3, G6, tests, clippy, fmt) | PARTIAL | `cargo test --locked` 331 passed, 0 failed; clippy `-D warnings` and `fmt --check` clean on `12550d4`. Native G1, G3 and G6 pending (go window) |
 | S8 Jake's feel verdict | PARTIAL | Positive on look and feel (2026-09-26, quoted in the log). Sessions were about 3 minutes, muted; sound unheard |
-| S10 Fortnite building and controls (Amendment A) | PENDING | ramp rush, controls, editing and cone in progress |
+| S10 Fortnite building and controls (Amendment A) | PASS (headless, on `4d3faed`; re-run on the final commit) | `tests/building.rs`: ramp rush ≥ 10 ramps at ≥ 97% speed in 8 variants, clean stop at the 12-level limit, double ramps (11 + 11), 90s tower, 1×1 box from every corner, ramp + wall. `tests/editing.rs` (16): every edit shape's collision, invalid selections, reset, HP kept, cone places, blocks and breaks. `tests/controls.rs` (5): hold-Shift ADS, W sprint, slide, inert right click. `tests/pieces.rs`: no asset allocation over 50 edits. M1 G4 building tests green |
 | S9 Original and reproducible | PASS (on `12550d4`; re-run on the final commit) | `scripts/build-art.sh --check`: every model and UI image rebuilt headless, byte-identical. `tests/assets.rs` audit passes. `tests/models.rs` loads every glb headless. The only third-party files are Lilita One and its OFL license |
 
 ## Phase 0: performance baseline (Milestone 1 art)
@@ -214,3 +214,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
   > "Okay, I just played. That was a lot of fun. Obviously, there's not an objective of the game, but just looks and feel-wise, it was great. I genuinely just love that. I wanted to feel magical and just have beautiful 3D graphics, and I think we're on the way to doing that."
 
   S8 status: **positive on look and feel.** Still missing before PASS: a session of at least 10 minutes, and the **sounds**, which were muted in both sessions and never heard.
+- 2026-09-26: **reach, double ramps and the 12-level limit merged** (`4d3faed`), with 377 tests passing:
+  - floors, ramps and cones go where the aim ray lands, anywhere in the 3×3 tiles around you (`reach_tiles`, tunable to 2);
+  - double ramps (11 + 11 at 100% speed);
+  - `MAX_LEVELS` 12, so a rush runs the arena: 11 ramps to 32.7 m, sprint 6.10 s;
+  - fixed a bug where slipping 2 cm off a ramp's side capped your own ramp.
+
+  **Amendment A is complete; S10 passes headless.**
