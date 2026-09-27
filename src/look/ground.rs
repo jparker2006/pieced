@@ -651,7 +651,7 @@ mod tests {
         // The last mip is the whole tile's average (the far-away grass).
         let top = &data[..size * size * 4];
         let last = &data[data.len() - 4..];
-        for c in 0..4 {
+        for (c, &tiny) in last.iter().enumerate() {
             let mean = top
                 .iter()
                 .skip(c)
@@ -659,7 +659,7 @@ mod tests {
                 .map(|&v| v as f32)
                 .sum::<f32>()
                 / (size * size) as f32;
-            assert!((last[c] as f32 - mean).abs() < 3.0, "channel {c}");
+            assert!((tiny as f32 - mean).abs() < 3.0, "channel {c}");
         }
         // Far away, strokes darken the grass only slightly on average.
         assert!(last[0] < 70, "far strokes {}", last[0]);
