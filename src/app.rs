@@ -303,6 +303,8 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     if options.input_probe {
         app.init_resource::<InputProbe>();
     }
+    // Launch kind always; the session frame log only outside scenarios.
+    app.add_plugins(crate::session::SessionPlugin::native(scenario.is_none()));
     if let Some(run) = scenario {
         app.insert_resource(run);
     }
