@@ -1,20 +1,25 @@
-//! The knight (docs/M2-SPEC.md → The knight; gate S5): the model the training
-//! dummy wears. It has every named part, joint pivot and eye state the procedural
-//! animation needs, stays inside its triangle budget, and fits the fixed gameplay
-//! hitboxes of `player.rs` (body capsule r 0.33 m from 0.05 to 1.45 m, head sphere
-//! r 0.20 m centred at 1.62 m). The model is made to fit them, never the reverse.
+//! The knight (docs/M2-SPEC.md → The knight, Amendment B; gate S5): the model the
+//! training dummy wears. It has every named part, joint pivot and eye state the
+//! procedural animation needs, stays inside its triangle budget, and fits the
+//! fixed gameplay hitboxes of `player.rs` (body capsule r 0.33 m from 0.05 to
+//! 1.45 m, head sphere r 0.20 m centred at 1.62 m). The model is made to fit them,
+//! never the reverse.
 //!
-//! - **Inside:** every body part lies inside the body capsule, and the helmet, hat
-//!   and eyes inside the head sphere, each within [`TOLERANCE`] (5 cm). Checked on
-//!   the sidecar's part bounds, then exactly on every vertex of the glb. Boots stand
-//!   on the ground, where the capsule's rounded end can't hold two feet, so below
-//!   [`FOOT_BAND`] the capsule counts as a cylinder (as for Milestone 1's figure).
+//! - **Cosmetic:** the tall wizard hat (`Hat` and its floppy `HatTip`) takes no
+//!   hits, like a Fortnite cosmetic (Amendment B, D49), so it is left out of the
+//!   fit and may rise well above the head sphere.
+//! - **Inside:** every other body part lies inside the body capsule, and the
+//!   helmet and eyes inside the head sphere, each within [`TOLERANCE`] (5 cm).
+//!   Checked on the sidecar's part bounds, then exactly on every vertex of the glb.
+//!   Boots stand on the ground, where the capsule's rounded end can't hold two
+//!   feet, so below [`FOOT_BAND`] the capsule counts as a cylinder (as for
+//!   Milestone 1's figure).
 //! - **Filled:** neither hitbox sticks out more than about 10 cm ([`FILL`]) past the
-//!   model: the parts' bounds reach every side of both hitboxes, and seen from the
-//!   front (the dummy always turns to face the player) no point of either hitbox is
-//!   more than 10 cm from the model's silhouette. Seen from the side, the small
-//!   torso leaves the capsule's front emptier; that view is held to [`SIDE_FILL`]
-//!   so it can't get worse unnoticed.
+//!   non-cosmetic model: the parts' bounds reach every side of both hitboxes, and
+//!   seen from the front (the dummy always turns to face the player) no point of
+//!   either hitbox is more than 10 cm from the model's silhouette. Seen from the
+//!   side, the small torso leaves the capsule's front emptier; that view is held
+//!   to [`SIDE_FILL`] so it can't get worse unnoticed.
 //!
 //! Model space is the character's frame: feet at the origin, +Y up, -Z forward,
 //! +X to the knight's right.
@@ -38,7 +43,7 @@ const FOOT_BAND: f32 = 0.12;
 /// Silhouette raster cell size.
 const CELL: f32 = 0.01;
 
-const PARTS: [&str; 16] = [
+const PARTS: [&str; 18] = [
     "BootL",
     "BootR",
     "Cape",
@@ -53,13 +58,15 @@ const PARTS: [&str; 16] = [
     "GauntletL",
     "GauntletR",
     "Hat",
+    "HatTip",
     "Helmet",
+    "Robe",
     "Torso",
 ];
 
 /// Every part and pivot with its parent node: the hierarchy procedural animation
 /// relies on (rotate a pivot, its part follows; bob the torso, the upper body follows).
-const PARENTS: [(&str, &str); 23] = [
+const PARENTS: [(&str, &str); 27] = [
     ("PivotLegL", "knight"),
     ("PivotLegR", "knight"),
     ("BootL", "PivotLegL"),
@@ -71,10 +78,14 @@ const PARENTS: [(&str, &str); 23] = [
     ("GauntletR", "PivotArmR"),
     ("PivotCape", "Torso"),
     ("Cape", "PivotCape"),
+    ("PivotRobe", "Torso"),
+    ("Robe", "PivotRobe"),
     ("PivotHead", "Torso"),
     ("Helmet", "PivotHead"),
     ("PivotHat", "PivotHead"),
     ("Hat", "PivotHat"),
+    ("PivotHatTip", "Hat"),
+    ("HatTip", "PivotHatTip"),
     ("EyeL", "Helmet"),
     ("EyeR", "Helmet"),
     ("EyeWideL", "Helmet"),
@@ -94,7 +105,12 @@ fn sidecar() -> Sidecar {
 }
 
 fn is_head(part: &str) -> bool {
-    part == "Helmet" || part == "Hat" || part.starts_with("Eye")
+    part == "Helmet" || part.starts_with("Eye")
+}
+
+/// The hat takes no hits (Amendment B): it is left out of the fit.
+fn is_cosmetic(part: &str) -> bool {
+    part == "Hat" || part == "HatTip"
 }
 
 /// Eye states other than open are hidden in play until needed.
@@ -215,12 +231,33 @@ fn knight_has_its_parts_pivots_and_eye_states() {
         "the hat sits above the eyes"
     );
 
-    // Palette: steel helmet, purple hat and cape, a gold star, white eyes with pupils.
+    // The robe hangs from the waist, the hat's tip turns at its bend, up the crown.
+    let waist = at("PivotRobe");
+    assert!(
+        waist.x.abs() < 1e-4 && (0.65..0.85).contains(&waist.y),
+        "waist {waist}"
+    );
+    let robe = side.parts["Robe"].bounds;
+    assert!(
+        robe.max[1] < waist.y + 0.05 && robe.min[1] < 0.4,
+        "the robe runs from the waist to the knees: {robe:?}"
+    );
+    let bend = at("PivotHatTip");
+    assert!(
+        bend.y > hat.y + 0.2,
+        "the hat's bend {bend} high above its base"
+    );
+
+    // Palette: steel helmet, purple hat, robe and cape, gold star and trims,
+    // white eyes with pupils.
     let colors = |p: &str| side.parts[p].colors.clone();
     assert!(colors("Helmet").contains(&"knight_steel".to_string()));
     for (part, color) in [
         ("Hat", "knight_purple"),
         ("Hat", "star_gold"),
+        ("HatTip", "knight_purple"),
+        ("Robe", "knight_purple"),
+        ("Robe", "star_gold"),
         ("Cape", "knight_purple"),
         ("Torso", "knight_purple"),
         ("Torso", "star_gold"),
@@ -248,7 +285,7 @@ fn knight_part_bounds_fit_the_hitboxes() {
         Vec3::new(-hr, HEAD_CENTER - hr, -hr),
         Vec3::new(hr, HEAD_CENTER + hr, hr),
     );
-    for (name, part) in &side.parts {
+    for (name, part) in side.parts.iter().filter(|(n, _)| !is_cosmetic(n)) {
         let (lo, hi) = if is_head(name) { sphere } else { capsule };
         let out = (lo - part.bounds.min())
             .max(part.bounds.max() - hi)
@@ -267,7 +304,7 @@ fn knight_part_bounds_fit_the_hitboxes() {
     let body = union(
         side.parts
             .iter()
-            .filter(|(n, _)| !is_head(n))
+            .filter(|(n, _)| !is_head(n) && !is_cosmetic(n))
             .map(|(_, p)| p.bounds),
     );
     let head = union(
@@ -282,6 +319,47 @@ fn knight_part_bounds_fit_the_hitboxes() {
         assert!(
             gap <= FILL,
             "the {what} hitbox's bounds stick out {gap:.3} m past the parts"
+        );
+    }
+}
+
+/// The hat is cosmetic (Amendment B): tall and pointed, rising well clear of
+/// the head sphere, with a wide brim and a tip bent over to his side. The
+/// dropped-hat prop (`knight_hat`) is exactly this hat, pivoted at its base.
+#[test]
+fn the_cosmetic_hat_is_tall_and_pointed_and_the_dropped_prop_matches_it() {
+    let side = sidecar();
+    let hat = side.parts["Hat"].bounds;
+    let tip = side.parts["HatTip"].bounds;
+    let top = hat.max[1].max(tip.max[1]);
+    println!(
+        "hat top {top:.3} m, the head sphere's top {:.3} m",
+        HEAD_CENTER + HEAD_RADIUS
+    );
+    assert!(
+        top > HEAD_CENTER + HEAD_RADIUS + 0.2,
+        "a tall hat: top {top}"
+    );
+    let helmet = side.parts["Helmet"].bounds;
+    assert!(
+        hat.size().x > helmet.size().x + 0.08,
+        "the brim ({:.3} m) is wider than the helmet ({:.3} m)",
+        hat.size().x,
+        helmet.size().x
+    );
+    // Bent over to his right (+X) at the tip, not a straight cone.
+    let bend = side.attach["PivotHatTip"].position();
+    assert!(tip.max[0] > bend.x + 0.12, "the tip bends over: {tip:?}");
+
+    let prop =
+        Sidecar::parse(&fs::read_to_string(models_dir().join("knight_hat.json")).unwrap()).unwrap();
+    let base = side.attach["PivotHat"].position();
+    for part in ["Hat", "HatTip"] {
+        let (a, b) = (side.parts[part].bounds, prop.parts[part].bounds);
+        assert!(
+            (a.min() - base - b.min()).abs().max_element() < 2e-3
+                && (a.max() - base - b.max()).abs().max_element() < 2e-3,
+            "knight_hat's {part} is the knight's, pivoted at the hat's base"
         );
     }
 }
@@ -430,7 +508,7 @@ fn knight_mesh_lies_inside_the_hitboxes() {
     let parts = part_meshes();
     let names: Vec<&str> = parts.keys().map(String::as_str).collect();
     assert_eq!(names, PARTS);
-    for (name, part) in &parts {
+    for (name, part) in parts.iter().filter(|(n, _)| !is_cosmetic(n)) {
         let overshoot = |p: Vec3| {
             if is_head(name) {
                 sphere_overshoot(p)
@@ -481,7 +559,7 @@ fn cell_center(i: usize, j: usize) -> Vec2 {
 fn silhouette(parts: &BTreeMap<String, PartMesh>, project: fn(Vec3) -> Vec2) -> Silhouette {
     let mut covered = vec![false; NU * NV];
     for (name, part) in parts {
-        if starts_hidden(name) {
+        if starts_hidden(name) || is_cosmetic(name) {
             continue;
         }
         for t in &part.tris {
@@ -658,8 +736,22 @@ fn idle_knight_bobs_and_blinks_every_two_to_five_seconds() {
     assert!(
         poses
             .iter()
-            .all(|p| hang(p.legs[0]).z.abs() < 0.01 && p.visible)
+            .all(|p| hang(p.legs[0]).z.abs() < 0.01 && p.visible && p.take == 0.0)
     );
+    // Goofy: the torso rocks side to side, the robe swings and the hat's tip
+    // wobbles; the model never leaves his feet.
+    let (lo, hi) = range(poses.iter().map(|p| (p.torso * Vec3::Y).x));
+    assert!(hi - lo > 0.08, "rock {lo:.3}..{hi:.3}");
+    let (lo, hi) = range(poses.iter().map(|p| hang(p.robe).x));
+    assert!(hi - lo > 0.03, "robe swing {lo:.3}..{hi:.3}");
+    for axis in [Vec3::X, Vec3::Z] {
+        let (lo, hi) = range(poses.iter().map(|p| (p.hat_tip * Vec3::Y).dot(axis)));
+        assert!(
+            hi - lo > 0.1,
+            "the hat tip wobbles along {axis}: {lo:.3}..{hi:.3}"
+        );
+    }
+    assert!(poses.iter().all(|p| p.offset == Vec3::ZERO));
     let blinks = runs_of(&poses, EyeState::Blink);
     assert!(blinks.len() >= 11, "{} blinks in a minute", blinks.len());
     assert!(blinks[0].0 as f32 * DT <= BLINK_EVERY.1 + DT);
@@ -718,9 +810,23 @@ fn running_swings_boots_pumps_gauntlets_bobs_and_trails_the_cape() {
     let (lo, hi) = range(poses.iter().map(|p| p.torso_offset.y));
     assert!(hi - lo > 0.05, "run bob {:.3} m", hi - lo);
     let lean = poses[0].torso * Vec3::Y;
-    assert!(lean.z < -0.08, "leans into the run: {lean}");
-    let hem = poses.iter().map(|p| hang(p.cape).z).sum::<f32>() / poses.len() as f32;
+    assert!(lean.z < -0.2, "leans well into the run: {lean}");
+    let mean =
+        |f: &dyn Fn(&KnightPose) -> f32| poses.iter().map(f).sum::<f32>() / poses.len() as f32;
+    let hem = mean(&|p| hang(p.cape).z);
     assert!(hem > 0.1, "the cape trails behind: {hem:.2}");
+    let robe = mean(&|p| hang(p.robe).z);
+    assert!(robe > 0.05, "the robe trails behind: {robe:.2}");
+    let (lo, hi) = range(poses.iter().map(|p| hang(p.robe).x));
+    assert!(
+        hi - lo > 0.05,
+        "the robe sways with the hips: {lo:.2}..{hi:.2}"
+    );
+    // A bouncy stride: squashed at each footfall, stretched in flight.
+    let (lo, hi) = range(poses.iter().map(|p| p.scale.y));
+    assert!(hi - lo > 0.06, "bounce {lo:.3}..{hi:.3}");
+    let tip = mean(&|p| (p.hat_tip * Vec3::Y).z);
+    assert!(tip > 0.1, "the hat's tip flops back: {tip:.2}");
 }
 
 #[test]
@@ -782,41 +888,238 @@ fn jump_stretches_the_air_pose_splits_and_landing_squashes() {
     assert!(hang(last.legs[0]).z.abs() < 0.01, "back on his feet");
 }
 
-#[test]
-fn hits_rock_him_away_from_the_shot_and_widen_his_eyes() {
-    let mut anim = KnightAnim::new(9);
+/// The pose's hands and boots, 0.5 m down their limbs.
+fn hands(p: &KnightPose) -> [Vec3; 2] {
+    p.arms.map(hang)
+}
+
+fn boots(p: &KnightPose) -> [Vec3; 2] {
+    p.legs.map(hang)
+}
+
+/// A shot from the front pushes him back (+Z): the knight after one standing
+/// second, hit on the next frame.
+fn hit_standing(seed: u64, hits: &[KnightEvent], seconds: f32) -> Vec<KnightPose> {
+    let mut anim = KnightAnim::new(seed);
     run(&mut anim, still(), 1.0);
-    // A shot from the front pushes him back (+Z).
-    anim.event(KnightEvent::Hit {
-        push: Vec3::Z,
-        headshot: false,
-    });
-    let poses = run(&mut anim, still(), 2.5);
-    let tops: Vec<f32> = poses.iter().map(|p| (p.tilt * Vec3::Y).z).collect();
-    let (lo, hi) = range(tops[..frames(0.6)].iter().copied());
-    assert!(hi > 0.08, "rocks back: {hi:.3}");
-    assert!(lo < -0.01, "and springs past upright: {lo:.3}");
-    assert!(tops.last().unwrap().abs() < 0.005, "settles");
+    for &e in hits {
+        anim.event(e);
+    }
+    run(&mut anim, still(), seconds)
+}
+
+const BODY_HIT: KnightEvent = KnightEvent::Hit {
+    push: Vec3::Z,
+    headshot: false,
+};
+
+#[test]
+fn a_body_hit_is_a_big_cartoon_take_that_settles() {
+    let poses = hit_standing(9, &[BODY_HIT], 2.0);
+    // Two frames on (the gallery's rifle views capture then), the take is in.
+    let p = poses[1];
+    assert!(p.take > 0.85, "take {:.2} two frames after the hit", p.take);
+    let [l, r] = hands(&p);
+    println!("hands {l:.2} {r:.2}, boots {:.2?}", boots(&p));
+    // Arms fling up and out: one hand above the shoulder, the other out wide.
+    assert!(l.y.max(r.y) > 0.15, "a hand flung up: {l} {r}");
+    assert!(l.y.min(r.y) > -0.2, "the other flung out: {l} {r}");
+    assert!(l.x < -0.25 && r.x > 0.25, "out to both sides: {l} {r}");
+    // A boot kicks up toward the shooter (in front, -Z).
+    let kick = boots(&p).iter().map(|b| b.z).fold(f32::MAX, f32::min);
+    assert!(kick < -0.2, "a boot kicks up: {kick:.2}");
+    // He leans back, his face (and the hat's crown) still turned to the shooter.
+    assert!(
+        (p.torso * Vec3::Y).z > 0.12,
+        "leans back: {}",
+        p.torso * Vec3::Y
+    );
+    assert!(
+        (p.tilt * Vec3::Y).z > 0.08,
+        "rocks back: {}",
+        p.tilt * Vec3::Y
+    );
+    let face = p.tilt * p.torso * p.head * Vec3::NEG_Z;
+    assert!(
+        face.y.abs() < 0.2 && face.z < -0.95,
+        "faces the shooter: {face}"
+    );
+    assert_eq!(poses[0].eyes, EyeState::Wide, "wide on the hit frame");
+    // A little hop and a slide back, visual only.
+    let hop = poses[..frames(0.25)]
+        .iter()
+        .map(|p| p.offset.y)
+        .fold(0.0, f32::max);
+    let slide = poses[..frames(0.5)]
+        .iter()
+        .map(|p| p.offset.z)
+        .fold(0.0, f32::max);
+    assert!((0.04..0.12).contains(&hop), "hop {hop:.3} m");
+    assert!((0.06..0.2).contains(&slide), "slide back {slide:.3} m");
+    // He holds the take for a beat...
+    assert!(poses[frames(0.2)].take > 0.9, "held at 0.2 s");
+    // ...then bounces back and settles on his feet, under the character.
+    let (lo, _) = range(poses[frames(0.3)..frames(1.0)].iter().map(|p| p.take));
+    assert!(lo < -0.02, "bounces back past rest: {lo:.3}");
+    let last = poses.last().unwrap();
+    assert!(last.take.abs() < 0.01, "take {:.3}", last.take);
+    assert!(
+        last.offset.length() < 0.005,
+        "back under the character: {}",
+        last.offset
+    );
+    assert!(hands(last).iter().all(|h| h.y < -0.45), "arms down");
+    assert!(
+        (last.tilt * Vec3::Y).angle_between(Vec3::Y) < 0.01,
+        "upright"
+    );
     let wide = runs_of(&poses, EyeState::Wide);
     assert_eq!(wide.len(), 1);
-    assert_eq!(wide[0].0, 0, "wide on the hit frame");
     assert!((wide[0].1 as f32 * DT - WIDE_TIME).abs() <= DT * 1.5);
     assert!(
         poses.iter().all(|p| p.hat_offset.y == 0.0),
         "body shots leave the hat"
     );
-    // From his right (pushing left, -X), he rocks left.
-    let mut anim = KnightAnim::new(9);
-    anim.event(KnightEvent::Hit {
-        push: Vec3::NEG_X,
-        headshot: false,
-    });
-    let poses = run(&mut anim, still(), 0.3);
-    let side = poses
+}
+
+#[test]
+fn hits_rock_him_away_from_the_shot() {
+    // From his right (pushing left, -X), he leans and slides left and kicks
+    // toward the shooter on his right.
+    let poses = hit_standing(
+        9,
+        &[KnightEvent::Hit {
+            push: Vec3::NEG_X,
+            headshot: false,
+        }],
+        0.3,
+    );
+    let lean = poses
         .iter()
         .map(|p| (p.tilt * Vec3::Y).x)
         .fold(0.0, f32::min);
-    assert!(side < -0.08, "rocks left: {side:.3}");
+    assert!(lean < -0.08, "rocks left: {lean:.3}");
+    let slide = poses.iter().map(|p| p.offset.x).fold(0.0, f32::min);
+    assert!(slide < -0.05, "slides left: {slide:.3}");
+    let kick = poses
+        .iter()
+        .flat_map(boots)
+        .map(|b| b.x)
+        .fold(0.0, f32::max);
+    assert!(kick > 0.2, "kicks toward the shooter: {kick:.2}");
+}
+
+#[test]
+fn stacked_hits_headshots_and_shield_breaks_make_bigger_takes() {
+    let peaks = |hits: &[KnightEvent]| {
+        let poses = hit_standing(13, hits, 1.5);
+        let take = poses.iter().map(|p| p.take).fold(0.0, f32::max);
+        let hop = poses.iter().map(|p| p.offset.y).fold(0.0, f32::max);
+        let slide = poses.iter().map(|p| p.offset.z).fold(0.0, f32::max);
+        let wide = runs_of(&poses, EyeState::Wide)[0].1;
+        (take, hop, slide, wide)
+    };
+    let body = peaks(&[BODY_HIT]);
+    let stacked = peaks(&[BODY_HIT; 8]);
+    let head = peaks(&[KnightEvent::Hit {
+        push: Vec3::Z,
+        headshot: true,
+    }]);
+    let broke = peaks(&[BODY_HIT, KnightEvent::ShieldBreak]);
+    let blast = peaks(&[BODY_HIT, KnightEvent::Damage { amount: 90.0 }]);
+    // A rifle body hit's damage changes nothing.
+    assert_eq!(
+        peaks(&[BODY_HIT, KnightEvent::Damage { amount: 28.0 }]),
+        body
+    );
+    println!("body {body:?}\nstacked {stacked:?}\nhead {head:?}\nshield break {broke:?}");
+    for (what, big) in [
+        ("8 hits in a frame", stacked),
+        ("a close pump blast", blast),
+        ("a headshot", head),
+        ("a shield break", broke),
+    ] {
+        assert!(
+            big.0 > body.0 * 1.25,
+            "{what}: take {:.2} vs {:.2}",
+            big.0,
+            body.0
+        );
+        assert!(
+            big.1 > body.1 * 1.1,
+            "{what}: hop {:.3} vs {:.3}",
+            big.1,
+            body.1
+        );
+        assert!(
+            big.2 > body.2 * 1.2,
+            "{what}: slide {:.3} vs {:.3}",
+            big.2,
+            body.2
+        );
+        assert!(big.3 > body.3, "{what}: wide eyes longer");
+    }
+    assert!(broke.0 >= head.0, "a shield break is the biggest");
+    // Even the biggest take keeps his arms from swinging over his head.
+    let poses = hit_standing(13, &[BODY_HIT, KnightEvent::ShieldBreak], 0.4);
+    for p in &poses {
+        for h in hands(p) {
+            assert!(h.x.abs() > 0.05, "a hand swung over his head: {h}");
+        }
+    }
+}
+
+#[test]
+fn a_running_knight_flinches_without_stopping() {
+    let mut anim = KnightAnim::new(21);
+    let fast = moving(Vec3::new(5.5, 0.0, 0.0));
+    run(&mut anim, fast, 1.0);
+    anim.event(BODY_HIT);
+    let poses = run(&mut anim, fast, 0.6);
+    let take = poses.iter().map(|p| p.take).fold(0.0, f32::max);
+    assert!(
+        (0.25..0.5).contains(&take),
+        "a flinch, not a full take: {take:.2}"
+    );
+    let (lo, hi) = range(poses.iter().map(|p| boots(p)[0].x));
+    assert!(hi - lo > 0.3, "the boots keep striding: {lo:.2}..{hi:.2}");
+}
+
+#[test]
+fn each_take_flings_the_other_arm_high() {
+    let mut anim = KnightAnim::new(5);
+    run(&mut anim, still(), 1.0);
+    let mut high = Vec::new();
+    for _ in 0..3 {
+        anim.event(BODY_HIT);
+        let poses = run(&mut anim, still(), 0.15);
+        let [l, r] = hands(poses.last().unwrap());
+        high.push(if l.y > r.y { "left" } else { "right" });
+        run(&mut anim, still(), 1.2);
+    }
+    assert_ne!(high[0], high[1], "{high:?}");
+    assert_ne!(high[1], high[2], "{high:?}");
+}
+
+#[test]
+fn a_hit_while_frozen_waits_for_the_thaw() {
+    let mut anim = KnightAnim::new(6);
+    let held = run(&mut anim, still(), 1.0).pop().unwrap();
+    anim.set_frozen(true);
+    anim.event(KnightEvent::Hit {
+        push: Vec3::Z,
+        headshot: true,
+    });
+    for p in run(&mut anim, still(), 1.0) {
+        assert_eq!(p, held, "the pose moved while frozen");
+    }
+    anim.set_frozen(false);
+    let thawed = run(&mut anim, still(), 0.1);
+    assert_eq!(thawed[0].eyes, EyeState::Wide);
+    assert!(
+        thawed.last().unwrap().take > 1.0,
+        "the take plays out once thawed"
+    );
 }
 
 #[test]
@@ -1125,9 +1428,55 @@ mod figure {
         assert!(highest > rest + 0.05, "hat {rest:.3} -> {highest:.3}");
         assert!(wide, "wide eyes after the hit");
 
+        // A body hit's take hops and slides the model back under the figure;
+        // the character (and so its hitboxes) and the figure stay put.
+        frames_of(&mut app, 1.5);
+        let feet_before = *app.world().get::<Transform>(owner).unwrap();
+        let arm = part(&mut app, model, "PivotArmL");
+        let arm_rest = app.world().get::<Transform>(arm).unwrap().rotation;
+        app.world_mut().write_message(DamageDealt {
+            source: None,
+            target: owner,
+            target_kind: DamageTarget::Character,
+            amount: 24.0,
+            to_shield: 0.0,
+            headshot: false,
+            shield_broke: false,
+            killed: false,
+            point: Vec3::new(2.0, 1.0, -4.8),
+            normal: Vec3::Z,
+            tick: 2,
+        });
+        let (mut hop, mut flung) = (0.0f32, 0.0f32);
+        for _ in 0..super::frames(0.3) {
+            app.update();
+            let offset = app.world().get::<Transform>(model).unwrap().translation;
+            hop = hop.max(offset.y);
+            let arm_now = app.world().get::<Transform>(arm).unwrap().rotation;
+            flung = flung.max(arm_now.angle_between(arm_rest));
+            assert_eq!(
+                *app.world().get::<Transform>(owner).unwrap(),
+                feet_before,
+                "the character never moves"
+            );
+            let at = app.world().get::<Transform>(figure).unwrap().translation;
+            assert!(
+                (at - feet_before.translation).length() < 1e-4,
+                "the figure stays on his feet"
+            );
+        }
+        assert!(hop > 0.03, "the model hops: {hop:.3} m");
+        assert!(flung > 1.2, "the arm flings up: {flung:.2} rad");
+        frames_of(&mut app, 1.5);
+        let offset = app.world().get::<Transform>(model).unwrap().translation;
+        assert!(
+            offset.length() < 0.005,
+            "and lands back under him: {offset}"
+        );
+
         // Eliminated: X eyes and no hat, then the figure hides...
         let hat_part = part(&mut app, model, "Hat");
-        app.world_mut().entity_mut(owner).insert(Downed { tick: 2 });
+        app.world_mut().entity_mut(owner).insert(Downed { tick: 3 });
         app.update();
         assert!(shown(&app, eye("EyeXL")) && !shown(&app, eye("EyeL")));
         assert!(!shown(&app, hat_part));
