@@ -328,8 +328,9 @@ pub const CELL_SIZE: f32 = 4.0;
 pub const LEVEL_HEIGHT: f32 = 3.0;
 /// The arena is `ARENA_CELLS × ARENA_CELLS` cells, centered on the origin.
 pub const ARENA_CELLS: i32 = 12;
-/// Highest buildable level index is `MAX_LEVELS - 1`.
-pub const MAX_LEVELS: i32 = 6;
+/// Highest buildable level index is `MAX_LEVELS - 1`: 12 levels (36 m), so a
+/// ramp rush can run the arena's full length (Amendment A).
+pub const MAX_LEVELS: i32 = 12;
 /// Half the arena's side length.
 pub const ARENA_HALF: f32 = CELL_SIZE * ARENA_CELLS as f32 / 2.0;
 

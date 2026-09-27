@@ -16,8 +16,11 @@ use bevy::{
 };
 
 pub const BARRIER_SHADER_PATH: &str = "embedded://pieced/shaders/barrier.wgsl";
-/// Height of the curtain (it fades out well before its top).
+/// Height over which the curtain's sheet fades out (its look from the ground).
 pub const BARRIER_HEIGHT: f32 = 9.0;
+/// Top of the curtain's quads: as high as the boundary walls, so touching the
+/// boundary from a tall build (up to 36 m) still ripples where you touch it.
+pub const CURTAIN_TOP: f32 = crate::arena::BOUNDARY_HEIGHT;
 /// Fully shown within this distance of the eye (m)...
 pub const REVEAL_FULL: f32 = 1.6;
 /// ...and gone beyond this one.
@@ -95,10 +98,10 @@ impl BarrierSide {
 }
 
 /// One side's quad: the full arena edge, from just below the ground to
-/// [`BARRIER_HEIGHT`], facing into the arena, in the frame of the north side
+/// [`CURTAIN_TOP`], facing into the arena, in the frame of the north side
 /// (outward -Z). Position and normal only.
 pub fn side_mesh() -> Mesh {
-    let (h, top, bottom) = (ARENA_HALF, BARRIER_HEIGHT, -0.3);
+    let (h, top, bottom) = (ARENA_HALF, CURTAIN_TOP, -0.3);
     let z = -ARENA_HALF;
     let positions = vec![[-h, bottom, z], [h, bottom, z], [h, top, z], [-h, top, z]];
     let normals = vec![[0.0, 0.0, 1.0]; 4];
@@ -185,7 +188,7 @@ mod tests {
             for v in p {
                 let v = rot * Vec3::from_array(*v);
                 assert!(side.distance(v) < 1e-4, "on the edge: {v}");
-                assert!((-0.31..=BARRIER_HEIGHT + 1e-4).contains(&v.y), "{v}");
+                assert!((-0.31..=CURTAIN_TOP + 1e-4).contains(&v.y), "{v}");
             }
             // The quad's front faces into the arena.
             let [a, b, c] = [p[0], p[1], p[2]].map(|v| rot * Vec3::from_array(v));
