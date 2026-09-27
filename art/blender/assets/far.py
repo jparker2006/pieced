@@ -583,51 +583,55 @@ def warm_window(bm, x, y, sill, w, h, yaw=0.0):
 # ---------------------------------------------------------------------------
 
 PLAT_R = 150.0          # the platform's grass rim
-ROCK_DEPTH = 160.0      # platform top to the cone's apex
+ROCK_DEPTH = 118.0      # platform top to the cone's apex
 ARCADE_R = 126.0        # the lower arcade wall round the cathedral
-ARCADE_H = 42.0
-RING_Z = 56.0           # the ring walkway, just above the arcade
+ARCADE_H = 30.0
+RING_Z = 40.0           # the ring walkway, just above the arcade
 RING_R = (193.0, 203.0)
-NAVE_HW = 34.0          # the nave: half width, front and back, wall top, roof peak
-NAVE_Y = (-74.0, 72.0)
-NAVE_TOP = 204.0
-NAVE_PEAK = 268.0
+NAVE_HW = 30.0          # the nave: half width, front and back, wall top, roof peak
+NAVE_Y = (-66.0, 64.0)
+NAVE_TOP = 128.0
+NAVE_PEAK = 172.0
 # The great west window on the nave front: width, height, sill.
-GREAT_WINDOW = (52.0, 190.0, 50.0)
+GREAT_WINDOW = (44.0, 118.0, 36.0)
+# The crossing flèche: its base on the roof and its tip, the station's top.
+FLECHE = (146.0, 267.0)
 
 # Towers: (x, y, base z, shaft top, half width, spire height, shape, window)
 # with window = None or (group, width, height, sill, rows, cols). Mirrored for
-# every x > 0; "sq" towers carry four corner pinnacles.
+# every x > 0; "sq" towers carry four corner pinnacles. The whole cathedral is
+# broader than it is tall, as the targets paint it from the arena: about 300 m
+# across its towers and 267 m to the flèche's tip.
 TOWERS = [
-    # The facade's flanking towers, tallest after the flèche.
-    (46.0, -70.0, ARCADE_H, 246.0, 10.0, 88.0, "sq", ("side", 9.0, 92.0, 128.0, 14, 3)),
+    # The facade's flanking towers.
+    (40.0, -64.0, ARCADE_H, 150.0, 8.5, 64.0, "sq", ("side", 7.0, 64.0, 66.0, 10, 2)),
     # The wing towers with the great tall windows (T10's far left and right).
-    (104.0, -42.0, ARCADE_H, 238.0, 18.0, 78.0, "sq", ("towers", 26.0, 164.0, 58.0, 22, 6)),
+    (98.0, -40.0, ARCADE_H, 146.0, 16.0, 52.0, "sq", ("towers", 22.0, 104.0, 38.0, 16, 5)),
     # Between the facade and the wings.
-    (74.0, -58.0, ARCADE_H, 186.0, 8.0, 72.0, "oct", ("side", 7.0, 56.0, 104.0, 9, 2)),
+    (68.0, -54.0, ARCADE_H, 118.0, 7.0, 56.0, "oct", ("side", 4.4, 40.0, 62.0, 7, 2)),
     # Outer towers on the platform's edge.
-    (140.0, -14.0, 0.0, 150.0, 9.0, 60.0, "oct", ("side", 7.0, 48.0, 84.0, 8, 2)),
-    (128.0, 40.0, 0.0, 128.0, 8.0, 54.0, "oct", None),
+    (136.0, -14.0, 0.0, 104.0, 8.0, 50.0, "oct", ("side", 4.6, 36.0, 50.0, 6, 2)),
+    (124.0, 40.0, 0.0, 86.0, 7.0, 44.0, "oct", None),
     # Behind: the skyline's depth, at several heights.
-    (62.0, 28.0, ARCADE_H, 210.0, 9.0, 76.0, "oct", None),
-    (38.0, 84.0, ARCADE_H, 176.0, 8.0, 66.0, "oct", None),
-    (94.0, 72.0, ARCADE_H, 150.0, 8.5, 58.0, "sq", None),
-    (18.0, 118.0, 0.0, 132.0, 7.0, 52.0, "oct", None),
-    (116.0, -76.0, 0.0, 96.0, 6.0, 44.0, "oct", None),
+    (58.0, 26.0, ARCADE_H, 138.0, 8.0, 62.0, "oct", None),
+    (36.0, 80.0, ARCADE_H, 116.0, 7.0, 52.0, "oct", None),
+    (90.0, 70.0, ARCADE_H, 100.0, 7.5, 46.0, "sq", None),
+    (18.0, 112.0, 0.0, 90.0, 6.0, 42.0, "oct", None),
+    (112.0, -74.0, 0.0, 64.0, 5.5, 34.0, "oct", None),
 ]
 # Thin pinnacles on the arcade's top, every few metres round it.
 ARCADE_SEGMENTS = 40
 # Flying buttresses: y positions along the nave, from the aisles to the nave wall.
-BUTTRESS_YS = (-40.0, -8.0, 24.0, 56.0)
+BUTTRESS_YS = (-36.0, -8.0, 20.0, 48.0)
 # Satellite rocks under the ring: (angle deg, radius, top z, rock radius, depth, seed).
-SATELLITES = [(205.0, 212.0, -22.0, 30.0, 70.0, 131), (236.0, 206.0, -34.0, 24.0, 58.0, 133),
-              (304.0, 206.0, -30.0, 26.0, 62.0, 137), (336.0, 212.0, -18.0, 32.0, 74.0, 139),
-              (160.0, 208.0, -40.0, 22.0, 50.0, 141), (20.0, 208.0, -36.0, 22.0, 52.0, 143)]
+SATELLITES = [(205.0, 212.0, -16.0, 28.0, 56.0, 131), (236.0, 206.0, -26.0, 22.0, 46.0, 133),
+              (304.0, 206.0, -22.0, 24.0, 50.0, 137), (336.0, 212.0, -12.0, 30.0, 58.0, 139),
+              (160.0, 208.0, -28.0, 20.0, 40.0, 141), (20.0, 208.0, -24.0, 20.0, 42.0, 143)]
 # Waterfalls off the platform rim: (angle deg, width, length).
-STATION_FALLS = [(238.0, 16.0, 250.0), (257.0, 13.0, 225.0), (283.0, 18.0, 262.0),
-                 (302.0, 13.0, 214.0)]
+STATION_FALLS = [(238.0, 15.0, 185.0), (257.0, 12.0, 170.0), (283.0, 17.0, 195.0),
+                 (302.0, 12.0, 160.0)]
 # Waterfalls off satellite rocks: (satellite index, width, length).
-SATELLITE_FALLS = [(0, 10.0, 170.0), (3, 11.0, 185.0), (1, 8.0, 140.0)]
+SATELLITE_FALLS = [(0, 9.0, 130.0), (3, 10.0, 140.0), (1, 7.0, 110.0)]
 
 
 def tower(stone, glass, x, y, z0, z1, hw, spire, shape, window, seed):
@@ -674,56 +678,57 @@ def nave(stone, glass):
     aisles, a transept, the apse and the crossing flèche (the tallest point)."""
     y0, y1 = NAVE_Y
     hw = NAVE_HW
-    body = extrude(stone, [(-hw, ARCADE_H), (hw, ARCADE_H), (hw, NAVE_TOP), (0, NAVE_PEAK),
-                           (-hw, NAVE_TOP)], "y", y0, y1)
+    top, peak = NAVE_TOP, NAVE_PEAK
+    body = extrude(stone, [(-hw, ARCADE_H), (hw, ARCADE_H), (hw, top), (0, peak), (-hw, top)],
+                   "y", y0, y1)
     shade3(stone, body, STONE)
-    # A raised gable frame round the front's peak and a rose finial.
-    gable = extrude(stone, [(-hw - 3, NAVE_TOP - 6), (-hw, NAVE_TOP - 6), (0, NAVE_PEAK - 4),
-                            (hw, NAVE_TOP - 6), (hw + 3, NAVE_TOP - 6), (0, NAVE_PEAK + 6)],
-                    "y", y0 - 2.0, y0 + 2.0)
+    # A raised gable frame round the front's peak and a finial.
+    gable = extrude(stone, [(-hw - 3, top - 5), (-hw, top - 5), (0, peak - 3), (hw, top - 5),
+                            (hw + 3, top - 5), (0, peak + 5)], "y", y0 - 2.0, y0 + 2.0)
     shade3(stone, gable, STONE)
-    pinnacle(stone, 0.0, y0, NAVE_PEAK + 4, 34.0, 2.4)
+    pinnacle(stone, 0.0, y0, peak + 3, 26.0, 2.0)
     w, h, sill = GREAT_WINDOW
-    glass_window(stone, glass["nave"], 0.0, y0, sill, w, h, 30, 11, 1, scheme="rose", frame=3.4)
+    glass_window(stone, glass["nave"], 0.0, y0, sill, w, h, 24, 10, 1, scheme="rose", frame=3.0)
     # Aisles with lean-to roofs.
     for side in (-1, 1):
-        prof = ([(hw, ARCADE_H), (hw + 30, ARCADE_H), (hw + 30, 126), (hw, 146)] if side > 0 else
-                [(-hw - 30, ARCADE_H), (-hw, ARCADE_H), (-hw, 146), (-hw - 30, 126)])
-        shade3(stone, extrude(stone, prof, "y", y0 + 18, y1 - 10), STONE)
+        prof = ([(hw, ARCADE_H), (hw + 26, ARCADE_H), (hw + 26, 82), (hw, 96)] if side > 0 else
+                [(-hw - 26, ARCADE_H), (-hw, ARCADE_H), (-hw, 96), (-hw - 26, 82)])
+        shade3(stone, extrude(stone, prof, "y", y0 + 16, y1 - 10), STONE)
     # Transept.
-    tr = extrude(stone, [(-8, ARCADE_H), (34, ARCADE_H), (34, 178), (13, 214), (-8, 178)],
-                 "x", -92, 92)
+    tr = extrude(stone, [(-8, ARCADE_H), (30, ARCADE_H), (30, 116), (11, 140), (-8, 116)],
+                 "x", -84, 84)
     shade3(stone, tr, STONE)
     # Apse: a polygonal end with a conical roof.
-    apse = prism(stone, (0, y1), 30, 30, ARCADE_H, 176, 10, math.pi / 10, top=False)
+    apse = prism(stone, (0, y1), 26, 26, ARCADE_H, 112, 10, math.pi / 10, top=False)
     shade3(stone, apse, STONE)
-    shade3(stone, pyramid(stone, (0, y1), 32, 176, 58, 10, math.pi / 10), SPIRE)
+    shade3(stone, pyramid(stone, (0, y1), 28, 112, 40, 10, math.pi / 10), SPIRE)
     # The crossing flèche.
-    fl = prism(stone, (0, 13), 11, 10, 226, 262, 8, math.pi / 8, top=False)
-    fl += prism(stone, (0, 13), 12.5, 12.5, 262, 266, 8, math.pi / 8)
+    base, tip = FLECHE
+    fl = prism(stone, (0, 11), 9.5, 9, base, base + 22, 8, math.pi / 8, top=False)
+    fl += prism(stone, (0, 11), 11, 11, base + 22, base + 25, 8, math.pi / 8)
     shade3(stone, fl, STONE)
-    shade3(stone, pyramid(stone, (0, 13), 11.5, 266, 150, 8, math.pi / 8), SPIRE)
+    shade3(stone, pyramid(stone, (0, 11), 10, base + 25, tip - base - 25, 8, math.pi / 8), SPIRE)
     for k in range(8):
         a = math.pi / 8 + k * math.pi / 4
-        pinnacle(stone, math.cos(a) * 13.5, 13 + math.sin(a) * 13.5, 262, 26, 1.3)
+        pinnacle(stone, math.cos(a) * 12, 11 + math.sin(a) * 12, base + 22, 20, 1.1)
     # Flying buttresses: piers on the aisles' outer walls with pinnacles, and
     # slanted arms up to the nave wall.
     for side in (-1, 1):
         for y in BUTTRESS_YS:
-            px = side * (hw + 33)
-            pier = oriented_box(stone, (px, y, (ARCADE_H + 150) / 2), (5.0, 4.0, 150 - ARCADE_H),
+            px = side * (hw + 29)
+            pier = oriented_box(stone, (px, y, (ARCADE_H + 96) / 2), (5.0, 4.0, 96 - ARCADE_H),
                                 0.0, bottom=False)
             shade3(stone, pier, STONE)
-            pinnacle(stone, px, y, 150, 30, 2.6)
-            arm = (extrude(stone, [(hw + 30, 132), (hw + 33, 140), (hw, 190), (hw, 180)], "y",
+            pinnacle(stone, px, y, 96, 24, 2.2)
+            arm = (extrude(stone, [(hw + 26, 84), (hw + 29, 90), (hw, 122), (hw, 115)], "y",
                            y - 1.4, y + 1.4) if side > 0 else
-                   extrude(stone, [(-hw - 33, 140), (-hw - 30, 132), (-hw, 180), (-hw, 190)], "y",
+                   extrude(stone, [(-hw - 29, 90), (-hw - 26, 84), (-hw, 115), (-hw, 122)], "y",
                            y - 1.4, y + 1.4))
             shade3(stone, arm, STONE)
     # Pinnacles along the nave's eaves.
     for side in (-1, 1):
-        for k in range(7):
-            pinnacle(stone, side * (hw + 1.5), y0 + 16 + k * 20, NAVE_TOP, 22, 1.5)
+        for k in range(6):
+            pinnacle(stone, side * (hw + 1.5), y0 + 14 + k * 20, top, 18, 1.3)
 
 
 def arcade(stone, warm):
@@ -752,8 +757,8 @@ def arcade(stone, warm):
             continue  # the back: no windows
         x, y = math.cos(a) * face_r, math.sin(a) * face_r
         yaw = a + math.pi / 2
-        warm_window(warm, x, y, 6.0, 5.2, 18.0, yaw)
-        warm_window(warm, x, y, 28.0, 3.6, 9.0, yaw)
+        warm_window(warm, x, y, 4.0, 4.6, 14.0, yaw)
+        warm_window(warm, x, y, 21.0, 3.4, 6.5, yaw)
     for i in range(n):
         a = a0 + 2 * math.pi * i / n
         pier = oriented_box(stone, (math.cos(a) * (r1 + 0.9), math.sin(a) * (r1 + 0.9),
@@ -761,7 +766,7 @@ def arcade(stone, warm):
         shade3(stone, pier, STONE)
         if i % 2 == 0:
             pinnacle(stone, math.cos(a) * (r1 + 1.5), math.sin(a) * (r1 + 1.5), ARCADE_H + 3.0,
-                     16.0 + 7.0 * ((i // 2) % 3 == 0), 1.1)
+                     13.0 + 6.0 * ((i // 2) % 3 == 0), 1.0)
 
 
 def ring_walkway(bm, lamps):
@@ -838,12 +843,12 @@ def build_station(root):
     w, h, sill = GREAT_WINDOW
     cy = -(ARCADE_R + 16.0)
     res = bmesh.ops.create_cone(glass["nave"], cap_ends=False, segments=4, radius1=0.0,
-                                radius2=6.5, depth=34.0,
-                                matrix=Matrix.Translation((0.0, cy, 21.0)))
+                                radius2=5.5, depth=28.0,
+                                matrix=Matrix.Translation((0.0, cy, 17.0)))
     low = faces_of(res["verts"])
-    res = bmesh.ops.create_cone(glass["nave"], cap_ends=False, segments=4, radius1=6.5,
-                                radius2=0.0, depth=24.0,
-                                matrix=Matrix.Translation((0.0, cy, 50.0)))
+    res = bmesh.ops.create_cone(glass["nave"], cap_ends=False, segments=4, radius1=5.5,
+                                radius2=0.0, depth=20.0,
+                                matrix=Matrix.Translation((0.0, cy, 41.0)))
     high = faces_of(res["verts"])
     shade(glass["nave"], low + high, "far_glass_white", shadow="crystal_blue", threshold=-0.1)
     made_part("Cathedral", stone, root)
@@ -855,7 +860,7 @@ def build_station(root):
     # Glow points: the great window, the crystal and each wing tower's window.
     y0 = NAVE_Y[0]
     scene.make_attach("GlowNave", root, (0.0, y0 - 6.0, sill + h * 0.55))
-    scene.make_attach("GlowCrystal", root, (0.0, cy - 3.0, 38.0))
+    scene.make_attach("GlowCrystal", root, (0.0, cy - 3.0, 31.0))
     wing = TOWERS[1]
     for side, name in ((-1, "Left"), (1, "Right")):
         _, ww, wh, wsill, _, _ = wing[7]

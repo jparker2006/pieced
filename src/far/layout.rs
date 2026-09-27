@@ -3,10 +3,10 @@
 //!
 //! - The galaxy's core is upper left: azimuth -21°, 28° up.
 //! - The station fills the upper-right quarter: azimuth 30°, 640 m out, its
-//!   platform 132 m up, so from spawn its ring spans about 12°–48° of azimuth,
-//!   its front rim is about 15° up, its rock hangs to the horizon and its
-//!   spires run off the top of the view (T01, T02). Its waterfalls fall past
-//!   the horizon.
+//!   platform 120 m up, so from spawn its ring spans about 12°–48° of azimuth,
+//!   its front rim is about 14° up, its rock hangs to the horizon and its
+//!   flèche just reaches the top of a level view (T01, T02): broader than it is
+//!   tall, as the targets paint it. Its waterfalls fall past the horizon.
 //! - The ringed planet sits low in the middle of the view below and left of the
 //!   station: azimuth 4°, 13° up, 800 m out, about 13° across.
 //! - Floating islands fill the sky in three depth layers (T01, T03, T11): a near
@@ -30,7 +30,7 @@ pub const SPAWN_EYE: Vec3 = Vec3::new(2.0, 1.6, 14.0);
 /// height of its platform (the model's `Platform` point).
 pub const STATION_AZIMUTH: f32 = 30.0;
 pub const STATION_DISTANCE: f32 = 640.0;
-pub const STATION_PLATFORM_Y: f32 = 132.0;
+pub const STATION_PLATFORM_Y: f32 = 120.0;
 
 /// A far model and where its reference attach point goes.
 #[derive(Debug, Clone, PartialEq)]
@@ -146,7 +146,7 @@ const NEAR_ISLANDS: [IslandRow; 14] = [
 /// of its rock, azimuth 0°–70°), along the horizon every way the gallery
 /// looks, and a few below the horizon for the view over the island's edge
 /// (T11).
-const DISTANT_ISLANDS: [IslandRow; 40] = [
+const DISTANT_ISLANDS: [IslandRow; 46] = [
     // Round the station: up its flanks, beside and in front of its rock.
     ("far_island_c", 10.0, 520.0, 250.0, 1.3, true),
     ("far_islet", 2.0, 600.0, 260.0, 2.2, false),
@@ -187,6 +187,13 @@ const DISTANT_ISLANDS: [IslandRow; 40] = [
     ("far_island_c", 45.0, 360.0, -44.0, 1.0, true),
     ("far_islet", 70.0, 300.0, -18.0, 1.5, false),
     ("far_island_b", 100.0, 520.0, -60.0, 1.4, true),
+    // High in the sky, round the galaxy and over the right-hand views.
+    ("far_islet", -58.0, 520.0, 280.0, 2.4, false),
+    ("far_island_c", -35.0, 700.0, 450.0, 1.8, true),
+    ("far_islet", -5.0, 450.0, 230.0, 2.0, false),
+    ("far_island_c", 70.0, 480.0, 300.0, 1.4, true),
+    ("far_islet", 95.0, 520.0, 330.0, 2.6, false),
+    ("far_island_b", -80.0, 600.0, 260.0, 1.6, true),
     // The rest of the sky, sparser.
     ("far_island_a", 150.0, 520.0, 60.0, 1.4, true),
     ("far_island_c", 200.0, 460.0, 80.0, 1.2, true),
@@ -395,8 +402,9 @@ mod tests {
     #[test]
     fn the_station_fills_the_upper_right_quarter_from_spawn() {
         // T01, T02: the ring spans the upper right from about 12° to the
-        // view's edge; the rock hangs down to the horizon; the spires run off
-        // the top of a level view (±35° tall, ±47° wide).
+        // view's edge; the rock hangs down to the horizon; the flèche reaches
+        // about the top of a level view (±35° tall, ±47° wide), so the whole
+        // station is broader than it is tall.
         let side = station_sidecar();
         let platform = side.attach("Platform").unwrap().position();
         let part = |name: &str| side.part(name).unwrap().bounds;
@@ -418,7 +426,8 @@ mod tests {
             height(part("Cathedral").max[1]),
         );
         assert!((-8.0..3.0).contains(&bottom), "rock down to {bottom}°");
-        assert!(top > 36.0, "spires up to {top}°");
+        assert!((26.0..36.0).contains(&top), "spires up to {top}°");
+        assert!(top - bottom < right - left, "{bottom}°..{top}° tall");
         let (_, el) = seen(FarLayout::default().station.position);
         assert!((9.0..16.0).contains(&el), "platform {el}° up");
     }

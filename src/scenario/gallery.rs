@@ -140,10 +140,10 @@ pub const TARGET_SIZE: Vec2 = Vec2::new(1672.0, 941.0);
 pub const SPAWN_EYE: Vec3 = Vec3::new(2.0, 1.62, 14.0);
 /// Far-view landmarks as the sky slice lays them out (`far::layout`, composed
 /// from the spawn eye as in T01): the station's platform (azimuth 30°, 640 m
-/// out, 132 m up; front right), the ringed planet's centre (azimuth 4°, 13° up,
+/// out, 120 m up; front right), the ringed planet's centre (azimuth 4°, 13° up,
 /// 800 m; low centre) and the galaxy core's direction (azimuth -21°, 28° up;
 /// upper left). Views aim by them; the headless tests check where they land.
-pub const STATION: Vec3 = Vec3::new(322.0, 132.0, -540.3);
+pub const STATION: Vec3 = Vec3::new(322.0, 120.0, -540.3);
 pub const PLANET: Vec3 = Vec3::new(56.4, 181.6, -763.6);
 
 /// Unit direction toward the galaxy core.
@@ -352,12 +352,12 @@ pub fn views() -> Vec<GalleryView> {
     // on the right.
     let t08_feet = Vec3::new(1.1, 0.0, 16.8);
     let t08_knight = out(t08_feet, 0.0, 5.0);
-    // T10: out over the void 312 m in front of the station's axis, 10° right
-    // of the spawn's line to it (so the planet stays out of frame), level with
-    // the middle of its rock and above the cloud bank round it, looking up
-    // 17°: its ring spans about 70% of the width, its rock hangs off the
-    // bottom of the frame and its spires run off the top.
-    let t10_eye = (STATION + azimuth_dir(220.8) * 312.0).with_y(110.0);
+    // T10: out over the void 250 m in front of the station's axis, just
+    // inside its ring, 10° right of the spawn's line to it (so the planet
+    // stays out of frame), level with its rock, looking up 24°: the ring
+    // sweeps over the top of the frame, the cathedral fills the upper half and
+    // its rock hangs off the bottom.
+    let t10_eye = (STATION + azimuth_dir(220.8) * 250.0).with_y(70.0);
 
     vec![
         GalleryView {
@@ -652,7 +652,7 @@ pub fn views() -> Vec<GalleryView> {
             },
             framing: Framing::Fixed {
                 eye: t10_eye,
-                look_at: STATION.with_y(205.0),
+                look_at: STATION.with_y(70.0 + 250.0 * 24f32.to_radians().tan()),
             },
             tool: RIFLE,
             inspect: false,
