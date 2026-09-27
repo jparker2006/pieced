@@ -8,26 +8,67 @@
 //! Everything below is re-exported from `crate::look`. [`LookPlugin`] (in
 //! `ClientPlugins`) registers all of it; nothing needs setting up per slice.
 //!
-//! ## Surfaces
+//! ## Surfaces (M2 Amendment B, D47: the shading upgrade)
 //!
 //! - [`ToonMaterial`]: the material for everything near (world, pieces, props,
-//!   characters, viewmodel). Two hard bands against the key light, a violet
-//!   shadow band with a teal fill, a thin rim, emissive × strength.
-//!   `base_color` × the mesh's `COLOR_0` (if any) × an optional detail texture
-//!   (UV_0 × `detail_scale`). `AlphaMode::Opaque`, `Blend` (ghosts) or `Add`.
-//!   Constructors: `ToonMaterial::new(color)`, `::vertex_colored()`, then
+//!   characters, viewmodel). Per fragment:
+//!   - **Albedo** = `base_color` × the mesh's `COLOR_0` rgb (if any) × an
+//!     optional detail texture (UV_0 × `detail_scale`).
+//!   - **Three tones** against the key light: shadow (violet, never black),
+//!     mid and lit, with soft smoothstep edges; the shadow and mid tones also
+//!     get the teal galaxy fill and a sky/ground hemisphere fill.
+//!   - **Baked AO**: `COLOR_0`'s *alpha* is ambient occlusion baked by the
+//!     Blender pipeline (`art/blender/lib/ao.py`: 1 open, 0 enclosed); it
+//!     darkens toward a violet tint. On `AlphaMode::Blend`/`Add` materials the
+//!     vertex alpha stays opacity (ghosts, the edit grid) unless
+//!     `.with_vertex_alpha(VertexAlpha::Occlusion)` (a see-through Blender part
+//!     such as the gun's glass: keeps `base_color`'s alpha, darkens in
+//!     crevices). `.with_occlusion(k)` scales the AO (0 ignores it, e.g. the
+//!     knight's eyes, which sit deep in the visor and bake to about 0.15).
+//!   - **Cartoon highlight**: a crisp blob where N·H^shininess > 0.5 plus a
+//!     broad sheen, tinted toward the surface's hue for metals, lit side only.
+//!     Its light blends from the key toward one fixed to the camera
+//!     (`highlight_view_bias`, [`VIEW_HIGHLIGHT`]), so gleams sit on top-front
+//!     edges from any view, as painted.
+//!     Its [`Surface`] (`specular`, `shininess`, `sheen`, `tint`) comes from
+//!     the **palette's surface tags** (`art/surfaces.json`: brass, gold_rings,
+//!     star_gold = brass; gun_iron, knight_steel, nail_head = steel;
+//!     crystal_blue, crystal_violet, shield_cyan = crystal; glass_cyan = glass;
+//!     glove_white, eye_white, knight_purple = satin) whenever the albedo
+//!     (before detail) is a tagged palette colour; otherwise from the
+//!     material's own `surface` (matte by default). Tag new palette colours
+//!     there (a test catches collisions); no mesh or material change needed,
+//!     and the shared vertex-coloured material still batches.
+//!   - **Rim** (stronger than M1), then **emissive** × strength, then the
+//!     **colour grade** ([`grade`], `pieced::grade::grade` in WGSL; skipped on
+//!     `Add`).
+//!
+//!   `AlphaMode::Opaque`, `Blend` (ghosts) or `Add`. Constructors:
+//!   `ToonMaterial::new(color)`, `::vertex_colored()`, then
 //!   `.with_emissive(color, strength)`, `.with_alpha(mode)`, `.with_rim(k)`,
-//!   `.double_sided()`, `.with_detail(image, uv_scale, strength)`.
-//!   Leave its `lighting` field alone.
-//! - [`ToonLighting`] (resource): key direction/color, shadow tint, fill
-//!   direction/color, rim color/strength/power, band threshold/softness. Edit
-//!   it and every `ToonMaterial` follows within a frame. [`light_direction`]
-//!   builds a direction from azimuth/elevation. [`toon_shade`] predicts a
-//!   surface's on-screen color on the CPU.
+//!   `.with_surface(Surface::named("crystal").unwrap())`,
+//!   `.with_specular(strength, shininess)`, `.with_occlusion(k)`,
+//!   `.with_vertex_alpha(v)`, `.double_sided()`,
+//!   `.with_detail(image, uv_scale, strength)`. Leave its `lighting` field alone.
+//! - [`ToonLighting`] (resource): key direction/colour (lit tone), mid tint,
+//!   shadow tint, the two tone thresholds and edge softness, in-tone gradient,
+//!   fill direction/colour, sky and ground fills, rim colour/strength/power,
+//!   highlight colour/softness, AO strength/tint and the surface table. Edit it
+//!   and every `ToonMaterial` (and the ground's material) follows within a
+//!   frame. [`light_direction`] builds a direction from azimuth/elevation.
+//!   [`toon_shade`] / [`toon_shade_sample`] predict a surface's on-screen
+//!   colour on the CPU. [`ToonLight`] is the packed copy materials carry; its
+//!   M1 fields keep their meaning (the ground reads them).
+//! - **Colour grade** ([`grade`]): vibrance, contrast and a slight split tone
+//!   (cool shadows, warm highlights) at the end of the toon and far shaders,
+//!   instead of a full-screen pass; cameras keep `Tonemapping::None`. Any other
+//!   lit world shader should `#import pieced::grade::grade` and apply it to its
+//!   final colour before `tone_mapping` so it matches (the ground should).
 //! - [`FarMaterial`]: unlit, hazed toward [`FarHaze`] (resource: color, start,
 //!   density) with distance. For the station, ships, far islands, the planet.
 //!   `FarMaterial::new(color).with_haze(0..1).with_emissive(c, k)`. Never
-//!   outlined.
+//!   outlined. Opaque far models darken by their baked AO too
+//!   ([`FAR_AO_STRENGTH`]) and are graded before the haze.
 //! - [`GroundMaterial`]: the island's grass, toon-lit like [`ToonMaterial`]
 //!   (vertex colours multiply `base_color`), with the faint glowing build grid
 //!   drawn in world space by its shader (`ground.wgsl`). Never outlined.
@@ -42,8 +83,10 @@
 //! - Meshes must carry smooth outline normals: build them with
 //!   [`with_outline_normals`]`(mesh)` before `meshes.add(..)` (glTF meshes can
 //!   have them generated the same way, or exported as `_OUTLINE_NORMAL`).
-//! - Width: [`DEFAULT_WIDTH_PX`] at [`REFERENCE_HEIGHT_PX`], constant on screen,
-//!   fading out between [`FADE_START`] and [`FADE_END`] m ([`outline_width_px`]).
+//! - Width: [`DEFAULT_WIDTH_PX`] (3 px since D47) at [`REFERENCE_HEIGHT_PX`],
+//!   constant on screen up to [`TAPER_START`] m, tapering to [`TAPER_KEEP`] ×
+//!   by [`FADE_START`] (so small mid-distance things don't bloat), fading out
+//!   between [`FADE_START`] and [`FADE_END`] m ([`outline_width_px`]).
 //! - Backend: [`OutlineBackend`] (`Hull` by default, `Mod` = bevy_mod_outline,
 //!   `Off`), from the quality preset or `--knobs outline=mod|hull|off`.
 //!
@@ -70,7 +113,9 @@
 //!
 //! - [`LookSettings`] (resource, read-only): the preset ([`preset_look`])
 //!   merged with perf knobs, per frame: outline backend, MSAA for both cameras,
-//!   and the far / halos / blobs / sky-rotation switches.
+//!   FXAA, and the far / halos / blobs / sky-rotation switches. Battery: MSAA
+//!   off + FXAA (MSAA 4× was the battery spike source); Plugged in: MSAA 4×.
+//!   Offscreen tests can set knobs with the `PIECED_KNOBS` env var.
 //! - Both 3D cameras use `Tonemapping::None` without debanding, so palette
 //!   colors land on screen as authored.
 //! - [`warmup::Warmup`] (system param): during Boot, `warmup.add(mesh,
@@ -81,18 +126,21 @@
 
 mod blob;
 mod far;
+pub mod grade;
 mod ground;
 mod halo;
 mod model_look;
 mod outline;
 mod settings;
+pub mod surfaces;
 mod toon;
 pub mod warmup;
 
 pub use blob::{
     BlobAssets, BlobDecal, BlobDecalLink, BlobGround, BlobMaterial, BlobShadow, blob_footprint,
 };
-pub use far::{FarHaze, FarHazeBlock, FarMaterial};
+pub use far::{FAR_AO_STRENGTH, FarHaze, FarHazeBlock, FarMaterial};
+pub use grade::grade;
 pub use ground::{GroundMaterial, grid_line_distance, grid_line_intensity};
 pub use halo::{
     HALO_MAX_INTENSITY, Halo, HaloAssets, HaloLink, HaloMaterial, HaloSprite, halo_image,
@@ -101,14 +149,18 @@ pub use halo::{
 pub use model_look::{ModelDressed, ModelLook, ModelMaterials};
 pub use outline::{
     ATTRIBUTE_OUTLINE_NORMAL, DEFAULT_WIDTH_PX, FADE_END, FADE_START, InheritedOutline,
-    InkMaterial, NoOutline, Outline, OutlineHull, OutlineHullLink, REFERENCE_HEIGHT_PX, ink_color,
-    outline_width_px, smooth_outline_normals, with_outline_normals,
+    InkMaterial, NoOutline, Outline, OutlineHull, OutlineHullLink, REFERENCE_HEIGHT_PX, TAPER_KEEP,
+    TAPER_START, ink_color, outline_width_px, smooth_outline_normals, with_outline_normals,
 };
 pub use settings::{
-    LookSettings, ModOutlineAvailable, OutlineBackend, PresetLook, msaa_for, preset_look,
-    resolve_look,
+    LookSettings, ModOutlineAvailable, OutlineBackend, PresetLook, look_fxaa, msaa_for,
+    preset_look, resolve_look,
 };
-pub use toon::{ToonLight, ToonLighting, ToonMaterial, light_direction, toon_shade};
+pub use surfaces::{Surface, SurfaceTable};
+pub use toon::{
+    ToonLight, ToonLighting, ToonMaterial, ToonSample, VIEW_HIGHLIGHT, VertexAlpha,
+    highlight_light, light_direction, toon_shade, toon_shade_linear, toon_shade_sample,
+};
 
 use crate::{
     app::BootGate,
@@ -130,6 +182,8 @@ pub struct LookPlugin;
 impl Plugin for LookPlugin {
     fn build(&self, app: &mut App) {
         register_shaders(app);
+        load_shader_library(app);
+        knobs_from_env(app);
         if mod_outline_requested(app) {
             app.add_plugins(bevy_mod_outline::OutlinePlugin::EXTRUDE_VERTEX)
                 .init_resource::<ModOutlineAvailable>();
@@ -208,6 +262,20 @@ impl Plugin for LookPlugin {
     }
 }
 
+/// Offscreen tests and tools have no command line of their own: they can set
+/// perf knobs with `PIECED_KNOBS=msaa=4,fxaa=off` (only when no `--knobs`
+/// resource was inserted).
+fn knobs_from_env(app: &mut App) {
+    if app.world().contains_resource::<PerfKnobs>() {
+        return;
+    }
+    if let Ok(raw) = std::env::var("PIECED_KNOBS")
+        && !raw.is_empty()
+    {
+        app.insert_resource(PerfKnobs::parse(&raw));
+    }
+}
+
 /// `bevy_mod_outline` adds passes (and an MSAA write-back blit on every MSAA
 /// camera) as soon as its plugin exists, so it is only added when it is the
 /// backend being measured: `--knobs outline=mod`.
@@ -245,9 +313,35 @@ fn register_shaders(app: &mut App) {
             "pieced/shaders/blob.wgsl",
             include_bytes!("../../assets/shaders/blob.wgsl").as_slice(),
         ),
+        (
+            GRADE_SHADER,
+            include_bytes!("../../assets/shaders/grade.wgsl").as_slice(),
+        ),
     ] {
         registry.insert_asset(PathBuf::new(), Path::new(path), bytes);
     }
+}
+
+/// The import-only shader library (`#import pieced::grade::grade`).
+const GRADE_SHADER: &str = "pieced/shaders/grade.wgsl";
+
+/// Keeps the import-only shaders loaded, so `#import pieced::grade` resolves
+/// in any material (the loader only knows import paths of loaded shaders).
+#[derive(Resource)]
+pub struct LookShaderLibrary {
+    pub grade: Handle<Shader>,
+}
+
+fn load_shader_library(app: &mut App) {
+    // Headless apps (no renderer) have no shader assets and need none.
+    if !app.world().contains_resource::<Assets<Shader>>() {
+        return;
+    }
+    let Some(server) = app.world().get_resource::<AssetServer>() else {
+        return;
+    };
+    let grade = server.load(format!("embedded://{GRADE_SHADER}"));
+    app.insert_resource(LookShaderLibrary { grade });
 }
 
 /// `far=off` hides every far-layer mesh: all of them when the setting changes,

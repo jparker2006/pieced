@@ -16,8 +16,9 @@ scripts/build-art.sh rock_a       # rebuild one
 scripts/build-art.sh --check      # fail unless the committed files match a fresh build
 ```
 
-Each model is a `.glb` (palette colours as glTF `COLOR_0`, one white `Toon`
-material, named nodes) plus a sidecar `.json` with per-part bounds, triangle
+Each model is a `.glb` (palette colours as glTF `COLOR_0`, baked ambient
+occlusion in its alpha (`art/blender/lib/ao.py`), one white `Toon` material,
+named nodes) plus a sidecar `.json` with per-part bounds, triangle
 counts and attach points in Bevy model space (metres, +Y up, -Z forward; see
 `art/blender/lib/export.py`). `src/models.rs` embeds and loads them. Colours come
 from `art/palette.json`, sampled from the target images by
@@ -137,9 +138,10 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 
 | File | Made by | Notes |
 |---|---|---|
-| `shaders/toon.wgsl` | hand-written, used by `src/look/toon.rs` | Two-band toon shading, rim, emissive, vertex colors |
-| `shaders/ink.wgsl` | hand-written, used by `src/look/outline.rs` | Inverted-hull ink outlines, screen-space width, distance fade |
-| `shaders/far.wgsl` | hand-written, used by `src/look/far.rs` | Unlit far layer with distance haze |
+| `shaders/toon.wgsl` | hand-written, used by `src/look/toon.rs` | Three-tone toon shading, sky fill, baked AO, palette-tagged cartoon highlights (`art/surfaces.json`), rim, emissive, vertex colors, colour grade |
+| `shaders/grade.wgsl` | hand-written, used by `src/look/grade.rs` | Import-only colour grade (`pieced::grade`): vibrance, contrast, split tone |
+| `shaders/ink.wgsl` | hand-written, used by `src/look/outline.rs` | Inverted-hull ink outlines, screen-space width, mid-distance taper, distance fade |
+| `shaders/far.wgsl` | hand-written, used by `src/look/far.rs` | Unlit far layer with baked AO, colour grade and distance haze |
 | `shaders/halo.wgsl` | hand-written, used by `src/look/halo.rs` | Additive camera-facing glow billboards |
 | `shaders/blob.wgsl` | hand-written, used by `src/look/blob.rs` | Soft blob shadows under characters and props |
 | `shaders/ground.wgsl` | hand-written, used by `src/look/ground.rs` | The island's toon-lit grass with the glowing build grid in world space |

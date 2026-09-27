@@ -1,8 +1,9 @@
 // Pieced ink outline hull (src/look/outline.rs): the outlined mesh drawn again
 // with front faces culled, each vertex pushed out in clip space along its
 // position-averaged smooth normal by a constant number of pixels. The width is
-// set at a reference target height, scales with the actual target, and fades
-// to zero between the fade distances. `outline_width_px` and `ink_color` in
+// set at a reference target height, scales with the actual target, tapers a
+// little through the middle distance and fades to zero between the fade
+// distances. `outline_width_px` and `ink_color` in
 // outline.rs mirror this math; keep them in step.
 
 #import bevy_pbr::{
@@ -23,6 +24,8 @@ struct Ink {
     params: vec4<f32>,
     // x: saturation kept, y: darkness, z: max luminance.
     derive: vec4<f32>,
+    // x: taper start m, y: width kept at the fade start.
+    taper: vec4<f32>,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> ink: Ink;
@@ -68,8 +71,9 @@ fn vertex(v: Vertex) -> VertexOutput {
     let len = length(dir);
 
     let dist = distance(world.xyz, view.world_position);
+    let taper = 1.0 - (1.0 - ink.taper.y) * smoothstep(ink.taper.x, ink.params.y, dist);
     let fade = 1.0 - smoothstep(ink.params.y, ink.params.z, dist);
-    let width_px = ink.params.x * miter * (view.viewport.w / ink.params.w) * fade;
+    let width_px = ink.params.x * miter * (view.viewport.w / ink.params.w) * taper * fade;
     if len > 1e-6 {
         let offset_ndc = dir / len * width_px * 2.0 / view.viewport.zw;
         clip = vec4<f32>(clip.xy + offset_ndc * clip.w, clip.zw);

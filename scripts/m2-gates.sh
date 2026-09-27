@@ -12,9 +12,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . scripts/env.sh
-PIECED_FULL_SPEED=1 cargo build --release --locked --quiet
 bin="$CARGO_TARGET_DIR/pieced-m2-gate"
-cp "$CARGO_TARGET_DIR/release/pieced" "$bin"
+if [ -n "${PIECED_BIN:-}" ]; then
+  # Reuse an already-built release binary (it must match the commit being measured).
+  cp "$PIECED_BIN" "$bin"
+else
+  PIECED_FULL_SPEED=1 cargo build --release --locked --quiet
+  cp "$CARGO_TARGET_DIR/release/pieced" "$bin"
+fi
 # Gate runs are muted: sounds are judged in Jake's play session, not here.
 root="$(mktemp -d)"
 mkdir -p "$root/userdata"
