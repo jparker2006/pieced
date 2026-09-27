@@ -171,6 +171,18 @@ Questions only the spec needs and Round 8 doesn't answer. Context from reading t
 | D77 | **At most 8 knights alive (Q76).** | The rest wait for the next ship as slots open. Eight knights fit the M2 triangle budget. |
 | D78 | **Pump knockback and the void (Q77).** | <ul><li>The pump knocks knights back for real, up to about 4 m at point blank (distance-scaled). The player takes no knockback.</li><li>The barrier stops the player but lets knights through outward.</li><li>A knight past the edge falls with a cartoon yelp, and it counts as an elimination with bonus points.</li><li>The player can never fall.</li></ul> |
 
+**Batch 2: waves, score, ships and runs (Q78–Q84).** Jake: "rec is good for all".
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D79 | **The break between waves (Q78).** | A 10 s countdown on the HUD. Enter skips it. At the start of each break the player's shield refills +50; health comes back only from potions. |
+| D80 | **Shield potions (Q79).** | 10% of knights drop one. It bobs and glows cyan; walking over it gives +25 shield, spilling into health when the shield is full. It vanishes after 20 s. |
+| D81 | **Score and personal best (Q80).** | <ul><li>100 per knight, +50 for a headshot kill, +150 for a void knock-off (D78), and +250 × wave number for each wave cleared.</li><li>The **personal best is the wave reached**, with score as the tiebreak.</li><li>The best is saved locally in the git-ignored `userdata/`.</li></ul> |
+| D82 | **Ship arrivals (Q81).** | <ul><li>A bigger version of the M2 ship peels off from the station and swoops down in about 4 s to hover over one of 4–6 drop points at the island edge.</li><li>A glowing circle marks the landing spot 2 s ahead.</li><li>Knights slide down a beam of light 1–3 at a time and land with a sparkle poof; the ship flies back up.</li><li>Knights can't be shot until they land (about 1 s).</li></ul> |
+| D83 | **Seeded randomness (Q82).** | Each run has a seed that drives drop points, ship timing, how knights split between ships, and ±10% speed per knight. The results screen shows the seed, so a run can be replayed. |
+| D84 | **Death and results (Q83).** | <ul><li>About 1 s of slow motion, the view drops to the grass, and the knights do a goofy victory hop.</li><li>The results screen (D65) shows the wave reached, eliminations, accuracy, headshots, run time and the best run beside them, with "NEW BEST!" when it is one.</li><li>"Go again" restarts instantly with no reload, and Quit goes to the menu.</li><li>Quitting a run from the pause menu also goes to results.</li></ul> |
+| D85 | **Practice mode stays (Q84).** | The M2 sandbox with the training dummy becomes **Practice** on the main menu. Waves is the default. The M1/M2 tests and scenarios (TTK, gallery, fx_check, perf) keep running against Practice, which keeps the M2 gates green. |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**
