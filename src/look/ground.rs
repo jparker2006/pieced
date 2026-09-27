@@ -55,7 +55,7 @@ pub const GRASS_DETAIL_SIZE: usize = 512;
 /// World size (m) of one blade-stroke tile: about 170 texels per metre.
 pub const GRASS_STROKE_TILE: f32 = 3.0;
 /// World size (m) of one patch-noise tile (patches a few metres across).
-pub const GRASS_PATCH_TILE: f32 = 34.0;
+pub const GRASS_PATCH_TILE: f32 = 26.0;
 
 /// Toon-lit ground with the world-space build grid.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
@@ -123,11 +123,11 @@ impl Default for GroundMaterial {
             fade_end: 40.0,
             detail: Some(GRASS_DETAIL),
             patch_dark: cartoon::GRASS_SHADOW,
-            patch_dark_amount: 0.5,
+            patch_dark_amount: 0.7,
             patch_light: cartoon::GRASS_LIGHT,
-            patch_light_amount: 0.85,
-            stroke_strength: 0.75,
-            stroke_shade: 0.66,
+            patch_light_amount: 1.0,
+            stroke_strength: 0.9,
+            stroke_shade: 0.52,
             lighting: ToonLight::default(),
         }
     }
@@ -374,12 +374,13 @@ pub fn grass_detail_pixels(size: usize) -> Vec<[u8; 4]> {
     let area = GRASS_STROKE_TILE * GRASS_STROKE_TILE;
     let mut dark = vec![0.0f32; size * size];
     let mut light = vec![0.0f32; size * size];
-    // Blade clumps, about 9 per square metre.
-    for _ in 0..(9.0 * area) as usize {
+    // Blade clumps, about 5 per square metre: chunky enough (3-4 cm blades,
+    // 12-22 cm clumps) to read at play distance, like the painted marks.
+    for _ in 0..(5.0 * area) as usize {
         let root = Vec2::new(rng.range(0.0, size as f32), rng.range(0.0, size as f32));
         let blades = 3 + (rng.next_u64() % 4) as usize;
         let lean = rng.range(-0.5, 0.5);
-        let height = rng.range(0.08, 0.15) * px_per_m;
+        let height = rng.range(0.12, 0.22) * px_per_m;
         for b in 0..blades {
             let f = if blades > 1 {
                 b as f32 / (blades - 1) as f32 - 0.5
@@ -395,38 +396,38 @@ pub fn grass_detail_pixels(size: usize) -> Vec<[u8; 4]> {
                 size,
                 from,
                 tip,
-                rng.range(2.6, 3.6),
-                rng.range(0.75, 1.0),
+                rng.range(5.0, 7.0),
+                rng.range(0.8, 1.0),
             );
         }
     }
-    // Loose single blades, about 14 per square metre.
-    for _ in 0..(14.0 * area) as usize {
+    // Loose single blades, about 6 per square metre.
+    for _ in 0..(6.0 * area) as usize {
         let root = Vec2::new(rng.range(0.0, size as f32), rng.range(0.0, size as f32));
         let a = rng.range(-0.7, 0.7);
-        let h = rng.range(0.04, 0.08) * px_per_m;
+        let h = rng.range(0.06, 0.12) * px_per_m;
         let tip = root + Vec2::new(a.sin(), -a.cos()) * h;
         stamp(
             &mut dark,
             size,
             root,
             tip,
-            rng.range(2.0, 3.0),
-            rng.range(0.5, 0.85),
+            rng.range(4.0, 5.5),
+            rng.range(0.6, 0.9),
         );
     }
-    // Light dabs, about 20 per square metre.
-    for _ in 0..(20.0 * area) as usize {
+    // Light dabs, about 10 per square metre.
+    for _ in 0..(10.0 * area) as usize {
         let root = Vec2::new(rng.range(0.0, size as f32), rng.range(0.0, size as f32));
         let a = rng.range(-0.9, 0.9);
-        let h = rng.range(0.04, 0.09) * px_per_m;
+        let h = rng.range(0.06, 0.12) * px_per_m;
         let tip = root + Vec2::new(a.sin(), -a.cos()) * h;
         stamp(
             &mut light,
             size,
             root,
             tip,
-            rng.range(3.0, 4.2),
+            rng.range(5.0, 7.0),
             rng.range(0.7, 1.0),
         );
     }

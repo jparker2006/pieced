@@ -460,9 +460,28 @@ struct DecorKind {
     ring: Option<f32>,
 }
 
-const DECOR: [DecorKind; 8] = [
+const DECOR: [DecorKind; 10] = [
     // The framing ring first, so it gets the spots along the arena's edge:
-    // both tree shapes, mixed.
+    // a few big trees (like the ones the targets paint at the edges of the
+    // view), then both tree shapes, mixed.
+    DecorKind {
+        model: "tree_b",
+        count: 6,
+        scale: (1.55, 1.85),
+        foot: TREE_B_CANOPY,
+        shadow: 2.3,
+        spacing: 7.5,
+        ring: Some(3.0),
+    },
+    DecorKind {
+        model: "tree_a",
+        count: 6,
+        scale: (1.5, 1.8),
+        foot: TREE_CANOPY,
+        shadow: 2.1,
+        spacing: 7.0,
+        ring: Some(3.0),
+    },
     DecorKind {
         model: "tree_b",
         count: 12,
@@ -633,14 +652,14 @@ fn tuft(geo: &mut Geo, at: Vec3, height: f32, rng: &mut Rng) {
         lin(cartoon::GRASS_LIGHT),
         rng.range(0.0, 0.45),
     );
-    let root = mix(lin(cartoon::TUFT), lin(cartoon::GRASS_SHADOW), 0.85);
+    let root = mix(lin(cartoon::TUFT), lin(cartoon::GRASS_SHADOW), 1.0);
     let up = Vec3::Y;
     let spin = rng.range(0.0, TAU);
     for b in 0..blades {
         let a = spin + TAU * b as f32 / blades as f32 + rng.range(-0.3, 0.3);
         let out = Vec3::new(a.cos(), 0.0, a.sin());
         let side = out.cross(up);
-        let w = height * rng.range(0.34, 0.5);
+        let w = height * rng.range(0.42, 0.6);
         let h = height * rng.range(0.65, 1.0);
         let lean = out * h * rng.range(0.3, 0.6);
         let base = at + out * w * 0.25;
@@ -812,29 +831,41 @@ fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Geo {
     geo
 }
 
-/// A little five-petal flower facing up just above the grass, in `petal`
-/// with a `centre` (white daisies, yellow buttercups, pink blossoms).
+/// A little five-petal flower just above the grass, tipped a little toward a
+/// random side so it catches the eye (T01, T11): rounded diamond petals in
+/// `petal` round a raised `centre` (white daisies, yellow buttercups, pink
+/// blossoms). 13 triangles.
 fn flower(geo: &mut Geo, at: Vec3, size: f32, petal: Rgba, centre: Rgba, rng: &mut Rng) {
-    let white = petal;
-    let gold = centre;
-    let up = Vec3::Y;
+    let tip_dir = rng.range(0.0, TAU);
+    let up = Quat::from_axis_angle(
+        Vec3::new(tip_dir.cos(), 0.0, tip_dir.sin()),
+        rng.range(0.2, 0.55),
+    ) * Vec3::Y;
+    let t = up.any_orthonormal_vector();
+    let b = up.cross(t);
     let spin = rng.range(0.0, TAU);
-    let c = at + Vec3::Y * rng.range(0.05, 0.1);
+    let c = at + Vec3::Y * rng.range(0.06, 0.12);
+    let dir = |a: f32| t * a.cos() + b * a.sin();
     for k in 0..5 {
         let a = spin + TAU * k as f32 / 5.0;
-        let dir = Vec3::new(a.cos(), 0.0, a.sin());
-        let side = dir.cross(up) * size * 0.32;
-        let tip = c + dir * size + Vec3::Y * size * 0.12;
-        geo.tri_raw([c - side, c + side, tip], [up; 3], [white; 3]);
+        let (d, side) = (dir(a), dir(a + FRAC_PI_2));
+        let root = c + d * size * 0.18;
+        let mid = c + d * size * 0.62 + up * size * 0.08;
+        let tip = c + d * size + up * size * 0.14;
+        let (l, r) = (mid - side * size * 0.3, mid + side * size * 0.3);
+        geo.tri_raw([root, r, tip], [up; 3], [petal; 3]);
+        geo.tri_raw([root, tip, l], [up; 3], [petal; 3]);
     }
-    let r = size * 0.32;
     let ring: Vec<Vec3> = (0..3)
-        .map(|k| {
-            let a = spin + TAU * k as f32 / 3.0;
-            c + Vec3::Y * 0.004 + Vec3::new(a.cos(), 0.0, a.sin()) * r
-        })
+        .map(|k| c + up * size * 0.06 + dir(spin + TAU * k as f32 / 3.0) * size * 0.3)
         .collect();
-    geo.tri_raw([ring[0], ring[2], ring[1]], [up; 3], [gold; 3]);
+    geo.tri_raw([ring[0], ring[2], ring[1]], [up; 3], [centre; 3]);
+    geo.tri_raw([ring[0], ring[1], ring[2]], [up; 3], [centre; 3]);
+    geo.tri_raw(
+        [ring[0], ring[1], c + up * size * 0.16],
+        [up; 3],
+        [shade(centre, 1.1); 3],
+    );
 }
 
 fn flowers(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
@@ -861,7 +892,7 @@ fn flowers(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
             flower(
                 &mut geo[chunk(q.x, q.y)],
                 Vec3::new(q.x, 0.0, q.y),
-                rng.range(0.07, 0.11),
+                rng.range(0.08, 0.12),
                 petal,
                 centre,
                 rng,
@@ -899,8 +930,11 @@ fn prop_bushes(rng: &mut Rng) -> Geo {
 /// A soft cartoon cloud: overlapping domes, flat underneath, their colour
 /// running per vertex from the lavender `cloud` in the hollows and under the
 /// puffs to the pale `cloud_light` on their sunlit tops (T01, T03, T11).
-fn cloud(geo: &mut Geo, centre: Vec3, radius: f32, puffs: usize, rng: &mut Rng) {
-    const SEGMENTS: usize = 12;
+///
+/// Each puff is a dome of `segments` sides: 12 for the banks close under the
+/// rim (120 triangles a puff), 8 far away (64).
+fn cloud(geo: &mut Geo, centre: Vec3, radius: f32, puffs: usize, segments: usize, rng: &mut Rng) {
+    let segments = segments.max(3);
     // Latitudes from the top down to a little past the equator.
     const LATS: [f32; 6] = [0.0, 0.42, 0.8, 1.15, 1.45, 1.75];
     let (body, top) = (lin(cartoon::CLOUD), lin(cartoon::CLOUD_LIGHT));
@@ -919,9 +953,9 @@ fn cloud(geo: &mut Geo, centre: Vec3, radius: f32, puffs: usize, rng: &mut Rng) 
         let squash = rng.range(0.62, 0.78);
         let spin = rng.range(0.0, TAU);
         let ring = |lat: f32| -> Vec<(Vec3, Rgba)> {
-            (0..SEGMENTS)
+            (0..segments)
                 .map(|i| {
-                    let a = spin + TAU * i as f32 / SEGMENTS as f32;
+                    let a = spin + TAU * i as f32 / segments as f32;
                     let n = Vec3::new(lat.sin() * a.cos(), lat.cos(), lat.sin() * a.sin());
                     let p = c + Vec3::new(n.x * r, n.y.max(-0.25) * r * squash, n.z * r);
                     let t = smoothstep(-0.2, 0.8, n.y + (c.y - centre.y) / radius);
@@ -937,8 +971,8 @@ fn cloud(geo: &mut Geo, centre: Vec3, radius: f32, puffs: usize, rng: &mut Rng) 
                 geo.tri_raw([a.0, b.0, d.0], [n; 3], [a.1, b.1, d.1]);
             }
         };
-        for i in 0..SEGMENTS {
-            let j = (i + 1) % SEGMENTS;
+        for i in 0..segments {
+            let j = (i + 1) % segments;
             face(apex, rings[0][j], rings[0][i]);
             for w in rings.windows(2) {
                 let (u, l) = (&w[0], &w[1]);
@@ -949,8 +983,8 @@ fn cloud(geo: &mut Geo, centre: Vec3, radius: f32, puffs: usize, rng: &mut Rng) 
         // A flat underside.
         let last = rings.last().unwrap();
         let under = (c - Vec3::Y * r * squash * 0.25, body);
-        for i in 0..SEGMENTS {
-            face(under, last[i], last[(i + 1) % SEGMENTS]);
+        for i in 0..segments {
+            face(under, last[i], last[(i + 1) % segments]);
         }
     }
 }
@@ -963,9 +997,10 @@ fn sector(p: Vec3) -> usize {
     ((a / TAU * CLOUD_SECTORS as f32) as usize).min(CLOUD_SECTORS - 1)
 }
 
-/// The cloud sea (T01, T03, T11): banks just under the rim, where the cliffs
-/// drop away; puffs wrapped round the middle of every far island's rocky
-/// underside; and a low band far out that peeks over the rim at the horizon.
+/// The cloud sea (T01, T03, T10, T11): banks just under the rim, where the
+/// cliffs drop away; a bank round the station's rock; puffs wrapped round the
+/// middle of every far island's rocky underside; and a low band far out that
+/// peeks over the rim at the horizon.
 /// Nothing rises above the island top near it, so no cloud ever sits on the
 /// grass or in front of the far view's landmarks.
 fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
@@ -973,7 +1008,8 @@ fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
     fn put(geo: &mut [Geo], c: Vec3, r: f32, puffs: usize, rng: &mut Rng) {
         let yaw = rng.range(0.0, TAU);
         let mut one = Geo::default();
-        cloud(&mut one, Vec3::ZERO, r, puffs, rng);
+        let segments = if c.xz().length() < 90.0 { 12 } else { 8 };
+        cloud(&mut one, Vec3::ZERO, r, puffs, segments, rng);
         let t = Transform::from_translation(c).with_rotation(Quat::from_rotation_y(yaw));
         geo[sector(c)].append(&one, &t);
     }
@@ -988,8 +1024,22 @@ fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
         let y = rng.range(-24.0, -12.0) + (out - 22.0).max(0.0) * 0.3;
         put(&mut geo, s.edge() + s.normal * out + Vec3::Y * y, r, 5, rng);
     }
+    let far = crate::far::FarLayout::default();
+    // A bank round the middle of the station's rock (it hangs about 175 m
+    // under its platform), on the side facing the arena (T01, T10).
+    let station = far.station.position;
+    let toward = (-station.with_y(0.0)).normalize_or(Vec3::Z);
+    let side = toward.cross(Vec3::Y);
+    for k in 0..7 {
+        let across = (k as f32 / 6.0 * 2.0 - 1.0) * 210.0 + rng.range(-20.0, 20.0);
+        let c = station.with_y(0.0)
+            + side * across
+            + toward * rng.range(120.0, 170.0)
+            + Vec3::Y * rng.range(35.0, 85.0);
+        put(&mut geo, c, rng.range(45.0, 65.0), 5, rng);
+    }
     // Round the far islands' undersides.
-    for island in &crate::far::FarLayout::default().islands {
+    for island in &far.islands {
         let p = island.piece.position;
         let s = island.piece.scale;
         let out = p.with_y(0.0).normalize_or(Vec3::Z);
@@ -1267,7 +1317,7 @@ mod tests {
         let island = generated();
         let outline = outline();
         let trees = island.decor.iter().filter(|d| is_tree(d.model)).count();
-        assert!(trees >= 40, "{trees} trees");
+        assert!(trees >= 28, "{trees} trees");
         assert!(island.decor.iter().any(|d| d.model == "tree_b"));
         assert!(island.decor.iter().any(|d| d.model.starts_with("rock")));
         assert!(island.decor.iter().any(|d| d.model == "stump_a"));

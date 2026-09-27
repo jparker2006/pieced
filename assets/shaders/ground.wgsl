@@ -73,8 +73,8 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let dark_field = textureSample(detail_texture, detail_sampler, patch_uv).b;
     let light_field = textureSample(
         detail_texture, detail_sampler, patch_uv * 1.37 + vec2<f32>(0.31, 0.57)).a;
-    let dark_amt = smoothstep(0.5, 0.78, dark_field) * ground.patch_dark.w;
-    let light_amt = smoothstep(0.5, 0.74, light_field) * ground.patch_light.w;
+    let dark_amt = smoothstep(0.48, 0.7, dark_field) * ground.patch_dark.w;
+    let light_amt = smoothstep(0.44, 0.66, light_field) * ground.patch_light.w;
     albedo = albedo * mix(vec3<f32>(1.0), ground.patch_dark.rgb, dark_amt);
     albedo = albedo * mix(vec3<f32>(1.0), ground.patch_light.rgb, light_amt * (1.0 - dark_amt));
 
