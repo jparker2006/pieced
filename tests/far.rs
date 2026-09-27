@@ -235,7 +235,8 @@ fn every_island_bobs_within_its_amplitude() {
         q.iter(world).map(|(e, b)| (e, *b)).collect()
     };
     let layout = app.world().resource::<FarLayout>().clone();
-    assert_eq!(islands.len(), layout.islands.len());
+    assert_eq!(islands.len(), layout.all_islands().count());
+    assert!(islands.len() >= 40, "{} islands", islands.len());
     let mut range: Vec<(f32, f32)> = vec![(f32::MAX, f32::MIN); islands.len()];
     run_until(&mut app, 12.0, |app| {
         for (i, (e, bob)) in islands.iter().enumerate() {

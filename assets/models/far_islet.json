@@ -1,0 +1,61 @@
+{
+  "name": "far_islet",
+  "kind": "far_island",
+  "source": "art/blender/assets/far.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 166,
+  "triangle_budget": 1500,
+  "bounds": {
+    "min": [
+      -4.6182,
+      0.0961,
+      -4.7538
+    ],
+    "max": [
+      4.7972,
+      8.15,
+      4.961
+    ]
+  },
+  "parts": {
+    "Island": {
+      "parent": "far_islet",
+      "bounds": {
+        "min": [
+          -4.6182,
+          0.0961,
+          -4.7538
+        ],
+        "max": [
+          4.7972,
+          8.15,
+          4.961
+        ]
+      },
+      "triangles": 166,
+      "colors": [
+        "far_rock",
+        "far_rock_dark",
+        "far_rock_shadow",
+        "grass",
+        "grass_shadow"
+      ]
+    }
+  },
+  "attach": {
+    "Top": {
+      "parent": "far_islet",
+      "position": [
+        0.0,
+        8.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

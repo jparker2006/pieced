@@ -1,38 +1,38 @@
 {
-  "name": "far_island_b",
+  "name": "far_island_d",
   "kind": "far_island",
   "source": "art/blender/assets/far.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 652,
+  "triangles": 1316,
   "triangle_budget": 1500,
   "bounds": {
     "min": [
-      -20.3625,
+      -31.6471,
       0.0,
-      -19.3815
+      -30.6855
     ],
     "max": [
-      20.0101,
-      94.0342,
-      21.0259
+      31.5234,
+      138.6817,
+      33.5376
     ]
   },
   "parts": {
     "Island": {
-      "parent": "far_island_b",
+      "parent": "far_island_d",
       "bounds": {
         "min": [
-          -20.3625,
-          36.1431,
-          -19.1819
+          -31.6471,
+          47.2798,
+          -30.635
         ],
         "max": [
-          20.0101,
-          94.0342,
-          21.0259
+          31.5234,
+          138.6817,
+          33.5376
         ]
       },
-      "triangles": 622,
+      "triangles": 1256,
       "colors": [
         "far_rock",
         "far_rock_dark",
@@ -50,18 +50,37 @@
         "trunk_shadow"
       ]
     },
-    "Waterfall": {
-      "parent": "far_island_b",
+    "Waterfall1": {
+      "parent": "far_island_d",
       "bounds": {
         "min": [
-          -7.7262,
+          -3.1182,
           0.0,
-          -19.3815
+          -30.4804
         ],
         "max": [
-          -2.2889,
-          64.0,
-          -17.4611
+          4.8998,
+          92.0,
+          -29.3527
+        ]
+      },
+      "triangles": 30,
+      "colors": [
+        "waterfall_blue"
+      ]
+    },
+    "Waterfall2": {
+      "parent": "far_island_d",
+      "bounds": {
+        "min": [
+          10.0889,
+          22.0,
+          -30.6855
+        ],
+        "max": [
+          14.8692,
+          92.0,
+          -28.3233
         ]
       },
       "triangles": 30,
@@ -71,12 +90,26 @@
     }
   },
   "attach": {
-    "Mist": {
-      "parent": "far_island_b",
+    "Mist1": {
+      "parent": "far_island_d",
       "position": [
-        -5.123,
+        0.9099,
         0.0,
-        -18.8459
+        -30.4716
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "Mist2": {
+      "parent": "far_island_d",
+      "position": [
+        12.6348,
+        22.0,
+        -29.8728
       ],
       "rotation": [
         0.0,
@@ -86,10 +119,10 @@
       ]
     },
     "Top": {
-      "parent": "far_island_b",
+      "parent": "far_island_d",
       "position": [
         0.0,
-        64.6,
+        92.6,
         0.0
       ],
       "rotation": [

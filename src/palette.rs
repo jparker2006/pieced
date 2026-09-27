@@ -96,6 +96,23 @@ pub mod cartoon {
     pub const CRYSTAL_BLUE: Color = rgb(0x4D, 0xD0, 0xFD);
     pub const CRYSTAL_VIOLET: Color = rgb(0x9C, 0x52, 0xDA);
     pub const EYE_WHITE: Color = rgb(0xFF, 0xFF, 0xCE);
+    pub const FAR_GLASS_BLUE: Color = rgb(0x4A, 0x86, 0xF2);
+    pub const FAR_GLASS_GOLD: Color = rgb(0xF6, 0xC8, 0x4E);
+    pub const FAR_GLASS_MAGENTA: Color = rgb(0xE0, 0x5C, 0xB8);
+    pub const FAR_GLASS_TEAL: Color = rgb(0x3C, 0xD2, 0xC4);
+    pub const FAR_GLASS_WHITE: Color = rgb(0xD8, 0xF2, 0xFF);
+    pub const FAR_PLANET: Color = rgb(0xB4, 0xA0, 0xE0);
+    pub const FAR_PLANET_BAND: Color = rgb(0x9E, 0x8A, 0xD4);
+    pub const FAR_PLANET_LIGHT: Color = rgb(0xCB, 0xBB, 0xEE);
+    pub const FAR_PLANET_RING: Color = rgb(0xD6, 0xCC, 0xF2);
+    pub const FAR_PLANET_SHADOW: Color = rgb(0x75, 0x63, 0xB4);
+    pub const FAR_ROCK: Color = rgb(0x8A, 0x6A, 0x58);
+    pub const FAR_ROCK_DARK: Color = rgb(0x3D, 0x3A, 0x56);
+    pub const FAR_ROCK_SHADOW: Color = rgb(0x58, 0x4F, 0x6C);
+    pub const FAR_STONE: Color = rgb(0x56, 0x60, 0x87);
+    pub const FAR_STONE_DARK: Color = rgb(0x26, 0x2A, 0x48);
+    pub const FAR_STONE_LIGHT: Color = rgb(0x7E, 0x86, 0xA8);
+    pub const FAR_STONE_SHADOW: Color = rgb(0x38, 0x3E, 0x62);
     pub const FLOWER_PINK: Color = rgb(0xF5, 0x9A, 0xC0);
     pub const FOLIAGE: Color = rgb(0x65, 0x97, 0x40);
     pub const FOLIAGE_LIGHT: Color = rgb(0x69, 0x98, 0x2C);
@@ -183,6 +200,23 @@ pub mod cartoon {
         ("crystal_blue", CRYSTAL_BLUE),
         ("crystal_violet", CRYSTAL_VIOLET),
         ("eye_white", EYE_WHITE),
+        ("far_glass_blue", FAR_GLASS_BLUE),
+        ("far_glass_gold", FAR_GLASS_GOLD),
+        ("far_glass_magenta", FAR_GLASS_MAGENTA),
+        ("far_glass_teal", FAR_GLASS_TEAL),
+        ("far_glass_white", FAR_GLASS_WHITE),
+        ("far_planet", FAR_PLANET),
+        ("far_planet_band", FAR_PLANET_BAND),
+        ("far_planet_light", FAR_PLANET_LIGHT),
+        ("far_planet_ring", FAR_PLANET_RING),
+        ("far_planet_shadow", FAR_PLANET_SHADOW),
+        ("far_rock", FAR_ROCK),
+        ("far_rock_dark", FAR_ROCK_DARK),
+        ("far_rock_shadow", FAR_ROCK_SHADOW),
+        ("far_stone", FAR_STONE),
+        ("far_stone_dark", FAR_STONE_DARK),
+        ("far_stone_light", FAR_STONE_LIGHT),
+        ("far_stone_shadow", FAR_STONE_SHADOW),
         ("flower_pink", FLOWER_PINK),
         ("foliage", FOLIAGE),
         ("foliage_light", FOLIAGE_LIGHT),
