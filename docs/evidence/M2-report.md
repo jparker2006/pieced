@@ -8,7 +8,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
 
 | Gate | Status | Evidence |
 |---|---|---|
-| S1 Target board (every view ≥ 4 from Jake) | FAIL (round 1) | Jake's scores 2026-09-26 on offscreen renders of `f5c36e7`: 11 of 12 views below 4 (mean 2.5); see the log |
+| S1 Target board (every view ≥ 4 from Jake) | FAIL (round 2) | Round 1 (`f5c36e7`): mean 2.5, 11 of 12 below 4. Round 2 (`caee4ca`, after Amendment B): mean 3.4, 7 of 12 below 4 (T01–T05, T10, T11 at 3). Round 3 polish in progress; see the log |
 | S2 Performance (battery, Low Power Mode, full look) | PENDING | — |
 | S3 Launch < 5 s ×3 | PASS (native, `f5c36e7`) | `evidence/m2-20260926-231552-launch{1,2,3}`: 2564, 1208, 1396 ms; every other run 1145–2224 ms. Release build, AC, Low Power Mode on. Re-run on the final commit |
 | S4 Motion | PASS (`f5c36e7`) | `tests/far.rs` plus native `evidence/m2-20260926-231552-sky`: 5 frames 5 s apart, 33.6/34.4/33.4/34.9% of sky pixels changed. Re-run on the final commit |
@@ -277,3 +277,13 @@ Every number here names its run folder, the commit, and the power and Low Power 
     - S8, a 10-minute session with sound on.
   - **After that:** re-run S3–S10 on the final commit, then final report.
   - **Worktrees:** only `m2-baseline` remains.
+- 2026-09-27: **S1 scoring, round 2** (Jake, on offscreen renders of the 12 gallery views at `caee4ca`, next to the targets), quoted:
+  > "Round 2 scores: T01: 3; T02: 3; T03: 3; T04: 3; T05: 3; T06: 4; T07: 4; T08: 4; T09: 4; T10: 3; T11: 3; T12: 4"
+
+  **FAIL, improved:** the mean went from 2.5 to 3.4; T06–T09 and T12 pass. The seven views at 3 share four gaps, compared view by view with their targets:
+  - **Viewmodel framing:** our gun fills about a third of the frame from centre-right and is blocky (flat facets, a big square rear block, a pump bell that reads as a flat disc). The targets show a slimmer, rounder gun tucked into the lower-right corner, angled toward the crosshair, leaving the vista clear. This affects all seven.
+  - **Station and sky:** our station reads as a toy (candy glass panels fanning outward around a small keep). The targets show a massive dark gothic cathedral with many spires, tall glass set into its walls, a ring, and a jagged rock underside pouring several waterfalls. The targets' sky is packed with floating islands at every scale, most with waterfalls; ours has 18 sparse ones. The planet is candy-striped, where the targets have a soft banded lavender giant. This affects T01–T05, T10 and T11, and T10 most of all (the station is small in frame).
+  - **Foreground framing:** every target frames the shot with a big tree, bushes, rocks and stumps near the camera. Ours open onto bare grass. Our tree crowns are faceted low-poly blobs, where the targets have round lobed crowns. The targets' build grid is a faint glowing green, and their island edge has grassy overhangs over brown rock faces (ours is a flat tan cut). This affects T01, T03, T05, T10 and T11.
+  - **Knight framing:** T05's knight is farther and smaller than in the target, and T03's bolt impact reads beside him rather than on him.
+
+  **Next:** round 3, the third focused attempt the brief allows before S1 goes back to Jake with options. Three parallel slices: viewmodel framing and silhouette, station and sky, ground and framing. The five passing views must not regress.
