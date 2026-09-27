@@ -101,14 +101,17 @@ pub struct DummyPlugin;
 
 impl Plugin for DummyPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_dummy)
-            .add_systems(FixedUpdate, drive_dummies.in_set(SimSet::Control))
-            .add_systems(
-                FixedUpdate,
-                (respawn_dummies, hold_frozen_dummies)
-                    .chain()
-                    .in_set(SimSet::Resolve),
-            );
+        app.add_systems(
+            Startup,
+            spawn_dummy.run_if(resource_equals(crate::shared::GameMode::Practice)),
+        )
+        .add_systems(FixedUpdate, drive_dummies.in_set(SimSet::Control))
+        .add_systems(
+            FixedUpdate,
+            (respawn_dummies, hold_frozen_dummies)
+                .chain()
+                .in_set(SimSet::Resolve),
+        );
     }
 }
 

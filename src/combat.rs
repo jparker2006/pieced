@@ -472,7 +472,8 @@ fn weapon_step(
             Has<Downed>,
             Option<&EditMode>,
         ),
-        With<Character>,
+        // Knights fire their wand (`orb`), never a gun.
+        (With<Character>, Without<crate::orb::Wand>),
     >,
 ) {
     let dt = TICK_SECONDS;
