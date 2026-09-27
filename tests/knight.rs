@@ -928,9 +928,9 @@ fn a_body_hit_is_a_big_cartoon_take_that_settles() {
     // A boot kicks up toward the shooter (in front, -Z).
     let kick = boots(&p).iter().map(|b| b.z).fold(f32::MAX, f32::min);
     assert!(kick < -0.2, "a boot kicks up: {kick:.2}");
-    // He leans back and his head is thrown back.
+    // He leans back, his face (and the hat's crown) still turned to the shooter.
     assert!(
-        (p.torso * Vec3::Y).z > 0.2,
+        (p.torso * Vec3::Y).z > 0.12,
         "leans back: {}",
         p.torso * Vec3::Y
     );
@@ -939,7 +939,11 @@ fn a_body_hit_is_a_big_cartoon_take_that_settles() {
         "rocks back: {}",
         p.tilt * Vec3::Y
     );
-    assert!((p.head * Vec3::NEG_Z).y > 0.1, "head thrown back");
+    let face = p.tilt * p.torso * p.head * Vec3::NEG_Z;
+    assert!(
+        face.y.abs() < 0.2 && face.z < -0.95,
+        "faces the shooter: {face}"
+    );
     assert_eq!(poses[0].eyes, EyeState::Wide, "wide on the hit frame");
     // A little hop and a slide back, visual only.
     let hop = poses[..frames(0.25)]
@@ -1006,7 +1010,7 @@ fn hits_rock_him_away_from_the_shot() {
 }
 
 #[test]
-fn pellets_headshots_and_shield_breaks_make_bigger_takes() {
+fn stacked_hits_headshots_and_shield_breaks_make_bigger_takes() {
     let peaks = |hits: &[KnightEvent]| {
         let poses = hit_standing(13, hits, 1.5);
         let take = poses.iter().map(|p| p.take).fold(0.0, f32::max);
@@ -1016,15 +1020,22 @@ fn pellets_headshots_and_shield_breaks_make_bigger_takes() {
         (take, hop, slide, wide)
     };
     let body = peaks(&[BODY_HIT]);
-    let pump = peaks(&[BODY_HIT; 8]);
+    let stacked = peaks(&[BODY_HIT; 8]);
     let head = peaks(&[KnightEvent::Hit {
         push: Vec3::Z,
         headshot: true,
     }]);
     let broke = peaks(&[BODY_HIT, KnightEvent::ShieldBreak]);
-    println!("body {body:?}\npump {pump:?}\nhead {head:?}\nshield break {broke:?}");
+    let blast = peaks(&[BODY_HIT, KnightEvent::Damage { amount: 90.0 }]);
+    // A rifle body hit's damage changes nothing.
+    assert_eq!(
+        peaks(&[BODY_HIT, KnightEvent::Damage { amount: 28.0 }]),
+        body
+    );
+    println!("body {body:?}\nstacked {stacked:?}\nhead {head:?}\nshield break {broke:?}");
     for (what, big) in [
-        ("8 pellets", pump),
+        ("8 hits in a frame", stacked),
+        ("a close pump blast", blast),
         ("a headshot", head),
         ("a shield break", broke),
     ] {
@@ -1067,7 +1078,7 @@ fn a_running_knight_flinches_without_stopping() {
     let poses = run(&mut anim, fast, 0.6);
     let take = poses.iter().map(|p| p.take).fold(0.0, f32::max);
     assert!(
-        (0.4..0.75).contains(&take),
+        (0.25..0.5).contains(&take),
         "a flinch, not a full take: {take:.2}"
     );
     let (lo, hi) = range(poses.iter().map(|p| boots(p)[0].x));

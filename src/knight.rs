@@ -15,10 +15,11 @@
 //!   strafes side-step without crossing the boots;
 //! - an air pose while airborne, a stretch on jump take-off and a squash on landing;
 //! - a hit **take**: in two frames the arms fling up (one higher, flailing),
-//!   one boot kicks up toward the shooter, the body leans back, the head is
-//!   thrown back, the eyes go wide and he hops and slides back a little; he
-//!   holds it for a beat, then drops back with a bounce. Several pellets in one
-//!   frame, a headshot and a shield break make it bigger; while running he
+//!   one boot kicks up toward the shooter, the body leans back with the head
+//!   tipped forward against it so his wide eyes face the shooter, and he hops
+//!   and slides back a little; he holds it for a beat, then drops back with a
+//!   bounce. Heavy damage (a close pump blast), several hits in one frame, a
+//!   headshot and a shield break make it bigger; while running he
 //!   flinches without stopping. Each take flings the other arm high, so under
 //!   fire he flails;
 //! - a hit wobble spring (he rocks away from the hit) and a nod;
@@ -107,21 +108,27 @@ pub const TAKE_HOLD: f32 = 0.22;
 pub const TAKE_HOLD_BIG: f32 = 0.32;
 pub const TAKE_K: f32 = 55.0;
 pub const TAKE_C: f32 = 8.0;
-/// Take strengths: a body hit; each extra pellet landing in the same frame adds
-/// this, up to a cap; a headshot; a shield break. 1.3 and up counts as big.
+/// Take strengths: a body hit; each extra hit landing in the same frame adds
+/// this, up to a cap; damage past a rifle body hit adds one per this much
+/// (a close pump blast), up to a cap; a headshot; a shield break. 1.3 and up
+/// counts as big.
 pub const TAKE_BODY: f32 = 1.0;
-pub const TAKE_PER_PELLET: f32 = 0.06;
-pub const TAKE_PELLETS_MAX: f32 = 1.4;
+pub const TAKE_PER_HIT: f32 = 0.06;
+pub const TAKE_HITS_MAX: f32 = 1.4;
+pub const TAKE_HEAVY_FROM: f32 = 30.0;
+pub const TAKE_HEAVY_SPAN: f32 = 45.0;
+pub const TAKE_HEAVY_MAX: f32 = 1.45;
 pub const TAKE_HEADSHOT: f32 = 1.4;
 pub const TAKE_SHIELD_BREAK: f32 = 1.55;
 pub const TAKE_BIG: f32 = 1.3;
 /// While running he flinches without stopping: the take scales down to this
 /// at full run.
-pub const TAKE_RUNNING: f32 = 0.55;
+pub const TAKE_RUNNING: f32 = 0.35;
 /// The take's pose at strength 1 (rad): the high and the low arm fling up and
 /// out (capped), reaching toward the shooter and flailing; one boot kicks up
-/// toward the shooter (capped); the torso and the whole body lean back; the
-/// head is thrown back; the robe's hem lags toward the shooter.
+/// toward the shooter (capped); the torso and the whole body lean back while
+/// the head tips forward against them, so his wide eyes (and the hat's
+/// crown) stay turned to the shooter; the robe's hem lags toward the shooter.
 pub const FLING_HIGH: f32 = 2.2;
 pub const FLING_LOW: f32 = 1.4;
 pub const FLING_MAX: f32 = 2.8;
@@ -130,9 +137,9 @@ pub const FLAIL: f32 = 0.13;
 pub const FLAIL_HZ: f32 = 9.0;
 pub const KICK: f32 = 0.85;
 pub const KICK_MAX: f32 = 1.15;
-pub const TAKE_LEAN: f32 = 0.3;
-pub const TAKE_TILT: f32 = 0.1;
-pub const TAKE_HEAD: f32 = 0.22;
+pub const TAKE_LEAN: f32 = 0.18;
+pub const TAKE_TILT: f32 = 0.07;
+pub const TAKE_HEAD: f32 = -0.2;
 pub const ROBE_TAKE: f32 = 0.3;
 /// The knockback, visual only: a little hop (m/s up, m/s² down; scaled by the
 /// square root of the strength) and a slide back along the push (m/s, scaled
@@ -239,11 +246,16 @@ pub enum KnightEvent {
         speed: f32,
     },
     /// Hit by a shot pushing along `push` (model space; only its horizontal
-    /// direction matters). Every pellet of a pump blast is one hit: the hits
-    /// of one frame make one take, bigger the more pellets land.
+    /// direction matters). The hits of one frame make one take, bigger the
+    /// more of them land.
     Hit {
         push: Vec3,
         headshot: bool,
+    },
+    /// The damage a hit this frame dealt: heavy hits (a close pump blast)
+    /// make bigger takes (send it with the frame's `Hit`s).
+    Damage {
+        amount: f32,
     },
     /// The hit this frame broke his shield: the biggest take (send it with
     /// the frame's `Hit`s).
@@ -348,6 +360,7 @@ struct PendingHit {
     /// Sum of the hits' horizontal push directions (model x, z).
     push: Vec2,
     hits: u32,
+    damage: f32,
     headshot: bool,
     shield_break: bool,
 }
@@ -479,6 +492,9 @@ impl KnightAnim {
                 hit.hits += 1;
                 hit.headshot |= headshot;
             }
+            KnightEvent::Damage { amount } => {
+                self.pending.get_or_insert_default().damage += amount.max(0.0);
+            }
             KnightEvent::ShieldBreak => self.pending.get_or_insert_default().shield_break = true,
         }
     }
@@ -486,9 +502,11 @@ impl KnightAnim {
     /// Makes the frame's hits into a take.
     fn take_hit(&mut self, hit: PendingHit) {
         let push = hit.push.normalize_or(Vec2::Y);
-        let pellets =
-            (TAKE_BODY + TAKE_PER_PELLET * hit.hits.saturating_sub(1) as f32).min(TAKE_PELLETS_MAX);
-        let mut strength = pellets;
+        let stacked =
+            (TAKE_BODY + TAKE_PER_HIT * hit.hits.saturating_sub(1) as f32).min(TAKE_HITS_MAX);
+        let heavy = (TAKE_BODY + (hit.damage - TAKE_HEAVY_FROM).max(0.0) / TAKE_HEAVY_SPAN)
+            .min(TAKE_HEAVY_MAX);
+        let mut strength = stacked.max(heavy);
         if hit.headshot {
             strength = strength.max(TAKE_HEADSHOT);
         }
@@ -523,7 +541,7 @@ impl KnightAnim {
         }
         let kick = if big { 1.35 } else { 1.0 };
         self.wobble.v += push * WOBBLE_KICK * kick;
-        self.nod.v += if big { 9.0 } else { 4.0 };
+        self.nod.v += if big { 4.0 } else { 2.0 };
         self.tip.v += Vec2::new(7.0, -5.0 * self.take_side_goal) * kick;
         self.wide_left = if big { WIDE_TIME_BIG } else { WIDE_TIME };
         self.blink_left = 0.0;

@@ -591,15 +591,33 @@ def build_hat():
 # Body: torso, robe, cape, arms, legs
 # ---------------------------------------------------------------------------
 
-def v_neck(depth, half_width=0.12):
-    """Lift for the mantle's front: a V opening down the chest."""
-    return lambda x, y: depth * max(0.0, 1.0 - abs(x) / half_width) if y < 0.0 else 0.0
+# The coat's bodice, collar to belt: (z, half width, half depth, the front
+# opening's half angle in degrees) of a rounded-square cross-section, a little
+# outside the breastplate and mail everywhere.
+_COAT = [(1.442, 0.11, 0.1, 12.0), (1.39, 0.144, 0.126, 13.0), (1.3, 0.182, 0.154, 14.0),
+         (1.2, 0.204, 0.17, 14.0), (1.08, 0.194, 0.168, 14.0), (0.96, 0.186, 0.164, 14.0),
+         (0.86, 0.18, 0.158, 15.0), (0.758, 0.172, 0.148, 17.0)]
+# Columns round the coat from the opening's left edge: a thin gold trim at each edge.
+COAT_US = [0.0] + [0.016 + 0.968 * k / 11 for k in range(12)] + [1.0]
+
+
+def coat_point(row, u, inset):
+    """A point on the coat: `row` indexes `_COAT`, u runs from the front
+    opening's left edge round the back to its right edge."""
+    z, a, d, gap = _COAT[row]
+    g = math.radians(gap)
+    th = -math.pi / 2 + g + u * (2 * math.pi - 2 * g)
+    c, s = math.cos(th), math.sin(th)
+    # A superellipse (exponent 3): squarer than an ellipse, like the breastplate.
+    x = math.copysign(abs(c) ** (2 / 3), c)
+    y = math.copysign(abs(s) ** (2 / 3), s)
+    return Vector(((a - inset) * x, (d - inset) * y, z))
 
 
 def build_torso():
-    """Dark hips, belt and buckle, small steel breastplate, purple mantle with a
-    medallion, and the big steel pauldrons (on the torso, so the arms can fling
-    up from under them)."""
+    """Dark hips, belt and buckle, small steel breastplate with a medallion,
+    the purple coat's bodice over it, and the big steel pauldrons (on the torso,
+    so the arms can fling up from under them)."""
     b = Builder()
     bm = b.bm
 
@@ -653,19 +671,17 @@ def build_torso():
     b.tag(bands[0] + [cap(bm, rings[0], up=False)], DARK)
     b.tag([f for band in bands[1:] for f in band] + [cap(bm, rings[-1], up=True)], STEEL)
 
-    # The mantle: a purple collar over the shoulders with a gold-trimmed hem,
-    # opening in a V down the chest; the helmet sits on it.
-    mantle = [(1.14, 0.19, 0.155, 0.1, 0.14), (1.162, 0.192, 0.157, 0.1, 0.128),
-              (1.22, 0.186, 0.152, 0.1, 0.1), (1.29, 0.166, 0.138, 0.09, 0.066),
-              (1.36, 0.146, 0.125, 0.08, 0.036), (1.412, 0.126, 0.11, 0.07, 0.012),
-              (1.44, 0.104, 0.094, 0.058, 0.0)]
-    rings = [ring(bm, outline(a, d, c), z, lift=v_neck(v)) for z, a, d, c, v in mantle]
-    bands = loft(bm, rings)
-    b.tag(bands[0], GOLD)
-    b.tag([f for band in bands[1:] for f in band], PURPLE)
-    hem_in = ring(bm, outline(0.15, 0.126, 0.08), 1.14, lift=v_neck(0.14))
-    b.tag(shapes.bridge(bm, hem_in, rings[0]), GOLD)
-    b.tag([cap(bm, hem_in, up=False), cap(bm, rings[-1], up=True)], PURPLE)
+    # The coat's bodice: purple over the shoulders, round the back and down the
+    # sides to the belt, open down the front on the breastplate, the opening's
+    # edges trimmed in gold; the helmet sits on its collar.
+    outer, lining, sides, top, bottom = sheet(bm, coat_point, range(len(_COAT)), COAT_US,
+                                              0.012)
+    gold, purple = [], []
+    for row in outer:
+        for j, f in enumerate(row):
+            (gold if j in (0, len(row) - 1) else purple).append(f)
+    b.tag(purple + lining + top + bottom, PURPLE)
+    b.tag(gold + sides, GOLD)
 
     # Medallion: a gold ring with a violet gem on a short gold chain.
     med = Vector((0.0, -0.146, 1.175))
