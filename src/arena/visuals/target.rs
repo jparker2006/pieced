@@ -7,7 +7,9 @@
 //! `models::spawn_model`, toon-dressed and ink-outlined by `look`, with the
 //! knight's warm-rim material), a [`BlobShadow`] under the boots, and the
 //! knight's [`KnightAnim`], fed each frame with the owner's velocity, grounded
-//! state, jumps, landings, hits and elimination (see `crate::knight`). When the
+//! state, jumps, landings, hits (and their damage), shield breaks and elimination (see
+//! `crate::knight`). The knight's hit take hops and slides the model under the
+//! figure; the figure itself always stands on its owner's feet. When the
 //! owner is eliminated the knight shows X eyes for `knight::KO_TIME`, then the
 //! figure hides until respawn, when it pops back in.
 
@@ -205,6 +207,7 @@ pub fn animate_knights(
         ),
         With<Character>,
     >,
+    positions: Query<&GlobalTransform, With<Character>>,
     mut figures: Query<(
         Entity,
         &TargetFigure,
@@ -230,8 +233,20 @@ pub fn animate_knights(
         if hit.target_kind != DamageTarget::Character || hit.amount <= 0.0 {
             continue;
         }
-        // The shot pushes into the body: against the hit surface's normal.
-        let push = Vec3::new(-hit.normal.x, 0.0, -hit.normal.z);
+        // The shot knocks him away from the shooter, turned a little toward
+        // where it pushed into the body (against the hit surface's normal),
+        // so a hit on one side rocks him that way too.
+        let surface = Vec3::new(-hit.normal.x, 0.0, -hit.normal.z).normalize_or_zero();
+        let away = hit
+            .source
+            .and_then(|s| positions.get(s).ok())
+            .zip(positions.get(hit.target).ok())
+            .and_then(|(s, t)| {
+                (t.translation() - s.translation())
+                    .with_y(0.0)
+                    .try_normalize()
+            });
+        let push = away.map_or(surface, |away| away + surface * 0.35);
         let push = if push.length_squared() > 1e-6 {
             local(hit.target, push)
         } else {
@@ -244,6 +259,10 @@ pub fn animate_knights(
                 headshot: hit.headshot,
             },
         ));
+        events.push((hit.target, KnightEvent::Damage { amount: hit.amount }));
+        if hit.shield_broke {
+            events.push((hit.target, KnightEvent::ShieldBreak));
+        }
     }
     for cue in cues.read() {
         match *cue {

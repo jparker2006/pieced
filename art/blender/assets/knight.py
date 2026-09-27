@@ -1,30 +1,36 @@
-"""The knight: the goofy armoured knight-wizard enemy (targets T03-T07, R4).
+"""The knight: the goofy armoured knight-wizard enemy (targets T03-T08, R4).
 
-A small steel body with a purple cowl, tabard skirt and cape, a big bucket helmet
-with cartoon eyes peering through the visor slit, a short floppy wizard hat with
-a gold star, and oversized gauntlets and boots.
+A small steel body in a flowing purple robe and cape, a big bucket helmet with
+big round cartoon eyes peering through the visor slit over a clean grille, a
+tall pointed floppy wizard hat with a gold star and a bent tip, and oversized
+open gauntlets and boots.
 
-**Hitbox fit (docs/M2-SPEC.md, the knight; gate S5).** The model is made to fit
-the gameplay hitboxes of src/player.rs, never the reverse: body capsule r 0.33 m
-from 0.05 to 1.45 m, head sphere r 0.20 m centred at 1.62 m (feet at the origin).
-Body parts stay inside the capsule and the helmet, hat and eyes inside the head
-sphere, each within 5 cm (`check_fit` enforces it at build time, `tests/knight.rs`
-in the game); the parts also fill the hitboxes. The "big head" look comes from
-the helmet filling the whole head sphere over a small torso, not from a bigger
-hitbox. Below `FOOT_BAND` the capsule's rounded end cannot hold two boots
-standing on the ground, so there the capsule counts as a cylinder (as it did for
-Milestone 1's figure).
+**Hitbox fit (docs/M2-SPEC.md, the knight and Amendment B; gate S5).** The
+model is made to fit the gameplay hitboxes of src/player.rs, never the reverse:
+body capsule r 0.33 m from 0.05 to 1.45 m, head sphere r 0.20 m centred at
+1.62 m (feet at the origin). Body parts stay inside the capsule and the helmet
+and eyes inside the head sphere, each within 5 cm (`check_fit` enforces it at
+build time, `tests/knight.rs` in the game); the parts also fill the hitboxes.
+The hat (`Hat` and its floppy `HatTip`) is **cosmetic** (Amendment B, D49): like
+a Fortnite cosmetic it takes no hits, so it may rise well above the head sphere
+and is left out of the fit. The "big head" look comes from the helmet filling
+the whole head sphere over a small torso, not from a bigger hitbox. Below
+`FOOT_BAND` the capsule's rounded end cannot hold two boots standing on the
+ground, so there the capsule counts as a cylinder (as it did for Milestone 1's
+figure).
 
 **Hierarchy** (Blender names = glTF node names = Bevy `Name`s). Pivots are
 empties at the joints; procedural animation rotates them:
 
     knight
       PivotLegL, PivotLegR        hips          -> BootL, BootR (leg, greave, boot)
-      Torso                       origin at the hips: bob or lean it to move the upper body
-        PivotArmL, PivotArmR      shoulders     -> GauntletL, GauntletR (pauldron, arm, fist)
+      Torso                       origin at the hips: bob or lean it to move the upper
+                                  body (hips, belt, breastplate, mantle, pauldrons)
+        PivotArmL, PivotArmR      shoulders     -> GauntletL, GauntletR (sleeve, arm, hand)
         PivotCape                 nape          -> Cape
+        PivotRobe                 waist         -> Robe (the skirt, open at the front)
         PivotHead                 neck          -> Helmet -> EyeL, EyeR and the eye variants
-          PivotHat                hat base      -> Hat
+          PivotHat                hat base      -> Hat -> PivotHatTip (the bend) -> HatTip
 
 L and R are the knight's own left and right: L is Blender +X (Bevy model -X).
 Each eye has four states, as separate parts in the same place: `Eye*` (open),
@@ -66,7 +72,8 @@ HEAD_CENTER = 1.62
 HEAD_RADIUS = 0.20
 TOLERANCE = 0.05  # a part may poke out of its hitbox by at most this much
 FOOT_BAND = 0.12  # below this height the capsule counts as a cylinder (boots on the ground)
-HEAD_PARTS = ("Helmet", "Hat")  # plus every Eye* part
+HEAD_PARTS = ("Helmet",)  # plus every Eye* part
+COSMETIC_PARTS = ("Hat", "HatTip")  # take no hits: left out of the fit (Amendment B)
 
 # ---------------------------------------------------------------------------
 # Palette names (art/palette.json)
@@ -90,19 +97,20 @@ HIP = Vector((0.11, 0.0, 0.62))
 SHOULDER = Vector((0.20, 0.0, 1.20))
 NECK = Vector((0.0, 0.0, 1.42))
 NAPE = Vector((0.0, 0.14, 1.28))
-HAT_BASE = Vector((0.0, 0.0, 1.72))
+WAIST = Vector((0.0, 0.0, 0.745))
+HAT_BASE = Vector((0.0, 0.0, 1.705))  # under the brim, so the dropped hat rests low on it
 TORSO_ORIGIN = Vector((0.0, 0.0, 0.62))
 
 # Helmet: rings are shrunk to stay this far inside the head sphere's centre.
 HELMET_FIT = HEAD_RADIUS + 0.046
-HAT_FIT = (HEAD_RADIUS + 0.012, HEAD_RADIUS + 0.043)  # hat soft-clamp start and limit
-SLIT = (1.588, 1.69)  # visor slit, bottom and top
+SLIT = (1.572, 1.706)  # visor slit, bottom and top: tall, for the big eyes
 SLIT_DEPTH = 0.035
-SLOTS = (1.522, 1.572)  # breathing slots, bottom and top
-SLOT_DEPTH = 0.018
+SLOTS = (1.49, 1.55)  # the grille's breathing slots, bottom and top
+SLOT_DEPTH = 0.02
 PLATE = (0.225, 0.19, 0.11)  # the face plate's ring: half width, half depth, corner radius
-EYE_X = 0.056
+EYE_X = 0.058
 EYE_Z = 1.639
+EYE_R = (0.052, 0.061)  # the open eye's half width and half height (a tall cartoon oval)
 
 
 def mirror(v, s):
@@ -184,9 +192,17 @@ def fit_in_sphere(z, a, b, c, centre_z, radius):
     return a * k, b * k, c * k
 
 
-# The slit's back wall (y) at the eyes' height: the face plate there is shrunk
-# into the head sphere like every helmet ring, a hair behind the recess.
-EYE_FLOOR = -fit_in_sphere(EYE_Z, *PLATE, HEAD_CENTER, HELMET_FIT)[1] + SLIT_DEPTH + 0.002
+def _plate_front(z):
+    """The face plate's front (y) at a height inside the visor slit: the slit's
+    bottom and top rings are shrunk into the head sphere like every helmet ring,
+    and the plate runs straight between them."""
+    lo, hi = (fit_in_sphere(h, *PLATE, HEAD_CENTER, HELMET_FIT)[1] for h in SLIT)
+    t = (z - SLIT[0]) / (SLIT[1] - SLIT[0])
+    return -(lo + (hi - lo) * t)
+
+
+# The slit's back wall (y) at the eyes' height, a hair behind the recess.
+EYE_FLOOR = _plate_front(EYE_Z) + SLIT_DEPTH + 0.002
 
 
 def ring(bm, pts, z, dx=0.0, dy=0.0, wave=None, lift=None):
@@ -271,16 +287,6 @@ def recess(bm, faces, depth):
     return faces_of(verts)
 
 
-def soft_clamp(bm, center, r0, r1):
-    """Squashes vertices farther than r0 from `center` smoothly into radius r1."""
-    c = Vector(center)
-    for v in bm.verts:
-        d = (v.co - c).length
-        if d > r0:
-            k = r0 + (r1 - r0) * math.tanh((d - r0) / (r1 - r0))
-            v.co = c + (v.co - c) * (k / d)
-
-
 def surface_hit(bm, origin, direction):
     """Where a ray first hits the bmesh: (location, normal)."""
     from mathutils.bvhtree import BVHTree
@@ -348,59 +354,64 @@ class Builder:
 # Head: helmet, eyes, hat
 # ---------------------------------------------------------------------------
 
-# x of the breathing-slot edges on the face plate (the slit spans the whole flat front).
-_SLOT_EDGES = (0.022, 0.046, 0.075, 0.099)
+# x of the grille's slot edges on the face plate: four even slots, centred.
+_SLOT_EDGES = (0.012, 0.036, 0.06, 0.084)
 
 
 def build_helmet():
     """A big round bucket helmet filling the head sphere (and its tolerance): a flat
-    face plate with the visor slit and slots, well-rounded corners, a bulging
-    belly and a domed top tucked under the hat's brim."""
+    face plate with a tall visor slit for the eyes over a clean four-slot grille,
+    well-rounded corners, a bulging belly and a domed top under the hat."""
     b = Builder()
     bm = b.bm
     ax = PLATE[0] - PLATE[2]
-    front = tuple(x / ax for x in _SLOT_EDGES)
     # (z, a, b, c) as drawn; each ring is then shrunk into the head sphere, which
     # tapers the bottom and domes the top.
     profile = [
         (1.446, 0.15, 0.13, 0.09),
-        (1.462, 0.18, 0.158, 0.1),
-        (1.482, 0.204, 0.176, 0.106),
-        (1.505, *PLATE),
+        (1.461, 0.18, 0.158, 0.1),
+        (1.475, 0.204, 0.176, 0.106),
         (SLOTS[0], *PLATE),
         (SLOTS[1], *PLATE),
         (SLIT[0], *PLATE),
         (SLIT[1], *PLATE),
-        (1.703, *PLATE),
-        # The top stays under the hat's brim (which starts 0.229 m out).
-        (1.713, 0.2, 0.172, 0.11),
-        (1.724, 0.18, 0.155, 0.1),
-        (1.733, 0.14, 0.12, 0.085),
-        (1.74, 0.09, 0.078, 0.06),
+        (1.713, 0.212, 0.18, 0.11),
+        (1.721, 0.194, 0.166, 0.104),
+        (1.73, 0.162, 0.14, 0.094),
+        (1.737, 0.118, 0.103, 0.074),
+        (1.742, 0.07, 0.062, 0.05),
     ]
     rings = []
     for z, a, d, c in profile:
         a, d, c = fit_in_sphere(z, a, d, c, HEAD_CENTER, HELMET_FIT)
+        # The face plate's columns stand at the grille's slot edges on every
+        # ring wide enough, so the slots come out upright and even.
+        flat = a - min(c, a - 1e-4, d - 1e-4)
+        front = tuple(x / (flat if flat > 0.09 else ax) for x in _SLOT_EDGES)
         rings.append(ring(bm, rrect(a, d, c, corner=4, front=front, side=1, back=2), z))
     faces = [f for band in loft(bm, rings) for f in band]
     faces.append(cap(bm, rings[0], up=False))
     faces.append(cap(bm, rings[-1], up=True))
     b.tag(faces, STEEL)
 
-    def front_faces(z0, z1, xs):
+    def front_faces(z0, z1, xs, facing):
         bm.normal_update()
         return [f for f in bm.faces
-                if z0 < f.calc_center_median().z < z1 and f.normal.y < -0.97
+                if z0 < f.calc_center_median().z < z1 and f.normal.y < facing
                 and any(x0 < f.calc_center_median().x < x1 for x0, x1 in xs)]
 
     lim = ax * 0.99
-    b.tag(recess(bm, front_faces(SLIT[0], SLIT[1], [(-lim, lim)]), SLIT_DEPTH), BLACK)
+    b.tag(recess(bm, front_faces(SLIT[0], SLIT[1], [(-lim, lim)], -0.97), SLIT_DEPTH), BLACK)
     e = _SLOT_EDGES
     slot_xs = [(e[0], e[1]), (e[2], e[3]), (-e[1], -e[0]), (-e[3], -e[2])]
-    b.tag(recess(bm, front_faces(SLOTS[0], SLOTS[1], slot_xs), SLOT_DEPTH), BLACK)
+    # The grille sits where the helmet already tapers, so its face tilts down a little.
+    slots = front_faces(SLOTS[0], SLOTS[1], slot_xs, -0.9)
+    if len(slots) != 4:
+        raise ValueError(f"the grille found {len(slots)} slot faces, not 4")
+    b.tag(recess(bm, slots, SLOT_DEPTH), BLACK)
     # Round "ear" bolts.
     for s in (1, -1):
-        b.tag(blob(bm, (s * (PLATE[0] - 0.006), 0.02, 1.64), (0.018, 0.036, 0.036),
+        b.tag(blob(bm, (s * (PLATE[0] - 0.006), 0.02, 1.62), (0.018, 0.036, 0.036),
                    segments=10, rings=5), STEEL)
     return b
 
@@ -410,39 +421,117 @@ def eye_center(s):
 
 
 def build_eye(s, state):
-    """One eye in one state, inside the visor slit (origin = the eye's centre)."""
+    """One eye in one state, inside the visor slit (origin = the eye's centre):
+    a big cream oval with a big black pupil peeking toward the nose, as in the
+    targets; wide is bigger with a pinprick pupil."""
     b = Builder()
     bm = b.bm
     c = eye_center(s)
     inward = -s  # towards the nose
-    if state in ("open", "wide"):
-        r = 0.047 if state == "open" else 0.051
-        b.tag(blob(bm, c, (r, 0.03, r), segments=14, rings=6), WHITE)
-        if state == "open":
-            p = c + Vector((inward * 0.008, -0.026, -0.004))
-            b.tag(blob(bm, p, (0.023, 0.009, 0.025), segments=10, rings=4), BLACK)
-        else:
-            p = c + Vector((0.0, -0.03, 0.002))
-            b.tag(blob(bm, p, (0.012, 0.007, 0.012), segments=8, rings=4), BLACK)
+    rx, rz = EYE_R
+    if state == "open":
+        b.tag(blob(bm, c, (rx, 0.03, rz), segments=14, rings=5), WHITE)
+        p = c + Vector((inward * 0.012, -0.026, -0.008))
+        b.tag(blob(bm, p, (0.026, 0.009, 0.03), segments=10, rings=4), BLACK)
+    elif state == "wide":
+        b.tag(blob(bm, c, (rx * 1.1, 0.031, rz * 1.08), segments=14, rings=5), WHITE)
+        p = c + Vector((0.0, -0.031, 0.004))
+        b.tag(blob(bm, p, (0.012, 0.007, 0.013), segments=8, rings=4), BLACK)
     elif state == "blink":
         # A closed eye: a light, gently sagging lid line against the dark slit.
         y = c.y - 0.022
-        pts = [(Vector((c.x + dx, y, c.z + 0.002 - 0.012 * (1 - (dx / 0.042) ** 2))), 0.0075)
-               for dx in (-0.042, -0.021, 0.0, 0.021, 0.042)]
+        pts = [(Vector((c.x + dx, y, c.z + 0.002 - 0.014 * (1 - (dx / 0.046) ** 2))), 0.0085)
+               for dx in (-0.046, -0.023, 0.0, 0.023, 0.046)]
         b.tag(tube(bm, pts, segments=6), WHITE)
     elif state == "x":
         y = c.y - 0.022
         for sx in (1, -1):
-            pts = [(Vector((c.x - sx * 0.033, y, c.z + 0.033)), 0.009),
-                   (Vector((c.x + sx * 0.033, y, c.z - 0.033)), 0.009)]
+            pts = [(Vector((c.x - sx * 0.036, y, c.z + 0.04)), 0.0095),
+                   (Vector((c.x + sx * 0.036, y, c.z - 0.04)), 0.0095)]
             b.tag(tube(bm, pts, segments=6), WHITE)
     else:
         raise ValueError(state)
     return b
 
 
-# The hat's crown: a soft cone that flops over to the knight's right (-x) and back.
+# The hat's brim cross-section, (radius, height), inside to outside along the top
+# and back underneath: thick and floppy, drooping at its edge.
+_BRIM = [(0.14, 1.741), (0.2, 1.736), (0.248, 1.725), (0.28, 1.711), (0.293, 1.7),
+         (0.281, 1.694), (0.226, 1.706), (0.14, 1.722)]
+
+# The hat's crown: a tall soft cone, leaning back, that bends over to the
+# knight's right (-x) and droops (targets T03-T07). The ring at `TIP_AT` is
+# where the floppy tip turns (PivotHatTip): `Hat` is the crown up to it, `HatTip`
+# the rest.
 _CROWN = [
+    ((0.0, 0.0, 1.712), 0.18),
+    ((0.0, 0.006, 1.78), 0.152),
+    ((-0.002, 0.016, 1.85), 0.124),
+    ((-0.006, 0.03, 1.92), 0.097),
+    ((-0.014, 0.046, 1.985), 0.074),
+    ((-0.028, 0.06, 2.04), 0.057),
+    ((-0.052, 0.072, 2.078), 0.045),
+    ((-0.088, 0.082, 2.098), 0.035),
+    ((-0.13, 0.09, 2.096), 0.027),
+    ((-0.166, 0.096, 2.075), 0.019),
+    ((-0.19, 0.1, 2.045), 0.013),
+    ((-0.2, 0.1, 2.018), 0.007),
+    ((-0.203, 0.1, 2.0), 0.002),
+]
+TIP_AT = 5
+
+
+def hat_tip_pivot():
+    return Vector(_CROWN[TIP_AT][0])
+
+
+def build_wizard_hat():
+    """The tall pointed wizard hat up to its bend: a wide, wavy, floppy brim
+    tilted back, the crown and a big gold star. Cosmetic: it takes no hits."""
+    b = Builder()
+    bm = b.bm
+    n = 24
+    rings = []
+    for r, z in _BRIM:
+        pts = []
+        flop = (r / 0.293) ** 2  # the outer brim moves most
+        for k in range(n):
+            a = 2 * math.pi * k / n
+            rr = r * (1.0 + 0.03 * math.sin(3 * a + 0.4))
+            # The front (-y) turned up off the eyes, the back down, and a wave.
+            zz = z + flop * (-0.011 * math.sin(a) - 0.008 * math.sin(2 * a + 1.0))
+            pts.append(bm.verts.new((rr * math.cos(a), rr * math.sin(a), zz)))
+        rings.append(pts)
+    brim = []
+    for lo, hi in zip(rings, rings[1:] + rings[:1]):
+        brim += shapes.bridge(bm, lo, hi)
+    b.tag(brim, PURPLE)
+    b.tag(tube(bm, [(Vector(p), r) for p, r in _CROWN[:TIP_AT + 1]], segments=12), PURPLE)
+    # The gold star sits on the crown's front, facing out along the surface.
+    at, normal = surface_hit(bm, (0.0, -0.5, 1.832), (0.0, 1.0, 0.0))
+    b.tag(star_prism(bm, at + normal * 0.005, outer=0.052, inner=0.023, depth=0.012,
+                     normal=normal, up=(0.0, 0.0, 1.0)), GOLD)
+    return b
+
+
+def build_wizard_hat_tip():
+    """The hat's bent, drooping tip. Its base tucks just inside the crown's top,
+    so it can flop about PivotHatTip without opening a gap."""
+    b = Builder()
+    bm = b.bm
+    p, r = Vector(_CROWN[TIP_AT][0]), _CROWN[TIP_AT][1]
+    down = (Vector(_CROWN[TIP_AT - 1][0]) - p).normalized()
+    path = [(p + down * 0.03, r * 0.99), (p, r * 0.965)]
+    path += [(Vector(q), rq) for q, rq in _CROWN[TIP_AT + 1:]]
+    b.tag(tube(bm, path, segments=12), PURPLE)
+    return b
+
+
+# The logo's little hat (art/blender/assets/logo.py puts it on the I of PIECED):
+# Milestone 2's first, short floppy knight hat, kept as it was so the logo
+# stays as Jake scored it. The knight himself wears `build_wizard_hat`.
+_LOGO_HAT_FIT = (HEAD_RADIUS + 0.012, HEAD_RADIUS + 0.043)  # soft-clamp start and limit
+_LOGO_CROWN = [
     ((0.0, 0.0, 1.718), 0.15),
     ((-0.004, 0.005, 1.76), 0.122),
     ((-0.013, 0.014, 1.798), 0.094),
@@ -457,13 +546,24 @@ _CROWN = [
 ]
 
 
+def soft_clamp(bm, center, r0, r1):
+    """Squashes vertices farther than r0 from `center` smoothly into radius r1."""
+    c = Vector(center)
+    for v in bm.verts:
+        d = (v.co - c).length
+        if d > r0:
+            k = r0 + (r1 - r0) * math.tanh((d - r0) / (r1 - r0))
+            v.co = c + (v.co - c) * (k / d)
+
+
 def build_hat():
-    """A short floppy wizard hat hugging the helmet top, with a gold star."""
+    """The logo's short floppy wizard hat with a gold star (see above); the
+    knight's own hat is `build_wizard_hat`."""
     b = Builder()
     bm = b.bm
     n = 28
-    # The brim: a thick, wavy ring sitting on the helmet's top edge; its
-    # cross-section runs inside to outside along the top and back underneath.
+    # The brim: a thick, wavy ring; its cross-section runs inside to outside
+    # along the top and back underneath.
     section = [(0.12, 1.742), (0.18, 1.736), (0.212, 1.729), (0.229, 1.717),
                (0.221, 1.705), (0.19, 1.708), (0.12, 1.72)]
     rings = []
@@ -479,9 +579,8 @@ def build_hat():
     for lo, hi in zip(rings, rings[1:] + rings[:1]):
         brim += shapes.bridge(bm, lo, hi)
     b.tag(brim, PURPLE)
-    b.tag(tube(bm, [(Vector(p), r) for p, r in _CROWN], segments=16), PURPLE)
-    soft_clamp(bm, (0.0, 0.0, HEAD_CENTER), *HAT_FIT)
-    # The gold star sits on the crown's front, facing out along the surface.
+    b.tag(tube(bm, [(Vector(p), r) for p, r in _LOGO_CROWN], segments=16), PURPLE)
+    soft_clamp(bm, (0.0, 0.0, HEAD_CENTER), *_LOGO_HAT_FIT)
     at, normal = surface_hit(bm, (0.0, -0.5, 1.772), (0.0, 1.0, 0.0))
     b.tag(star_prism(bm, at + normal * 0.004, outer=0.036, inner=0.016, depth=0.01,
                      normal=normal, up=(0.0, 0.0, 1.0)), GOLD)
@@ -489,56 +588,66 @@ def build_hat():
 
 
 # ---------------------------------------------------------------------------
-# Body: torso, cape, arms, legs
+# Body: torso, robe, cape, arms, legs
 # ---------------------------------------------------------------------------
 
-def v_neck(depth, half_width=0.12):
-    """Lift for the mantle's front: a V opening down the chest."""
-    return lambda x, y: depth * max(0.0, 1.0 - abs(x) / half_width) if y < 0.0 else 0.0
+# The coat's bodice, collar to belt: (z, half width, half depth, the front
+# opening's half angle in degrees) of a rounded-square cross-section, a little
+# outside the breastplate and mail everywhere.
+_COAT = [(1.442, 0.11, 0.1, 12.0), (1.39, 0.144, 0.126, 13.0), (1.3, 0.182, 0.154, 14.0),
+         (1.2, 0.204, 0.17, 14.0), (1.08, 0.194, 0.168, 14.0), (0.96, 0.186, 0.164, 14.0),
+         (0.86, 0.18, 0.158, 15.0), (0.758, 0.172, 0.148, 17.0)]
+# Columns round the coat from the opening's left edge: a thin gold trim at each edge.
+COAT_US = [0.0] + [0.016 + 0.968 * k / 11 for k in range(12)] + [1.0]
+
+
+def coat_point(row, u, inset):
+    """A point on the coat: `row` indexes `_COAT`, u runs from the front
+    opening's left edge round the back to its right edge."""
+    z, a, d, gap = _COAT[row]
+    g = math.radians(gap)
+    th = -math.pi / 2 + g + u * (2 * math.pi - 2 * g)
+    c, s = math.cos(th), math.sin(th)
+    # A superellipse (exponent 3): squarer than an ellipse, like the breastplate.
+    x = math.copysign(abs(c) ** (2 / 3), c)
+    y = math.copysign(abs(s) ** (2 / 3), s)
+    return Vector(((a - inset) * x, (d - inset) * y, z))
 
 
 def build_torso():
-    """Tunic skirt, belt and buckle, small steel breastplate, mantle and medallion."""
+    """Dark hips, belt and buckle, small steel breastplate with a medallion,
+    the purple coat's bodice over it, and the big steel pauldrons (on the torso,
+    so the arms can fling up from under them)."""
     b = Builder()
     bm = b.bm
 
     def outline(a, d, c):
         return rrect(a, d, c, corner=3, side=2, back=3)
 
-    # Tunic skirt: flares from the waist to a gold-trimmed hem, with soft folds.
-    # Its underside is closed off just inside the hem (the legs pass through).
-    def fold(amp):
-        return lambda a: 1.0 + amp * math.sin(8 * a + 0.5)
+    # Dark hips and tights, showing through the robe's open front.
+    hips = [(0.545, 0.118, 0.098, 0.07), (0.58, 0.152, 0.121, 0.085),
+            (0.742, 0.15, 0.12, 0.075)]
+    rings = [ring(bm, outline(a, d, c), z) for z, a, d, c in hips]
+    faces = [f for band in loft(bm, rings) for f in band]
+    faces += [cap(bm, rings[0], up=False), cap(bm, rings[-1], up=True)]
+    b.tag(faces, DARK)
 
-    # (z, a, b, c, fold, dy): the hem swings a little forward so the cape clears it.
-    levels = [(0.452, 0.244, 0.204, 0.18, 0.036, -0.02), (0.48, 0.24, 0.2, 0.175, 0.034, -0.018),
-              (0.565, 0.214, 0.176, 0.15, 0.022, -0.012), (0.66, 0.178, 0.146, 0.11, 0.01, -0.005),
-              (0.748, 0.15, 0.118, 0.08, 0.0, 0.0)]
-    skirt = [ring(bm, outline(a, d, c), z, dy=dy, wave=fold(w))
-             for z, a, d, c, w, dy in levels]
-    bands = loft(bm, skirt)
-    b.tag(bands[0], GOLD)
-    b.tag([f for band in bands[1:] for f in band], PURPLE)
-    under = ring(bm, outline(0.2, 0.162, 0.13), 0.458, dy=-0.02)
-    b.tag(shapes.bridge(bm, under, skirt[0]), GOLD)
-    b.tag([cap(bm, under, up=False), cap(bm, skirt[-1], up=True)], PURPLE)
-
-    # Belt with a gold buckle.
+    # Belt with a gold buckle; the robe's top edge tucks under it.
     belt = [ring(bm, outline(a, d, c), z) for z, a, d, c in
-            [(0.7, 0.14, 0.11, 0.07), (0.703, 0.16, 0.13, 0.08),
-             (0.768, 0.16, 0.13, 0.08), (0.771, 0.14, 0.11, 0.07)]]
+            [(0.7, 0.14, 0.11, 0.07), (0.703, 0.164, 0.134, 0.08),
+             (0.768, 0.164, 0.134, 0.08), (0.771, 0.14, 0.11, 0.07)]]
     faces = [f for band in loft(bm, belt) for f in band]
     faces += [cap(bm, belt[0], up=False), cap(bm, belt[-1], up=True)]
     b.tag(faces, LEATHER)
-    buckle_c = Vector((0.0, -0.134, 0.736))
-    outer_pts = rrect(0.043, 0.037, 0.012, corner=3)
-    inner_pts = rrect(0.022, 0.016, 0.006, corner=3)
+    buckle_c = Vector((0.0, -0.138, 0.736))
+    outer_pts = rrect(0.045, 0.038, 0.012, corner=3)
+    inner_pts = rrect(0.023, 0.016, 0.006, corner=3)
     rot = Matrix.Rotation(math.pi / 2, 3, "X")  # (x, y, z) -> (x, -z, y): local +z faces -y
 
     def plate_ring(pts, depth):
         return [bm.verts.new(buckle_c + rot @ Vector((x, y, depth))) for x, y in pts]
 
-    fr_o, fr_i = plate_ring(outer_pts, 0.009), plate_ring(inner_pts, 0.009)
+    fr_o, fr_i = plate_ring(outer_pts, 0.01), plate_ring(inner_pts, 0.01)
     bk_o, bk_i = plate_ring(outer_pts, -0.006), plate_ring(inner_pts, -0.003)
     b.tag(shapes.bridge(bm, fr_o, fr_i) + shapes.bridge(bm, bk_o, fr_o)
           + shapes.bridge(bm, fr_i, bk_i) + shapes.bridge(bm, bk_i, bk_o), GOLD)
@@ -549,119 +658,166 @@ def build_torso():
     def keel(amp):
         return lambda a: 1.0 + amp * max(0.0, math.cos(a + math.pi / 2)) ** 40
 
-    chest = [(0.745, 0.138, 0.108, 0.07, 0.0, 0.0), (0.85, 0.142, 0.113, 0.072, -0.002, 0.0),
+    chest = [(0.765, 0.138, 0.108, 0.07, 0.0, 0.0), (0.85, 0.142, 0.113, 0.072, -0.002, 0.0),
              (0.852, 0.156, 0.127, 0.08, -0.006, 0.05), (0.878, 0.159, 0.131, 0.08, -0.008, 0.07),
              (0.955, 0.16, 0.134, 0.082, -0.012, 0.08),
              # a lame's edge across the belly: a small outward step
              (0.957, 0.153, 0.127, 0.08, -0.012, 0.08),
-             (1.0, 0.158, 0.133, 0.082, -0.013, 0.08), (1.07, 0.157, 0.134, 0.082, -0.014, 0.08),
-             (1.16, 0.15, 0.126, 0.08, -0.01, 0.06), (1.25, 0.135, 0.112, 0.075, -0.004, 0.03),
-             (1.33, 0.11, 0.095, 0.06, 0.0, 0.0)]
-    rings = [ring(bm, rrect(a, d, c, corner=4, front=(0.45,), side=2, back=3), z, dy=dy,
+             (1.07, 0.157, 0.134, 0.082, -0.014, 0.08),
+             (1.2, 0.146, 0.122, 0.078, -0.008, 0.05), (1.33, 0.11, 0.095, 0.06, 0.0, 0.0)]
+    rings = [ring(bm, rrect(a, d, c, corner=3, front=(0.45,), side=2, back=2), z, dy=dy,
                   wave=keel(k)) for z, a, d, c, dy, k in chest]
     bands = loft(bm, rings)
     b.tag(bands[0] + [cap(bm, rings[0], up=False)], DARK)
     b.tag([f for band in bands[1:] for f in band] + [cap(bm, rings[-1], up=True)], STEEL)
 
-    # The mantle: a purple collar over the shoulders with a gold-trimmed hem,
-    # opening in a V down the chest; the helmet sits on it.
-    mantle = [(1.14, 0.19, 0.155, 0.1, 0.14), (1.162, 0.192, 0.157, 0.1, 0.128),
-              (1.22, 0.186, 0.152, 0.1, 0.1), (1.29, 0.166, 0.138, 0.09, 0.066),
-              (1.36, 0.146, 0.125, 0.08, 0.036), (1.412, 0.126, 0.11, 0.07, 0.012),
-              (1.44, 0.104, 0.094, 0.058, 0.0)]
-    rings = [ring(bm, outline(a, d, c), z, lift=v_neck(v)) for z, a, d, c, v in mantle]
-    bands = loft(bm, rings)
-    b.tag(bands[0], GOLD)
-    b.tag([f for band in bands[1:] for f in band], PURPLE)
-    hem_in = ring(bm, outline(0.15, 0.126, 0.08), 1.14, lift=v_neck(0.14))
-    b.tag(shapes.bridge(bm, hem_in, rings[0]), GOLD)
-    b.tag([cap(bm, hem_in, up=False), cap(bm, rings[-1], up=True)], PURPLE)
+    # The coat's bodice: purple over the shoulders, round the back and down the
+    # sides to the belt, open down the front on the breastplate, the opening's
+    # edges trimmed in gold; the helmet sits on its collar.
+    outer, lining, sides, top, bottom = sheet(bm, coat_point, range(len(_COAT)), COAT_US,
+                                              0.012)
+    gold, purple = [], []
+    for row in outer:
+        for j, f in enumerate(row):
+            (gold if j in (0, len(row) - 1) else purple).append(f)
+    b.tag(purple + lining + top + bottom, PURPLE)
+    b.tag(gold + sides, GOLD)
 
     # Medallion: a gold ring with a violet gem on a short gold chain.
     med = Vector((0.0, -0.146, 1.175))
     tilt = Matrix.Rotation(math.radians(-10.0), 3, "X")
-    b.tag(torus(bm, med, 0.032, 0.009, n_major=12, n_minor=5, rot=tilt), GOLD)
-    b.tag(blob(bm, med + Vector((0.0, -0.002, 0.0)), (0.024, 0.011, 0.024), segments=8,
+    b.tag(torus(bm, med, 0.034, 0.009, n_major=12, n_minor=5, rot=tilt), GOLD)
+    b.tag(blob(bm, med + Vector((0.0, -0.002, 0.0)), (0.025, 0.011, 0.025), segments=8,
                rings=5, rot=tilt), GEM)
     for s in (1, -1):
         b.tag(tube(bm, [(Vector((s * 0.1, -0.118, 1.262)), 0.006),
                         (Vector((s * 0.05, -0.142, 1.222)), 0.006),
                         (Vector((s * 0.012, -0.15, 1.205)), 0.006)], segments=5), GOLD)
+
+    # Big rounded pauldrons over the shoulder joints.
+    for s in (1, -1):
+        b.tag(blob(bm, (s * 0.215, 0.0, 1.228), (0.114, 0.124, 0.09), exponent=2.2,
+                   segments=12, rings=6, floor=1.163), STEEL)
     return b
 
 
-def build_cape():
-    """A purple cape hanging from the nape, flaring out behind the knight's legs."""
+def sheet(bm, point, ts, us, thick):
+    """A cloth panel with thickness, closed all round (so it outlines cleanly).
+
+    `point(t, u, inset)` places the rows `ts` (top to bottom) and columns `us`;
+    the lining is `point(t, u, thick)`. Returns (outer[t][u] faces of the outside,
+    lining, side edges, top edge, bottom edge).
+    """
+    go = [[bm.verts.new(point(t, u, 0.0)) for u in us] for t in ts]
+    gi = [[bm.verts.new(point(t, u, thick)) for u in us] for t in ts]
+    rows, cols = len(ts), len(us)
+    outer = [[None] * (cols - 1) for _ in range(rows - 1)]
+    lining, sides, top, bottom = [], [], [], []
+    for i in range(rows - 1):
+        for j in range(cols - 1):
+            outer[i][j] = bm.faces.new((go[i][j], go[i + 1][j], go[i + 1][j + 1], go[i][j + 1]))
+            lining.append(bm.faces.new((gi[i][j], gi[i][j + 1], gi[i + 1][j + 1],
+                                        gi[i + 1][j])))
+        sides.append(bm.faces.new((go[i][0], gi[i][0], gi[i + 1][0], go[i + 1][0])))
+        sides.append(bm.faces.new((go[i + 1][-1], gi[i + 1][-1], gi[i][-1], go[i][-1])))
+    for j in range(cols - 1):
+        top.append(bm.faces.new((go[0][j], go[0][j + 1], gi[0][j + 1], gi[0][j])))
+        bottom.append(bm.faces.new((go[-1][j], gi[-1][j], gi[-1][j + 1], go[-1][j + 1])))
+    return outer, lining, sides, top, bottom
+
+
+ROBE_TOP = 0.752  # tucked under the belt
+ROBE_HEM = 0.345  # at the back; the front edges ride higher
+
+
+def robe_point(t, u, inset):
+    """The robe: a flared skirt from the belt to below the knees, open at the
+    front (the opening widens toward the hem), with soft folds that grow toward
+    the hem. u runs from the opening's left edge round the back to its right."""
+    gap = math.radians(15.0 + 27.0 * t)  # the opening's half angle
+    th = -math.pi / 2 + gap + u * (2 * math.pi - 2 * gap)
+    e = t ** 0.85
+    a = 0.157 + (0.302 - 0.157) * e
+    d = 0.13 + (0.282 - 0.13) * e
+    k = 1.0 + 0.05 * t ** 1.2 * math.sin(9.0 * th + 0.3)
+    hem = ROBE_HEM + 0.07 * ((1.0 - math.sin(th)) / 2.0) ** 2
+    z = ROBE_TOP - t * (ROBE_TOP - hem)
+    return Vector(((a * k - inset) * math.cos(th), (d * k - inset) * math.sin(th), z))
+
+
+def build_robe():
+    """The flowing purple robe with a gold hem and gold-trimmed front edges."""
     b = Builder()
-    bm = b.bm
-    cols = 11
-    ts = (0.0, 0.14, 0.28, 0.42, 0.56, 0.7, 0.84, 0.962, 1.0)  # the last row is the gold hem
-    rows = len(ts)
-    thick = 0.013
+    ts = (0.0, 0.2, 0.4, 0.6, 0.8, 0.94, 1.0)  # the last row is the gold hem
+    trim = 0.018
+    us = [0.0] + [trim + (1.0 - 2 * trim) * k / 14 for k in range(15)] + [1.0]
+    outer, lining, sides, top, bottom = sheet(b.bm, robe_point, ts, us, 0.012)
+    gold, purple = [], []
+    for i, row in enumerate(outer):
+        for j, f in enumerate(row):
+            (gold if i == len(outer) - 1 or j in (0, len(row) - 1) else purple).append(f)
+    b.tag(purple + lining + top, PURPLE)
+    b.tag(gold + sides + bottom, GOLD)
+    return b
 
-    def point(t, u, inset):
-        z = 1.27 - t * (1.27 - 0.36)
-        a = 0.152 + 0.14 * t ** 1.4
-        d = 0.152 + 0.095 * t + 0.02 * math.sin(math.pi * t)  # clears the skirt
-        a0 = math.radians(22.0 - 8.0 * t)
-        th = a0 + (math.pi - 2 * a0) * u
-        k = 1.0 + 0.07 * t * (0.5 + 0.5 * math.sin(7 * math.pi * u))  # folds bulge outwards
-        return Vector(((a * k - inset) * math.cos(th), (d * k - inset) * math.sin(th), z))
 
-    grid_o = [[bm.verts.new(point(t, u / (cols - 1), 0.0)) for u in range(cols)] for t in ts]
-    grid_i = [[bm.verts.new(point(t, u / (cols - 1), thick)) for u in range(cols)] for t in ts]
-    body, hem = [], []
-    for t in range(rows - 1):
-        for u in range(cols - 1):
-            fo = bm.faces.new((grid_o[t][u], grid_o[t + 1][u], grid_o[t + 1][u + 1],
-                               grid_o[t][u + 1]))
-            fi = bm.faces.new((grid_i[t][u], grid_i[t][u + 1], grid_i[t + 1][u + 1],
-                               grid_i[t + 1][u]))
-            (hem if t == rows - 2 else body).append(fo)
-            body.append(fi)
-    for t in range(rows - 1):  # side edges
-        body.append(bm.faces.new((grid_o[t][0], grid_i[t][0], grid_i[t + 1][0],
-                                  grid_o[t + 1][0])))
-        body.append(bm.faces.new((grid_o[t + 1][-1], grid_i[t + 1][-1], grid_i[t][-1],
-                                  grid_o[t][-1])))
-    for u in range(cols - 1):
-        body.append(bm.faces.new((grid_o[0][u], grid_o[0][u + 1], grid_i[0][u + 1],
-                                  grid_i[0][u])))
-        hem.append(bm.faces.new((grid_o[-1][u], grid_i[-1][u], grid_i[-1][u + 1],
-                                 grid_o[-1][u + 1])))
-    b.tag(body, PURPLE)
-    b.tag(hem, GOLD)
+def cape_point(t, u, inset):
+    """The cape: from the shoulders, round the back, flaring wide behind the robe."""
+    z = 1.29 - t * (1.29 - 0.33)
+    a = 0.158 + 0.172 * t ** 1.3
+    d = 0.16 + 0.148 * t + 0.016 * math.sin(math.pi * t)  # clears the robe
+    a0 = math.radians(24.0 - 14.0 * t)
+    th = a0 + (math.pi - 2 * a0) * u
+    k = 1.0 + 0.055 * t * (0.5 + 0.5 * math.sin(7 * math.pi * u))  # folds bulge outwards
+    return Vector(((a * k - inset) * math.cos(th), (d * k - inset) * math.sin(th), z))
+
+
+def build_cape():
+    """A big purple cape hanging from the nape over the robe, with a gold hem."""
+    b = Builder()
+    ts = (0.0, 0.14, 0.28, 0.42, 0.56, 0.7, 0.84, 0.955, 1.0)  # the last row is the gold hem
+    us = [k / 10 for k in range(11)]
+    outer, lining, sides, top, bottom = sheet(b.bm, cape_point, ts, us, 0.013)
+    b.tag([f for row in outer[:-1] for f in row] + lining + sides + top, PURPLE)
+    b.tag(outer[-1] + bottom, GOLD)
     return b
 
 
 def build_arm(s):
-    """A big pauldron, a thick sleeve and vambrace and an oversized cartoon
-    gauntlet fist, hanging from the shoulder. The fist and cuff reach as far out
-    as the capsule's 5 cm tolerance allows (the width the targets' big gloves
-    need has to come from there)."""
+    """A purple robe sleeve belled at the elbow with a gold trim, a steel
+    vambrace, a flared gauntlet cuff and a big open cartoon glove: a chunky palm,
+    four sausage fingers and a thumb, its back to the front. The hand reaches as
+    far out as the capsule's 5 cm tolerance allows."""
     b = Builder()
     bm = b.bm
 
     def m(x, y, z):
         return Vector((s * x, y, z))
 
-    b.tag(blob(bm, m(0.215, 0.0, 1.225), (0.112, 0.122, 0.09), exponent=2.2, segments=12,
-               rings=7, floor=1.16), STEEL)
-    b.tag(tube(bm, [(m(0.225, 0.0, 1.19), 0.07), (m(0.256, 0.01, 1.04), 0.066),
-                    (m(0.264, 0.012, 0.978), 0.068)], segments=8), DARK)
-    b.tag(tube(bm, [(m(0.264, 0.01, 0.998), 0.066), (m(0.266, -0.014, 0.9), 0.072),
-                    (m(0.266, -0.03, 0.862), 0.077)], segments=10), STEEL)
-    # A flared cuff where the gauntlet starts.
-    b.tag(tube(bm, [(m(0.266, -0.032, 0.872), 0.077), (m(0.266, -0.038, 0.846), 0.095),
-                    (m(0.266, -0.042, 0.822), 0.1)], segments=12), STEEL)
-    # The fist: a big chunky rounded box, knuckles forward, thumb on the inside.
-    b.tag(blob(bm, m(0.264, -0.052, 0.712), (0.1, 0.106, 0.118), exponent=2.7,
-               segments=14, rings=8), STEEL)
-    for k in range(4):
-        b.tag(blob(bm, m(0.214 + 0.033 * k, -0.146, 0.735 - 0.007 * abs(k - 1.5)),
-                   (0.022, 0.03, 0.037), segments=6, rings=4), STEEL)
-    b.tag(blob(bm, m(0.184, -0.112, 0.762), (0.028, 0.044, 0.03), segments=8, rings=5,
-               rot=Matrix.Rotation(math.radians(20.0 * s), 3, "Z")), STEEL)
+    b.tag(tube(bm, [(m(0.212, 0.0, 1.2), 0.066), (m(0.238, 0.006, 1.08), 0.07),
+                    (m(0.25, 0.004, 1.004), 0.084)], segments=10), PURPLE)
+    b.tag(tube(bm, [(m(0.251, 0.004, 1.008), 0.086), (m(0.253, 0.0, 0.984), 0.088)],
+               segments=10), GOLD)
+    b.tag(tube(bm, [(m(0.254, -0.004, 0.992), 0.057), (m(0.262, -0.02, 0.87), 0.063)],
+               segments=8), STEEL)
+    b.tag(tube(bm, [(m(0.264, -0.024, 0.878), 0.066), (m(0.266, -0.03, 0.848), 0.087),
+                    (m(0.266, -0.034, 0.826), 0.093)], segments=12), STEEL)
+    hand = (0.266, -0.034, 0.752)
+    b.tag(blob(bm, m(*hand), (0.076, 0.046, 0.07), exponent=2.4, segments=12, rings=7),
+          STEEL)
+    hx, hy = hand[0], hand[1]
+    for k, dx in enumerate((-0.051, -0.017, 0.017, 0.051)):
+        length = 0.088 if k in (1, 2) else 0.075
+        base = m(hx + dx, hy, 0.712)
+        mid = m(hx + dx * 1.1, hy + 0.004, 0.712 - length * 0.55)
+        tip = m(hx + dx * 1.22, hy + 0.016, 0.712 - length)
+        end = tip + (tip - mid).normalized() * 0.013
+        b.tag(tube(bm, [(base, 0.022), (mid, 0.022), (tip, 0.019), (end, 0.008)],
+                   segments=6), STEEL)
+    thumb = [(m(hx - 0.056, hy - 0.018, 0.768), 0.023), (m(hx - 0.076, hy - 0.046, 0.742), 0.022),
+             (m(hx - 0.083, hy - 0.068, 0.717), 0.02)]
+    end = thumb[-1][0] + (thumb[-1][0] - thumb[-2][0]).normalized() * 0.013
+    b.tag(tube(bm, thumb + [(end, 0.009)], segments=6), STEEL)
     return b
 
 
@@ -675,9 +831,9 @@ def build_leg(s):
 
     b.tag(tube(bm, [(m(0.108, 0.0, 0.66), 0.058), (m(0.128, 0.0, 0.5), 0.058),
                     (m(0.144, 0.0, 0.385), 0.055)], segments=8), DARK)
-    b.tag(blob(bm, m(0.147, -0.034, 0.372), (0.058, 0.036, 0.052), segments=10, rings=6),
+    b.tag(blob(bm, m(0.147, -0.034, 0.372), (0.058, 0.036, 0.052), segments=10, rings=5),
           STEEL)
-    b.tag(blob(bm, m(0.196, -0.008, 0.372), (0.016, 0.05, 0.058), segments=8, rings=5),
+    b.tag(blob(bm, m(0.196, -0.008, 0.372), (0.016, 0.05, 0.058), segments=8, rings=4),
           STEEL)
     b.tag(tube(bm, [(m(0.147, 0.0, 0.372), 0.052), (m(0.156, 0.0, 0.29), 0.058),
                     (m(0.162, 0.0, 0.215), 0.07)], segments=10), STEEL)
@@ -707,6 +863,16 @@ def pivot(name, parent, world, parent_world):
     return scene.make_attach(name, parent, Vector(world) - Vector(parent_world))
 
 
+def build_hat_parts(parent, parent_origin):
+    """`Hat` (origin at HAT_BASE, the brim's base) under `parent`, with the floppy
+    `HatTip` under `PivotHatTip` at the crown's bend."""
+    hat = build_wizard_hat().finish("Hat", parent, HAT_BASE, parent_origin)
+    bend = hat_tip_pivot()
+    tip = pivot("PivotHatTip", hat, bend, HAT_BASE)
+    build_wizard_hat_tip().finish("HatTip", tip, bend, bend)
+    return hat
+
+
 def build_knight(root, check=True):
     origin = Vector((0.0, 0.0, 0.0))
     for side, s in (("L", 1), ("R", -1)):
@@ -720,14 +886,17 @@ def build_knight(root, check=True):
         build_arm(s).finish(f"Gauntlet{side}", arm, sh, sh)
     cape = pivot("PivotCape", torso, NAPE, TORSO_ORIGIN)
     build_cape().finish("Cape", cape, NAPE, NAPE)
+    robe = pivot("PivotRobe", torso, WAIST, TORSO_ORIGIN)
+    build_robe().finish("Robe", robe, WAIST, WAIST)
     head = pivot("PivotHead", torso, NECK, TORSO_ORIGIN)
     helmet = build_helmet().finish("Helmet", head, NECK, NECK, sharp_deg=50.0)
     for prefix, state in EYE_STATES:
         for side, s in (("L", 1), ("R", -1)):
-            eye = build_eye(s, state).finish(f"{prefix}{side}", helmet, eye_center(s), NECK)
+            eye = build_eye(s, state).finish(f"{prefix}{side}", helmet, eye_center(s), NECK,
+                                             sharp_deg=89.0)
             eye.hide_render = state != "open"
     hat = pivot("PivotHat", head, HAT_BASE, NECK)
-    build_hat().finish("Hat", hat, HAT_BASE, HAT_BASE)
+    build_hat_parts(hat, HAT_BASE)
     if check:
         check_fit(root)
 
@@ -738,6 +907,10 @@ def build_knight(root, check=True):
 
 def is_head_part(name):
     return name in HEAD_PARTS or name.startswith("Eye")
+
+
+def is_cosmetic(name):
+    return name in COSMETIC_PARTS
 
 
 def capsule_overshoot(p):
@@ -754,11 +927,12 @@ def sphere_overshoot(p):
 
 
 def fit_report(root):
-    """{part: worst overshoot (m)} for every mesh part against its own hitbox."""
+    """{part: worst overshoot (m)} for every non-cosmetic mesh part against its
+    own hitbox."""
     scene.update()
     out = {}
     for obj in scene.descendants(root):
-        if obj.type != "MESH":
+        if obj.type != "MESH" or is_cosmetic(obj.name):
             continue
         test = sphere_overshoot if is_head_part(obj.name) else capsule_overshoot
         mw = obj.matrix_world
@@ -769,9 +943,9 @@ def fit_report(root):
 def silhouette_gaps(root, cell=0.01):
     """How far each hitbox's silhouette sticks out past the model's (the fill rule).
 
-    Rasterises the visible parts seen from the front (along y) and the side
-    (along x) on a `cell` grid and returns {(view, hitbox): (gap m, (u, z))}: the
-    worst distance from a point of the hitbox's silhouette to the model's.
+    Rasterises the visible, non-cosmetic parts seen from the front (along y) and
+    the side (along x) on a `cell` grid and returns {(view, hitbox): (gap m, (u, z))}:
+    the worst distance from a point of the hitbox's silhouette to the model's.
     """
     import numpy as np
 
@@ -784,7 +958,7 @@ def silhouette_gaps(root, cell=0.01):
     for view, axis in (("front", 0), ("side", 1)):
         mask = np.zeros((nv, nu), dtype=bool)
         for obj in scene.descendants(root):
-            if obj.type != "MESH" or obj.hide_render:
+            if obj.type != "MESH" or obj.hide_render or is_cosmetic(obj.name):
                 continue
             mesh = obj.data
             mesh.calc_loop_triangles()
@@ -830,16 +1004,17 @@ def check_fit(root):
 
 def build_knight_hat(root):
     """The knight's hat on its own, for the prop that drops off his head when he
-    is eliminated (src/fx/hat.rs, target T08). The same `Hat` geometry as on
-    the knight, with its pivot at the base of the brim (`PivotHat`), so the
-    prop starts exactly where the hat sat."""
-    build_hat().finish("Hat", root, HAT_BASE, HAT_BASE)
+    is eliminated (src/fx/hat.rs, target T08). The same `Hat` and `HatTip`
+    geometry as on the knight, with its pivot at the base of the brim
+    (`PivotHat`), so the prop starts exactly where the hat sat."""
+    build_hat_parts(root, HAT_BASE)
 
 
 ASSETS = [
     Asset("knight", "knight", build_knight, "the goofy armoured knight-wizard enemy"),
     # Budgeted as part of the knight.
-    Asset("knight_hat", "knight", build_knight_hat, "the knight's floppy hat, pivot at its base"),
+    Asset("knight_hat", "knight", build_knight_hat,
+          "the knight's tall floppy hat, pivot at its base"),
 ]
 
 
@@ -863,6 +1038,10 @@ def _review(out_dir):
     for name, v in sorted(fit_report(root).items()):
         print(f"KNIGHT fit {name:10s} {'head' if is_head_part(name) else 'body'} "
               f"overshoot {v * 100:+.1f} cm, {tri[name]} tris")
+    for name in COSMETIC_PARTS:
+        obj = bpy.data.objects[name]
+        top = max((obj.matrix_world @ v.co).z for v in obj.data.vertices)
+        print(f"KNIGHT cosmetic {name:7s} (no fit) top at {top:.3f} m, {tri[name]} tris")
 
     for (view, name), (gap, where) in sorted(silhouette_gaps(root).items()):
         print(f"KNIGHT fill {view:5s} {name}: hitbox sticks out {gap * 100:.1f} cm at {where}")
@@ -933,9 +1112,24 @@ def _review(out_dir):
 
     os.makedirs(out_dir, exist_ok=True)
     mid = (0.0, 0.0, 0.94)
-    views = [shoot(0, 4, mid, ortho=2.05), shoot(90, 4, mid, ortho=2.05),
-             shoot(180, 8, mid, ortho=2.05), shoot(-140, 18, mid, dist=5.2)]
+    tall = (0.0, 0.0, 1.06)  # frames the hat too
+    views = [shoot(0, 4, tall, ortho=2.3), shoot(90, 4, tall, ortho=2.3),
+             shoot(180, 8, tall, ortho=2.3), shoot(-140, 18, tall, dist=5.6)]
     bitmap.save_png(np.concatenate(views, axis=1), os.path.join(out_dir, "knight_views.png"))
+
+    # A rough hit take (the game's pose comes from src/knight.rs; this only
+    # checks how the parts read in it): arms flung up, a leg kicked, leaning back.
+    pose = {"PivotArmL": (0.0, -2.35, 0.0), "PivotArmR": (0.25, 1.45, 0.0),
+            "PivotLegL": (-0.7, -0.15, 0.0), "PivotLegR": (0.12, 0.0, 0.0),
+            "Torso": (-0.28, 0.0, 0.05), "PivotHead": (-0.15, 0.0, 0.0),
+            "PivotRobe": (-0.2, 0.0, 0.0), "PivotCape": (0.35, 0.0, 0.0),
+            "PivotHatTip": (0.25, 0.2, 0.0)}
+    for name, rot in pose.items():
+        bpy.data.objects[name].rotation_euler = rot
+    posed = [shoot(-25, 6, tall, dist=5.6), shoot(0, 4, tall, ortho=2.3)]
+    for name in pose:
+        bpy.data.objects[name].rotation_euler = (0.0, 0.0, 0.0)
+    bitmap.save_png(np.concatenate(posed, axis=1), os.path.join(out_dir, "knight_hit.png"))
 
     # Hitbox overlay: orthographic front and side views with the hitbox outlines,
     # the +5 cm tolerance and the -10 cm fill line drawn on in image space.
