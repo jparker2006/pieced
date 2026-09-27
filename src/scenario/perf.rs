@@ -153,7 +153,8 @@ pub struct ScriptFrame {
     pub crouch_pressed: bool,
     pub fire: bool,
     pub fire_pressed: bool,
-    pub ads_toggle_pressed: bool,
+    /// Aim held (Shift, D40).
+    pub ads_held: bool,
     pub reload_pressed: bool,
     pub select: Option<ActiveTool>,
     pub look: LookGoal,
@@ -171,7 +172,7 @@ impl ScriptFrame {
             crouch_pressed: false,
             fire: false,
             fire_pressed: false,
-            ads_toggle_pressed: false,
+            ads_held: false,
             reload_pressed: false,
             select: None,
             look,
@@ -275,7 +276,6 @@ impl PerfScript {
             frame.jump_pressed |= late.jump_pressed;
             frame.crouch_pressed |= late.crouch_pressed;
             frame.fire_pressed |= late.fire_pressed;
-            frame.ads_toggle_pressed |= late.ads_toggle_pressed;
             frame.reload_pressed |= late.reload_pressed;
             frame.select = frame.select.or(late.select);
         }
@@ -283,6 +283,13 @@ impl PerfScript {
     }
 
     fn segment_frame(seg: Segment, u0: f64, u: f64) -> ScriptFrame {
+        let mut f = Self::activity_frame(seg, u0, u);
+        // Like the keyboard: moving forward holds W, and holding W sprints (D41).
+        f.sprint = f.move_axis.y > 0.0;
+        f
+    }
+
+    fn activity_frame(seg: Segment, u0: f64, u: f64) -> ScriptFrame {
         let s = seg.sign;
         let deg = |d: f32| d.to_radians();
         match seg.activity {
@@ -297,7 +304,8 @@ impl PerfScript {
                 );
                 f.move_axis =
                     Vec2::new(0.6 * s * (1.7 * u as f32).sin(), 1.0).clamp_length_max(1.0);
-                f.sprint = within_every(u, 0.4, 2.0, 1.3);
+                // Sprinting (W held), broken up by holding aim, which runs instead.
+                f.ads_held = !within_every(u, 0.4, 2.0, 1.3);
                 f
             }
             Activity::Slide => {
@@ -309,7 +317,6 @@ impl PerfScript {
                     },
                 );
                 f.move_axis = Vec2::Y;
-                f.sprint = true;
                 f.crouch_pressed = crossed_every(u0, u, 0.5, 1.1);
                 f.crouch = within_every(u, 0.5, 1.1, 0.75);
                 f
@@ -323,7 +330,6 @@ impl PerfScript {
                     },
                 );
                 f.move_axis = Vec2::new(0.7 * s, 1.0).clamp_length_max(1.0);
-                f.sprint = true;
                 f.jump_pressed = crossed_every(u0, u, 0.2, 0.75);
                 f.jump = within_every(u, 0.2, 0.75, 0.2);
                 f
@@ -366,7 +372,6 @@ impl PerfScript {
                     },
                 );
                 f.move_axis = Vec2::Y;
-                f.sprint = true;
                 f.fire = true;
                 f.fire_pressed = crossed(u0, u, 0.0);
                 f.jump_pressed = crossed_every(u0, u, 0.3, 0.5);
@@ -385,7 +390,7 @@ impl PerfScript {
                 let strafe = if (u / 0.8) as i64 % 2 == 0 { s } else { -s };
                 f.move_axis = Vec2::new(strafe, 0.0);
                 f.select = crossed(u0, u, 0.0).then_some(RIFLE);
-                f.ads_toggle_pressed = crossed(u0, u, 0.25);
+                f.ads_held = u >= 0.25;
                 f.fire = u >= 0.3 && u < seg.duration - 0.2;
                 f.fire_pressed = crossed(u0, u, 0.3);
                 f
@@ -681,6 +686,7 @@ impl Director for Perf {
                 i.move_axis = Vec2::ZERO;
                 i.fire = false;
                 i.sprint = false;
+                i.ads_held = false;
                 i.crouch = false;
                 i.jump = false;
             });
@@ -718,7 +724,7 @@ impl Director for Perf {
             i.crouch_pressed |= frame.crouch_pressed;
             i.fire = frame.fire;
             i.fire_pressed |= frame.fire_pressed;
-            i.ads_toggle_pressed |= frame.ads_toggle_pressed;
+            i.ads_held = frame.ads_held;
             i.reload_pressed |= frame.reload_pressed;
             if frame.select.is_some() {
                 i.select = frame.select;

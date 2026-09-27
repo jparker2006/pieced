@@ -155,7 +155,30 @@ fn device_to_intent(
         return;
     };
     let (mut intent, tool, ads) = player.into_inner();
+    buttons_to_intent(&keys, &mouse, &mut intent);
 
+    if std::mem::take(&mut ignore.0) {
+        return;
+    }
+    intent.look_delta += tuning.look.look_delta(motion.delta, ads.0, tool.is_build());
+}
+
+/// Maps held keys and trackpad buttons onto `intent` (docs/SPEC.md → Controls):
+///
+/// - W A S D move. Holding W sprints (D41: sprint by default, no sprint key);
+///   movement decides when that applies (forward, standing, not aiming).
+/// - Holding either Shift aims down sights (D40: a hold, never a toggle).
+/// - Space jumps; C crouches, and a C press while sprinting slides.
+/// - The physical click fires or places; R reloads; 1 / 2 and Q / E / F pick tools.
+/// - The secondary (right) click and V do nothing (D40, D42).
+///
+/// Held fields are overwritten; press edges are OR-ed in, so they stay latched
+/// until a fixed tick consumes them. Look is handled separately.
+pub fn buttons_to_intent(
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    intent: &mut PlayerIntent,
+) {
     let axis =
         |neg: KeyCode, pos: KeyCode| (keys.pressed(pos) as i32 - keys.pressed(neg) as i32) as f32;
     let raw = Vec2::new(
@@ -166,13 +189,12 @@ fn device_to_intent(
 
     intent.jump = keys.pressed(KeyCode::Space);
     intent.jump_pressed |= keys.just_pressed(KeyCode::Space);
-    intent.sprint = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
+    intent.sprint = keys.pressed(KeyCode::KeyW);
     intent.crouch = keys.pressed(KeyCode::KeyC);
     intent.crouch_pressed |= keys.just_pressed(KeyCode::KeyC);
     intent.fire = mouse.pressed(MouseButton::Left);
     intent.fire_pressed |= mouse.just_pressed(MouseButton::Left);
-    intent.ads_toggle_pressed |=
-        mouse.just_pressed(MouseButton::Right) || keys.just_pressed(KeyCode::KeyV);
+    intent.ads_held = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
     intent.reload_pressed |= keys.just_pressed(KeyCode::KeyR);
 
     let selections = [
@@ -187,11 +209,6 @@ fn device_to_intent(
             intent.select = Some(tool);
         }
     }
-
-    if std::mem::take(&mut ignore.0) {
-        return;
-    }
-    intent.look_delta += tuning.look.look_delta(motion.delta, ads.0, tool.is_build());
 }
 
 #[cfg(test)]
@@ -225,33 +242,7 @@ mod tests {
     fn keys_and_trackpad_map_to_intent() {
         use bevy::ecs::system::RunSystemOnce as _;
         let (mut world, player) = adapter_world();
-        // Two-finger click (right button) toggles ADS.
-        world
-            .resource_mut::<ButtonInput<MouseButton>>()
-            .press(MouseButton::Right);
-        run_adapter(&mut world);
-        assert!(
-            world
-                .get::<PlayerIntent>(player)
-                .unwrap()
-                .ads_toggle_pressed
-        );
-        world.get_mut::<PlayerIntent>(player).unwrap().clear_edges();
-        world.resource_mut::<ButtonInput<MouseButton>>().clear();
-        // So does V.
-        world
-            .resource_mut::<ButtonInput<KeyCode>>()
-            .press(KeyCode::KeyV);
-        run_adapter(&mut world);
-        assert!(
-            world
-                .get::<PlayerIntent>(player)
-                .unwrap()
-                .ads_toggle_pressed
-        );
-        world.get_mut::<PlayerIntent>(player).unwrap().clear_edges();
-        world.resource_mut::<ButtonInput<KeyCode>>().clear();
-        // Held W + physical click: moving forward and firing on the press.
+        // Held W + physical click: moving forward, sprinting, and firing on the press.
         world
             .resource_mut::<ButtonInput<KeyCode>>()
             .press(KeyCode::KeyW);
@@ -262,7 +253,9 @@ mod tests {
         run_adapter(&mut world);
         let intent = world.get::<PlayerIntent>(player).unwrap().clone();
         assert_eq!(intent.move_axis, Vec2::Y);
+        assert!(intent.sprint, "holding W sprints");
         assert!(intent.fire && intent.fire_pressed);
+        assert!(!intent.ads_held);
         assert!(intent.look_delta.x < 0.0, "swiping right turns right");
         // Piece and gun keys select tools.
         for (key, tool) in [
@@ -284,6 +277,51 @@ mod tests {
     }
 
     #[test]
+    fn either_shift_holds_aim_and_only_w_sprints() {
+        let mut keys = ButtonInput::<KeyCode>::default();
+        let mouse = ButtonInput::<MouseButton>::default();
+        let mut intent = PlayerIntent::default();
+        for shift in [KeyCode::ShiftLeft, KeyCode::ShiftRight] {
+            keys.press(shift);
+            buttons_to_intent(&keys, &mouse, &mut intent);
+            assert!(intent.ads_held, "{shift:?} held aims");
+            assert!(!intent.sprint, "Shift is not a sprint key");
+            keys.clear();
+            buttons_to_intent(&keys, &mouse, &mut intent);
+            assert!(intent.ads_held, "still held on the next frame");
+            keys.release(shift);
+            buttons_to_intent(&keys, &mouse, &mut intent);
+            assert!(!intent.ads_held, "releasing {shift:?} stops aiming");
+        }
+        // Strafing and backpedalling don't ask for a sprint; forward diagonals do.
+        for (held, sprint) in [
+            (&[KeyCode::KeyA][..], false),
+            (&[KeyCode::KeyD][..], false),
+            (&[KeyCode::KeyS][..], false),
+            (&[KeyCode::KeyW, KeyCode::KeyD][..], true),
+            (&[KeyCode::KeyW][..], true),
+        ] {
+            keys.reset_all();
+            for key in held {
+                keys.press(*key);
+            }
+            buttons_to_intent(&keys, &mouse, &mut intent);
+            assert_eq!(intent.sprint, sprint, "{held:?}");
+        }
+    }
+
+    #[test]
+    fn right_click_and_v_do_nothing() {
+        let mut keys = ButtonInput::<KeyCode>::default();
+        let mut mouse = ButtonInput::<MouseButton>::default();
+        let mut intent = PlayerIntent::default();
+        mouse.press(MouseButton::Right);
+        keys.press(KeyCode::KeyV);
+        buttons_to_intent(&keys, &mouse, &mut intent);
+        assert_eq!(intent, PlayerIntent::default());
+    }
+
+    #[test]
     fn look_delta_directions_and_multipliers() {
         let look = LookTuning::default();
         // Swiping right turns right (negative yaw), swiping down looks down.
@@ -302,7 +340,6 @@ pub struct InputProbe {
     frames_moving: u32,
     motion_frames_moving: u32,
     clicks_moving: u32,
-    right_clicks_moving: u32,
     motion_frames_still: u32,
     last_report: f64,
 }
@@ -335,7 +372,6 @@ fn probe_input(
         probe.frames_moving += 1;
         probe.motion_frames_moving += moved as u32;
         probe.clicks_moving += mouse.just_pressed(MouseButton::Left) as u32;
-        probe.right_clicks_moving += mouse.just_pressed(MouseButton::Right) as u32;
     } else {
         probe.motion_frames_still += moved as u32;
     }
@@ -343,11 +379,10 @@ fn probe_input(
     if now - probe.last_report >= 1.0 {
         probe.last_report = now;
         println!(
-            "PIECED_PROBE t={now:.0}s frames_with_wasd={} look_motion_frames_with_wasd={} clicks_with_wasd={} two_finger_clicks_with_wasd={} look_motion_frames_without_wasd={}",
+            "PIECED_PROBE t={now:.0}s frames_with_wasd={} look_motion_frames_with_wasd={} clicks_with_wasd={} look_motion_frames_without_wasd={}",
             probe.frames_moving,
             probe.motion_frames_moving,
             probe.clicks_moving,
-            probe.right_clicks_moving,
             probe.motion_frames_still
         );
     }

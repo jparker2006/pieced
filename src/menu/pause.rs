@@ -92,6 +92,8 @@ const GOLD_HOVER: Color = Color::srgb(1.0, 0.83, 0.36);
 const RIVET: Color = Color::srgb(0.62, 0.65, 0.74);
 
 /// Menu buttons are this wide; the logo above them is a little wider.
+/// The controls that aren't obvious (docs/SPEC.md → Controls, D40–D42).
+const CONTROLS_HINT: &str = "W sprint   Shift (hold) aim   C slide   R reload";
 const BUTTON_WIDTH: f32 = 380.0;
 const LOGO_WIDTH: f32 = 600.0;
 
@@ -269,10 +271,16 @@ fn spawn_menu(mut commands: Commands, art: Option<Res<UiArt>>) {
                 }
                 c.spawn((
                     Node {
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        row_gap: px(4),
                         margin: UiRect::top(px(6)),
                         ..default()
                     },
-                    children![text("Esc resume   F3 stats   F4 tuning", 13.0, dim(0.6))],
+                    children![
+                        text(CONTROLS_HINT, 13.0, dim(0.75)),
+                        text("Esc resume   F3 stats   F4 tuning", 13.0, dim(0.6)),
+                    ],
                 ));
             });
             root.spawn((SettingsCard, card(900.0))).with_children(|c| {

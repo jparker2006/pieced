@@ -179,7 +179,8 @@ impl Director for FxCheck {
         }
         if t >= 2.6 && self.once("ads_on") {
             place_dummy(world, DUMMY_SPOT, 100.0, 100.0);
-            with_intent(world, |i| i.ads_toggle_pressed = true);
+            // Hold Shift to aim (D40) until the ADS shots are done.
+            with_intent(world, |i| i.ads_held = true);
         }
         if t >= 2.95 && self.once("ads_still") {
             self.snap(world, clock, "03_rifle_ads");
@@ -194,7 +195,7 @@ impl Director for FxCheck {
         if t >= 3.45 && self.once("release2") {
             with_intent(world, |i| {
                 i.fire = false;
-                i.ads_toggle_pressed = true;
+                i.ads_held = false;
             });
         }
         if t >= 3.7 && self.once("reload") {
