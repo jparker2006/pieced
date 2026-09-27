@@ -199,3 +199,14 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **Fixed:** a forward rush continues the chain at any pitch. Climbing never caps your own ramp. Walls go on your own tile's edge and push you inward. You're lifted onto a ramp built over you. Landing keeps speed.
   - **Headless results:** every variant builds the full 6-level chain at 100% speed (3.47 s sprinting). Ramp + wall holds speed. A 4-level 90s tower builds in 2.67 s. A 1×1 box builds from every corner.
   - **Next (same builder):** 3×3 reach, double ramps, and a 12-level height limit so the S10 rush reaches ≥ 10 ramps. Editing + cone is in progress.
+- 2026-09-26: **editing and cone merged**, with 375 tests passing; `build-art --check` covers 24 new edit and cone models.
+  - **Cone (V):** a 1.5 m plank pyramid, 170 HP, sharing a cell with a floor and a ramp, with crack stages and debris.
+  - **Editing:** G opens a grid; click or drag, release confirms, R resets.
+  - **Valid shapes:**
+    - Wall: window, wide window, door, arch, mid and low wall, 4 triangles, 3 pillars.
+    - Floor: 1–3 tiles.
+    - Ramp: 8 half ramps.
+    - Cone: 1–3 raised corners.
+  - Collision follows the edit, the HP fraction is kept, and 50 edits create no assets.
+  - `tests/editing.rs` has 16 tests.
+  - **Known:** `perf_director_generates_heavy_play_deterministically` flaked once under parallel load (it passed alone).
