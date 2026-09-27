@@ -182,3 +182,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
   > "Okay, it plays really fun. I think the rebuild mechanics need to act a little bit more like Fortnite, like when I ramp up, I feel just infinite ramp, stuff like that. I was just shooting the robot. It was really fun. It looked really good."
 
   A feedback grill (Q30–Q38: ramp rush, missing Fortnite building, guns, aim, movement, visual issues, bots, scope, priority) was sent to Jake. Waiting on his answers.
+- 2026-09-26: **controls merged** (D40–D42), with 340 tests passing:
+  - hold Shift to aim;
+  - sprint whenever W is held (diagonals too; strafe and back move at run speed, as in Fortnite), and aiming stops the sprint;
+  - C while sprinting slides;
+  - the right click is inert (`tests/controls.rs`).
+
+  Also fixed a load-sensitive test (`tests/pieces.rs` pop timing now uses fixed frames). The ramp rush (targeting) and editing + cone slices are in progress.
