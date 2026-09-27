@@ -509,13 +509,21 @@ pub fn views() -> Vec<GalleryView> {
             title: "Headshot at about 5 m: gold flash, hat popping off, gold number",
             feet: t06_feet,
             crouch: true,
-            // The helmet's upper right, as the target paints the flash: the
-            // hat is knocked the other way, up and to the left.
+            // The top of the helmet, off to one side: the flash sits there
+            // and the hat is knocked up and away to the other side. The
+            // target's mirror image (flash left, hat up and right), because
+            // the HUD fans this view's damage number out to the left, where
+            // the target's hat would be.
             aim: Aim::Knight {
                 up: 1.72,
-                right: 0.12,
+                right: -0.12,
             },
-            framing: Framing::Eye,
+            // The flash just left of the crosshair (the target paints it a
+            // little off the crosshair too), which keeps him clear of the
+            // gun's muzzle.
+            framing: Framing::Offset {
+                screen: Vec2::new(-0.08, 0.02),
+            },
             tool: RIFLE,
             inspect: false,
             knight: Some(KnightSpot {
@@ -523,8 +531,8 @@ pub fn views() -> Vec<GalleryView> {
                 motion: KnightMotion::Idle,
                 hp: 100.0,
                 shield: 0.0,
-                // The crosshair on his helmet puts his chest just below it.
-                screen: Vec2::new(-0.03, -0.19),
+                // Just left of the crosshair, his chest well below it.
+                screen: Vec2::new(-0.05, -0.17),
             }),
             // A ramp rising left against a wall on the left, a wall end close
             // on the right.
