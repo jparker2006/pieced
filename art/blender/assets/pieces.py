@@ -728,8 +728,9 @@ def build_wall_tiles(root, stage):
             for side, sign in (("Lo", 1.0), ("Hi", -1.0)):
                 plane = (Vector(p0), Vector(n) * sign)
                 tile_part(root, f"{key}{t}{side}", make, wall_tile_planes(t) + [plane])
-    wall_trim(root, "TrimH", WALL_TILE_W + 0.12, 0.36)
-    wall_trim(root, "TrimV", WALL_TILE_H + 0.12, 0.35)
+    # Exactly a tile long, so boards on the wall's outer edge stay inside it.
+    wall_trim(root, "TrimH", WALL_TILE_W, 0.36)
+    wall_trim(root, "TrimV", WALL_TILE_H, 0.35)
     # A little short of the corners, so its ends stay inside the wall.
     wall_trim(root, "TrimD", math.hypot(CELL, LEVEL) - 0.2, 0.34)
 
@@ -749,8 +750,7 @@ def build_floor_tiles(root, stage):
     for t in range(4):
         tile_part(root, f"Q{t}", make, floor_tile_planes(t))
     bm = palette.new_bmesh()
-    add_box(bm, (-HALF_W / 2 - 0.06, -0.07, -0.13), (HALF_W / 2 + 0.06, 0.07, FLOOR_TOP + 0.03),
-            "stump_bark")
+    add_box(bm, (-HALF_W / 2, -0.07, -0.13), (HALF_W / 2, 0.07, FLOOR_TOP + 0.03), "stump_bark")
     finish(root, bm, "Trim")
 
 
@@ -959,7 +959,14 @@ def build_roof(root, raised, stage):
         under.append(q)
     u_faces, _ = hull(under)
     for poly, n in u_faces:
-        add_poly(bm, poly, "stump_bark", n)
+        # The underside (a box's ceiling) is boards; the rest shows in the gaps.
+        add_poly(bm, poly, "plank" if n.z < -0.5 else "stump_bark", n)
+    # Board joints across the underside.
+    for k in range(1, 5):
+        y = -HALF_W + k * CELL / 5
+        add_poly(bm, [(-1.95, y - 0.025, -0.004), (1.95, y - 0.025, -0.004),
+                      (1.95, y + 0.025, -0.004), (-1.95, y + 0.025, -0.004)],
+                 CRACK, (0.0, 0.0, -1.0))
     planks = roof_planks(bm, faces, r)
     # Nails near the ends of each face's lowest plank.
     for i, (top, length, n, row) in enumerate(planks):

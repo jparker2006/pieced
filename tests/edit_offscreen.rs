@@ -35,7 +35,7 @@ use pieced::{
     render::{RenderSetupPlugin, WorldTarget},
     scenario::gallery::GalleryCamera,
     shared::{AppState, Facing, GridCell, LookAngles, Player, PlayerIntent, PreviousFeet},
-    viewmodel::ViewmodelPlugin,
+    viewmodel::{ViewmodelCamera, ViewmodelPlugin},
 };
 use std::path::PathBuf;
 
@@ -143,6 +143,14 @@ fn render_edits_offscreen() {
     }
     println!("Boot ended after {boot} frames");
     frames(&mut app, 10);
+    // Nothing in front of the pieces under review: the gun's camera is off.
+    {
+        let world = app.world_mut();
+        let mut q = world.query_filtered::<&mut Camera, With<ViewmodelCamera>>();
+        for mut camera in q.iter_mut(world) {
+            camera.is_active = false;
+        }
+    }
     clear_pieces(app.world_mut());
     // Park the player out of the way, looking at nothing in particular.
     let p = player(&mut app);
@@ -263,5 +271,8 @@ fn render_edits_offscreen() {
     let h = cell(8, 5, 0).base_center();
     look_from(&mut app, h + Vec3::new(-2.0, 5.0, 9.0), h + Vec3::new(-1.0, 1.0, 0.0));
     capture(&mut app, out.join("09-half-ramps-and-floors.png"));
+    // The turned half ramp from its low side (it rises toward -X).
+    look_from(&mut app, h + Vec3::new(12.0, 4.0, 7.0), h + Vec3::new(3.0, 1.2, 0.5));
+    capture(&mut app, out.join("10-half-ramp-turned.png"));
     println!("wrote PNGs to {}", out.display());
 }

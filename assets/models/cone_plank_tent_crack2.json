@@ -3,12 +3,12 @@
   "kind": "cone",
   "source": "art/blender/assets/pieces.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 662,
+  "triangles": 670,
   "triangle_budget": 700,
   "bounds": {
     "min": [
       -1.995,
-      0.0,
+      -0.004,
       -1.995
     ],
     "max": [
@@ -23,7 +23,7 @@
       "bounds": {
         "min": [
           -1.995,
-          0.0,
+          -0.004,
           -1.995
         ],
         "max": [
@@ -32,7 +32,7 @@
           1.995
         ]
       },
-      "triangles": 662,
+      "triangles": 670,
       "colors": [
         "nail_head",
         "plank",
