@@ -61,10 +61,12 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     let time = globals.time * barrier.reveal.w;
     let px = max(fwidth(u), 1e-4);
 
-    // A translucent sheet with soft vertical light bands drifting sideways.
+    // A translucent sheet with soft vertical light bands drifting sideways,
+    // clear where seen face on and glowing where seen edge on (T11).
     let ripple = sin(v * 0.9 - time * 1.2) * 0.35;
     let bands = 0.5 + 0.5 * sin(u * 1.9 + ripple * 2.0 + time * 0.5);
-    let sheet = 0.45 + 0.55 * bands * bands;
+    let edge_on = pow(1.0 - abs(dot(n, normalize(eye - p))), 2.0);
+    let sheet = (0.45 + 0.55 * bands * bands) * (0.55 + 1.6 * edge_on);
 
     // Thin bright wavy flow lines running up the curtain.
     let pitch = 1.7;

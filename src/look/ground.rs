@@ -59,6 +59,10 @@ pub const GRASS_STROKE_TILE: f32 = 3.0;
 /// World size (m) of one patch-noise tile (patches a few metres across).
 pub const GRASS_PATCH_TILE: f32 = 26.0;
 
+/// The green of the grid lines' glow: a light, bright leaf green, sampled
+/// from the halo round the painted grid lines (T09's foreground).
+pub const GRID_GLOW: Color = Color::srgb(0.62, 1.0, 0.5);
+
 /// Toon-lit ground with the world-space build grid.
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 #[uniform(0, GroundUniform)]
@@ -66,11 +70,14 @@ pub const GRASS_PATCH_TILE: f32 = 26.0;
 pub struct GroundMaterial {
     /// Multiplies the mesh's vertex colours.
     pub base_color: Color,
-    /// The grid lines' colour.
+    /// The grid lines' bright core colour.
     pub grid_color: Color,
+    /// The soft glow around each line (additive): the targets' lines are a
+    /// pale core in a green halo (T01, T03, T09, T11).
+    pub glow_color: Color,
     /// How strongly lines replace the grass near the camera (0 = no grid).
     pub grid_strength: f32,
-    /// Extra additive glow around each line.
+    /// Strength of the additive glow around each line.
     pub glow_strength: f32,
     /// Grid pitch (m).
     pub cell: f32,
@@ -113,19 +120,21 @@ pub struct GroundMaterial {
 
 impl Default for GroundMaterial {
     /// The build grid over the arena: 4 m cells aligned with the build grid,
-    /// in the palette's pale grid-line colour.
+    /// faint glowing green lines (T01, T09): a pale mint core in the
+    /// palette's grid-line colour inside a soft green glow.
     fn default() -> Self {
         Self {
             base_color: Color::WHITE,
             grid_color: crate::palette::cartoon::GRID_LINE,
-            grid_strength: 0.26,
-            glow_strength: 0.08,
+            glow_color: GRID_GLOW,
+            grid_strength: 0.3,
+            glow_strength: 0.2,
             cell: CELL_SIZE,
             origin: Vec2::splat(-ARENA_HALF),
             grid_min: Vec2::splat(-ARENA_HALF),
             grid_max: Vec2::splat(ARENA_HALF),
             line_half_width: 0.016,
-            glow_width: 0.12,
+            glow_width: 0.15,
             fade_start: 12.0,
             fade_end: 40.0,
             detail: Some(GRASS_DETAIL),
@@ -175,6 +184,8 @@ pub struct GroundUniform {
     base_color: Vec4,
     /// rgb: line colour, w: line strength.
     grid_color: Vec4,
+    /// rgb: glow colour.
+    glow_color: Vec4,
     key_direction: Vec4,
     key_color: Vec4,
     shadow_tint: Vec4,
@@ -212,10 +223,12 @@ impl From<&GroundMaterial> for GroundUniform {
     fn from(m: &GroundMaterial) -> Self {
         let base = m.base_color.to_linear();
         let grid = m.grid_color.to_linear();
+        let glow = m.glow_color.to_linear();
         let l = &m.lighting;
         Self {
             base_color: Vec4::new(base.red, base.green, base.blue, 1.0),
             grid_color: Vec4::new(grid.red, grid.green, grid.blue, m.grid_strength),
+            glow_color: Vec4::new(glow.red, glow.green, glow.blue, 1.0),
             key_direction: l.key_direction,
             key_color: l.key_color,
             shadow_tint: l.shadow_tint,

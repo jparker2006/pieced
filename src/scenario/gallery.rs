@@ -23,6 +23,18 @@
 //! in (T03 8 m, T04 4 m, T05 5 m, T06 6 m, T07 4.5 m, T08 5 m) and crouches the
 //! player in those views; round 2 brought T06 to 5.2 m. The distances are
 //! one-line changes in the table.
+//!
+//! Every target also frames its shot with set dressing: a big tree at an edge,
+//! bushes, rocks and stumps near the camera. Round 3 moved T01, T03, T04, T05
+//! and T11 to spots near the arena's edge where the island's margin falls at the
+//! frame's edge, and hand-placed trees, rocks and stumps there
+//! (`arena::visuals::scenery`'s framing models, low bushes just inside the edge
+//! and the knoll under T10's camera; a scenery test holds each view to its
+//! framing): T01 from the west edge, T03 by the north edge, T04 from the
+//! south-east, T05 in the north-west with the knight 3.6 m out in front of the
+//! corner's arena rock (as T05 paints him), and T11 on the east lip looking
+//! north at the cliff where the island steps back out. T03 captures the bolt
+//! as it reaches him, so its burst lands on his chest.
 
 use super::{
     Director, DirectorStatus, ScenarioClock, capture, player_entity, teleport, with_intent,
@@ -329,18 +341,25 @@ pub fn views() -> Vec<GalleryView> {
     };
     let fire = vec![(FIRE_AT, Act::Fire)];
 
-    // T03: across the arena toward the station (upper left), the knight 8 m
-    // out running to the left and toward us, a rock right of him.
-    let t03_feet = Vec3::new(-14.0, 0.0, 14.0);
+    // T01: from the west edge, looking north up the arena: the margin's big
+    // tree, a rock and a stump at the left of the shot, low bushes at its
+    // foot (`scenery::FRAMING`, `EDGE_COVER`), the knight 20 m out.
+    let t01_feet = Vec3::new(-19.5, 0.0, 14.0);
+    // T03: by the north edge, across the arena toward the station (upper
+    // left), the knight 8 m out running to the left and toward us; a ramp
+    // against a wall at the left, the north margin's tree above it.
+    let t03_feet = Vec3::new(-3.5, 0.0, -12.5);
     let t03_knight = out(t03_feet, 36.0, 8.0);
-    // T04: a built platform on the left, the knight 4 m out in front of it,
-    // the station upper right. The pellets that miss him fly on clear of the
-    // arena's cover.
-    let t04_feet = Vec3::new(-2.15, 0.0, 22.95);
-    let t04_knight = out(t04_feet, -10.0, 4.0);
-    // T05: the knight 5 m out on open ground, a wall close on the right.
-    let t05_feet = Vec3::new(4.0, 0.0, 19.0);
-    let t05_knight = out(t05_feet, 6.0, 5.0);
+    // T04: from the south-east, a built fort on the left, the knight 4 m out
+    // in front of it, the station upper right, a tree and a stump at the
+    // right edge. The pellets that miss him fly on clear of the arena's cover.
+    let t04_feet = Vec3::new(21.2, 0.0, 21.2);
+    let t04_knight = out(t04_feet, -20.0, 4.0);
+    // T05: in the north-west, the knight 3.6 m out in front of the corner's
+    // big rock (the arena prop at (-21, -20.5)), the margin's tree at the
+    // left, a wall with a ramp close on the right.
+    let t05_feet = Vec3::new(-20.2, 0.0, -14.6);
+    let t05_knight = out(t05_feet, 1.0, 3.6);
     // T06: the knight dead ahead at 5.2 m, a ramp against a wall on the left,
     // the station upper left.
     let t06_feet = Vec3::new(-6.5, 0.0, 12.0);
@@ -364,17 +383,17 @@ pub fn views() -> Vec<GalleryView> {
             id: "T01",
             name: "T01-spawn-vista",
             title: "Spawn vista",
-            feet: spawn,
+            feet: t01_feet,
             crouch: false,
             aim: Aim::Look {
-                yaw: 0.0,
+                yaw: deg(5.0),
                 pitch: deg(-5.0),
             },
             framing: Framing::Eye,
             tool: RIFLE,
             inspect: false,
             knight: Some(KnightSpot {
-                feet: Vec3::new(2.0, 0.0, -6.0),
+                feet: Vec3::new(-20.5, 0.0, -5.5),
                 motion: KnightMotion::Idle,
                 hp: 100.0,
                 shield: 100.0,
@@ -430,17 +449,18 @@ pub fn views() -> Vec<GalleryView> {
                 shield: 0.0,
                 screen: target_screen(590.0, 490.0),
             }),
-            // A ramp rising left against a wall at the left edge; a wall end
-            // and a raised floor at the right.
+            // A ramp rising against a wall at the left edge; a raised floor
+            // on a wall beyond him at the right.
             pieces: vec![
-                wall(2, 7, 0, North),
-                ramp(2, 7, 0, West),
-                wall(4, 9, 0, South),
-                wall(5, 9, 0, East),
-                floor(5, 9, 1),
+                wall(5, 0, 0, East),
+                ramp(5, 0, 0, East),
+                wall(8, 1, 0, South),
+                floor(8, 1, 1),
             ],
             script: fire.clone(),
-            moment: Moment::AfterShot(2),
+            // The bolt just reaching him: its starburst head on his chest
+            // with the impact, its trail streaming back to the gun.
+            moment: Moment::AfterShot(3),
             expect: Expect::Hit,
         },
         GalleryView {
@@ -467,12 +487,13 @@ pub fn views() -> Vec<GalleryView> {
                 shield: 0.0,
                 screen: target_screen(600.0, 520.0),
             }),
-            // Two walls round a ramp, floored over: the platform on the left.
+            // Two walls round a ramp, floored over: the fort behind him on
+            // the left.
             pieces: vec![
-                wall(4, 9, 0, West),
-                wall(4, 9, 0, North),
-                ramp(4, 9, 0, North),
-                floor(4, 9, 1),
+                wall(9, 9, 0, North),
+                wall(9, 9, 0, West),
+                ramp(9, 9, 0, North),
+                floor(9, 9, 1),
             ],
             script: fire.clone(),
             moment: Moment::AfterShot(2),
@@ -481,7 +502,7 @@ pub fn views() -> Vec<GalleryView> {
         GalleryView {
             id: "T05",
             name: "T05-knight-hit",
-            title: "Knight body hit at about 5 m: wide eyes, damage number",
+            title: "Knight body hit at about 3.6 m: wide eyes, damage number",
             feet: t05_feet,
             crouch: true,
             // High on his chest, where the target's starburst is.
@@ -502,7 +523,7 @@ pub fn views() -> Vec<GalleryView> {
                 screen: target_screen(690.0, 450.0),
             }),
             // A wall with a ramp up to it, close on the right.
-            pieces: vec![wall(8, 9, 0, South), ramp(8, 10, 0, North)],
+            pieces: vec![wall(2, 1, 0, North), ramp(2, 1, 0, North)],
             script: fire.clone(),
             moment: Moment::AfterShot(3),
             expect: Expect::Hit,
@@ -667,21 +688,22 @@ pub fn views() -> Vec<GalleryView> {
             name: "T11-island-edge",
             title: "The island edge and barrier",
             // Beside the east barrier where the grass ends at a lip just past
-            // it (`scenery::LIP_Z`), looking north-east along the edge and out
-            // over the void: the lip and the curving barrier run to the
-            // rounded cliff where the island steps back out, a wall with a
-            // ramp rising to it on the left, the far view on the right.
-            feet: Vec3::new(22.9, 0.0, 4.0),
+            // it (`scenery::LIP_Z`), looking north along the edge and out over
+            // the void: the lip, its overhanging grass and the barrier run to
+            // the cliff where the island steps back out, the station over it;
+            // a wall with a ramp rising to it and a big tree on the left, low
+            // bushes at the foot of the shot.
+            feet: Vec3::new(23.2, 0.0, 0.0),
             crouch: false,
             aim: Aim::Look {
-                yaw: deg(-42.0),
+                yaw: deg(-30.0),
                 pitch: deg(-12.0),
             },
             framing: Framing::Eye,
             tool: RIFLE,
             inspect: false,
             knight: None,
-            pieces: vec![wall(11, 3, 0, South), ramp(11, 4, 0, West)],
+            pieces: vec![wall(11, 1, 0, South), ramp(11, 2, 0, West)],
             script: vec![],
             moment: Moment::Settled(SETTLE),
             expect: Expect::Still,

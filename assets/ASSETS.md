@@ -39,15 +39,15 @@ from `art/palette.json`, sampled from the target images by
 | `models/pump.json` | `art/blender/assets/guns.py` | Sidecar: `MuzzleTip`, `CrystalSocket`, `GripR`, `GripL` (on `PumpGrip`), `Sight`, `SightFront` |
 | `models/rifle.glb` | `art/blender/assets/guns.py` | Rifle viewmodel: brass, dark wood, glass `Chamber` with a blue `Crystal`, energy-cell `Mag` |
 | `models/rifle.json` | `art/blender/assets/guns.py` | Sidecar: `MuzzleTip`, `CrystalSocket`, `GripR`, `GripL`, `Sight`, `SightFront` |
-| `models/rock_a.glb` | `art/blender/assets/props.py` | Arena rock, 1.25 m, crouch cover (D29) |
+| `models/rock_a.glb` | `art/blender/assets/props.py` | Arena rock, 1.25 m, crouch cover (D29): a smooth, rounded boulder in broad facets |
 | `models/rock_a.json` | `art/blender/assets/props.py` | Sidecar |
 | `models/rock_b.glb` | `art/blender/assets/props.py` | Arena rock with a buddy rock, 1.05 m (D29) |
 | `models/rock_b.json` | `art/blender/assets/props.py` | Sidecar |
-| `models/stump_a.glb` | `art/blender/assets/props.py` | Arena stump, 0.56 m, jumpable (D29) |
+| `models/stump_a.glb` | `art/blender/assets/props.py` | Arena stump, 0.56 m, jumpable (D29): grooved bark, four flared roots, a ring top |
 | `models/stump_a.json` | `art/blender/assets/props.py` | Sidecar |
-| `models/tree_a.glb` | `art/blender/assets/props.py` | Puffy island-margin tree, about 5.7 m |
+| `models/tree_a.glb` | `art/blender/assets/props.py` | Round cartoon tree, about 6.0 m: a forked, rooted trunk under a lobed crown of cloud puffs |
 | `models/tree_a.json` | `art/blender/assets/props.py` | Sidecar |
-| `models/tree_b.glb` | `art/blender/assets/props.py` | Broad, round island-margin tree, about 5.3 m |
+| `models/tree_b.glb` | `art/blender/assets/props.py` | Big, broad framing tree, about 6.3 m: a leaning trunk with a long limb under two masses of cloud puffs |
 | `models/tree_b.json` | `art/blender/assets/props.py` | Sidecar |
 | `models/brick_chunk.glb` | `art/blender/assets/pieces.py` | Wall debris: a broken brick with a mortar crumb, about 0.3 m |
 | `models/brick_chunk.json` | `art/blender/assets/pieces.py` | Sidecar |

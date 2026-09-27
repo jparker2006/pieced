@@ -258,7 +258,7 @@ fn a_gallery_run_captures_every_view_on_its_moment() {
 const KNIGHT_FRAMING: [(&str, f32, f32); 6] = [
     ("T03", 8.0, 0.33),
     ("T04", 4.0, 0.6),
-    ("T05", 5.0, 0.5),
+    ("T05", 3.6, 0.68),
     ("T06", 5.2, 0.48),
     ("T07", 4.5, 0.55),
     ("T08", 5.0, 0.5),
