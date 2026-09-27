@@ -24,7 +24,7 @@ The goal is complete only when gates **W0–W10** are all **PASS**, each with re
 3. `docs/M2-SPEC.md`, `docs/M2-GOAL.md` and `docs/evidence/M2-report.md`: the look, the gates that must stay green, and M2's open items (S2, S3, closing the report).
 4. `docs/research/bot-ai.md` (grunt AI and fairness), `docs/research/fortnite-building.md` (the build grid the grunts path over), `docs/research/game-feel.md`.
 5. The seams the knights touch: `src/shared.rs` (`PlayerIntent`, `Character`, `Health`, `AppState`, `Layer`), `src/dummy.rs`, `src/knight.rs`, `src/combat.rs`, `src/input.rs`, `src/building/**`, `src/far/**`, `src/hud/**`, `src/menu/**`, `src/telemetry.rs`.
-6. `docs/design/concepts/M3-C*.png`: the castle concepts. Jake's pick is recorded in the report. They're local only; never commit them.
+6. `docs/design/concepts/M3-C4-citadel-mix.png`: the castle target (D94: C3 base with C2 traits; `M3-C2` and `M3-C3` are its sources). It's local only; never commit it.
 
 ## Environment facts
 
@@ -64,7 +64,7 @@ The goal is complete only when gates **W0–W10** are all **PASS**, each with re
      - **B, the orb and the wand:** projectile, pools, look, wind-up, the `wand.py` model and socket, orb sounds, the damage arrow, the off-screen warning.
      - **C, the run:** `GameMode` wiring, `--practice`, 3 grunts poofing in, player death, the plain results line and restart, pump knockback.
   3. Merge, build `pieced-play`, **play-test 1**.
-- **Chunk 4, castle and sky**, starts in the background alongside chunk 1, once Jake's concept pick is recorded: `far.py` castle, lanterns, glow, shooting stars, motes, shimmer, the budgets and motion tests, and offscreen castle views next to the concept. It touches only `far/`, `art/blender/`, the far tests and the look warm-up list.
+- **Chunk 4, castle and sky**, starts in the background alongside chunk 1 (the target is D94's `M3-C4`): `far.py` castle, lanterns, glow, shooting stars, motes, shimmer, the budgets and motion tests, and offscreen castle views next to the concept. It touches only `far/`, `art/blender/`, the far tests and the look warm-up list.
 - **Chunk 2, endless waves:** the wave director, the break, potions, score, best run, `runs.jsonl`, the wave HUD, the death beat, the results screen and Go again. Up to two parallel slices: rules and state, then HUD and results UI. **Play-test 2.**
 - **Chunk 3, ships and the void:** the drop ship model, flight, telegraph, beam, landing and pacing, plus barrier pass-through, falling and the void bonus. **Play-test 3.** Play-test 4 (the castle look check) goes to Jake whenever chunk 4 is merged.
 - **Chunk 5, menu and controls:** the main menu, Practice from the menu, Quit to menu, the Controls page, rebinding, bound-key hints, and the launch measured to the menu. **Play-test 5, the final verdict.**
@@ -103,7 +103,7 @@ The goal is complete only when gates **W0–W10** are all **PASS**, each with re
 | **W2 Endless waves** | Chunk 2's wave, potion, score, best-run, `runs.jsonl` and results tests pass, and play-test 2's answers are recorded | `tests/` output plus Jake's quoted answers |
 | **W3 Fair knights** | The seeded fairness suite (20 simulated waves 1–10, 8 knights, a scripted stand-in player) holds every rule on the final commit, with **zero unfair deaths** | `tests/` output with the counts |
 | **W4 Ships and the void** | Chunk 3's ship, beam, pacing, knockback and void tests pass, and play-test 3's answers are recorded | `tests/` output plus Jake's quoted answers |
-| **W5 Castle and sky** | Jake picked a concept; the sky motion and far budget tests pass; Jake scores the spawn-vista and castle-up views **≥ 4** against the concept | Offscreen renders in `docs/evidence/m3/`, Jake's scores quoted |
+| **W5 Castle and sky** | The castle follows the D94 target; the sky motion and far budget tests pass; Jake scores the spawn-vista and castle-up views **≥ 4** against the concept | Offscreen renders in `docs/evidence/m3/`, Jake's scores quoted |
 | **W6 Menu and controls** | Chunk 5's menu and rebinding tests pass | `tests/` output |
 | **W7 Performance** | A logged session that reaches **wave ≥ 6** qualifies (≥ 5 min of counted play, battery for every sample, Low Power Mode on, window visible, release, Battery preset) and passes the S2 bar (mean 16.4–17.0 ms, 0 frames > 25 ms, ≥ 99% < 18 ms); the full-wave budget tests pass | The session folder's `session.json` plus the wave from `runs.jsonl`, and `tests/` output |
 | **W8 Launch** | 3 warm launches in a row < 5.0 s to a clickable menu, and Play → controllable < 1 s | `PIECED_LAUNCH_MS … warm` and `PIECED_PLAY_MS` from Jake's session logs |

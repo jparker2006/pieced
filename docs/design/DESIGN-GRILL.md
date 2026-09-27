@@ -196,13 +196,19 @@ Questions only the spec needs and Round 8 doesn't answer. Context from reading t
 | D92 | **Main menu (Q91).** | <ul><li>The game opens on the PIECED logo over the live island and sky, with the camera slowly orbiting.</li><li>Buttons: **Waves** (showing the best run), **Practice**, **Settings** and **Quit**, in the pause menu's cartoon button style.</li><li>Esc in a run still pauses.</li></ul> |
 | D93 | **Key rebinding (Q92).** | <ul><li>A Controls page in Settings.</li><li>Every `PlayerIntent` action can bind to a key or the click; trackpad look is fixed.</li><li>Click an action, then press a key. A conflict swaps the two bindings. "Reset to defaults" is there.</li><li>Bindings save with the other settings.</li><li>The HUD and menus show the bound keys (the break's "Enter to start", edit hints and so on).</li></ul> |
 
+**Castle pick (Q93).** Jake, after seeing `M3-C1`–`C3`: "a mix of c2 and c3, c3 my fav tho".
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D94 | **The castle target is `concepts/M3-C4-citadel-mix.png` (Q93).** | C3's starlit citadel is the base: a vast dark-indigo castle city on a jagged floating rock with waterfalls, star-tipped needle spires, a great stained-glass hall glowing gold and teal, hundreds of warm windows and swarms of lanterns, under a night galaxy with teal-violet aurora ribbons and shooting stars. From C2: a taller centre stacked like a wedding cake of cone-roofed towers, a **glowing golden ring of runes orbiting the castle**, streams of lanterns rising into the sky, and a warm golden aura. C4 was generated from C3 and C2 to show the mix, and it's the W5 target. C3's aurora glow on the galaxy joins D64's sky list. |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**
   - M2 main is `7f8d962` or later; S1 passes (round 3 mean 4.67), and S8 passes per D52.
   - Remaining for M2: S2 (from a logged battery play session, D53), the launch check, and closing the report (`docs/evidence/M2-report.md`).
   - `pieced-play` (`~/Library/Caches/pieced-target/pieced-play`) is built from `bb9c33a`.
-- **Done (2026-09-27):** Round 9 (D71–D93) is settled, and `docs/M3-SPEC.md`, `docs/M3-GOAL.md` and `docs/evidence/M3-report.md` are written. The castle concepts are `concepts/M3-C1`–`C3`; Jake's pick is recorded in the M3 report.
+- **Done (2026-09-27):** Round 9 (D71–D93) is settled, and `docs/M3-SPEC.md`, `docs/M3-GOAL.md` and `docs/evidence/M3-report.md` are written. The castle target is `concepts/M3-C4-citadel-mix.png` (D94).
 - **Next:** Jake launches M3 with the launcher line at the bottom of `docs/M3-GOAL.md`, ideally from a new session opened in `outputs/pieced`.
 - **Images (castle concepts, D67):** use Codex CLI, one image at a time:
   ```

@@ -22,7 +22,7 @@ Every number here names its source (session folder or test), the commit, and the
 
 ## Castle concept
 
-Jake's pick (D91): _pending._
+**`docs/design/concepts/M3-C4-citadel-mix.png`** (D94, 2026-09-27). Jake: "a mix of c2 and c3, c3 my fav tho". C3's starlit citadel is the base; C2 adds a taller stacked centre, an orbiting ring of golden runes, rising lantern streams and a warm golden aura. C4 was generated from C3 and C2 as the combined target. The concepts are local only (git-ignored).
 
 ## Play-tests
 

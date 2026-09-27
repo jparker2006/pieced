@@ -6,7 +6,7 @@
 - `docs/SPEC.md` (Milestone 1) and `docs/M2-SPEC.md` (Milestone 2): their gameplay, look and gates stay in force unless this spec changes them.
 - `docs/research/bot-ai.md`: the bot architecture, aim model and fairness rules the grunt follows.
 - `docs/research/fortnite-building.md`: the building the grunts path over.
-- `docs/design/concepts/`: `M3-C*` castle concepts (Jake picks one, D91). Local only, git-ignored.
+- `docs/design/concepts/M3-C4-citadel-mix.png`: the castle target (D94: C3's starlit citadel with C2's traits). Local only, git-ignored.
 
 ## Problem Statement
 
@@ -205,7 +205,7 @@ These are rules, and each one is tested headless:
 
 ### The castle and the sky (D64, D67, D91)
 
-- **The castle:** Jake picks one of the `M3-C*` concepts (D91). The station model (`far.py`) is rebuilt to match it, keeping its stained-glass heart and adding the Hogwarts traits:
+- **The castle:** the target is `M3-C4-citadel-mix.png` (D94). C3's starlit citadel is the base: a vast dark-indigo castle city on a jagged floating rock with waterfalls, star-tipped needle spires, and a great stained-glass hall glowing gold and teal. From C2 it takes a taller centre stacked like a wedding cake of towers, an orbiting ring of golden runes (one rotating emissive mesh), rising lantern streams and a warm golden aura. The station model (`far.py`) is rebuilt to match, keeping its stained-glass heart and the Hogwarts traits:
   - many towers with pointed cone roofs;
   - hundreds of warm, candlelit windows, as emissive faces in one shared material;
   - floating lanterns, as one instanced mesh or pooled halos, bobbing;
@@ -213,7 +213,8 @@ These are rules, and each one is tested headless:
 - **The sky:**
   - **shooting stars:** a streak across the sky every 8–20 s (seeded), from a small pool;
   - **drifting glowing motes:** soft specks floating around the arena and the far islands, a fixed pool of at most 64;
-  - **a galaxy shimmer:** a slow twinkle over the galaxy on a 4–8 s cycle.
+  - **a galaxy shimmer:** a slow twinkle over the galaxy on a 4–8 s cycle;
+  - **aurora ribbons:** soft teal-violet bands that drift slowly around the galaxy, as in C3 (D94).
 - **Budget:** the far layer may grow to **≤ 90k triangles, ≤ 18 opaque batches and ≤ 64 halos** (from 75k, 16 and 50). The `tests/far.rs` budget test is updated to match. Anything past that needs the performance gate to hold first.
 - **Motion tests:** the M2 motion tests keep passing, and new ones check that shooting stars fire and cross, motes drift within their volume, lanterns bob, and the shimmer varies over its period.
 - **Look check:** two offscreen views, the spawn vista and looking up at the castle (like T01 and T10), shown next to the chosen concept. Jake scores them in play-test 4.
@@ -334,7 +335,7 @@ These are rules, and each one is tested headless:
 | **W2** | Endless waves | Chunk 2's wave, score, best-run and results tests pass, and play-test 2's answers are recorded |
 | **W3** | Fair knights | The fairness suite passes on the final commit: zero unfair deaths, and every rule holds |
 | **W4** | Ships and the void | Chunk 3's ship, knockback and void tests pass, and play-test 3's answers are recorded |
-| **W5** | Castle and sky | Jake picked a concept; the motion and budget tests pass; Jake scores both castle views ≥ 4 against the concept in play-test 4 |
+| **W5** | Castle and sky | The castle follows the D94 target; the motion and budget tests pass; Jake scores both castle views ≥ 4 against the concept in play-test 4 |
 | **W6** | Menu and controls | Chunk 5's menu and rebinding tests pass |
 | **W7** | Performance | A logged session reaching **wave ≥ 6** qualifies and passes the S2 bar (battery, Low Power Mode on, window visible, ≥ 5 min of counted play); the full-wave budget tests pass |
 | **W8** | Launch | 3 warm launches in a row < 5.0 s to a clickable menu, printed in Jake's sessions; Play → controllable < 1 s |
