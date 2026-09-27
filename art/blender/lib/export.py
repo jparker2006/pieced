@@ -23,6 +23,7 @@ import os
 import bpy
 from mathutils import Matrix, Vector
 
+from . import ao as ao_lib
 from . import palette as pal
 from . import scene, shapes
 
@@ -143,9 +144,11 @@ def write_json(data, path):
         f.write("\n")
 
 
-def finish_meshes(root):
+def finish_meshes(root, ao=None):
     """Bakes palette tags to COLOR_0 and gives every mesh the shared export material.
 
+    With `ao` (an `ao.AoSettings`), also bakes ambient occlusion into COLOR_0's
+    alpha (1 = open, 0 = enclosed); without it the alpha stays 1 (UI renders).
     Returns {part name: [palette colour names used]}.
     """
     mat = pal.export_material()
@@ -158,4 +161,6 @@ def finish_meshes(root):
         obj.data.materials.append(mat)
         if not all(math.isfinite(c) for v in obj.data.vertices for c in v.co):
             raise ValueError(f"{obj.name}: non-finite vertex positions")
+    if ao is not None:
+        ao_lib.bake(root, ao)
     return used

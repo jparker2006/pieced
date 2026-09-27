@@ -54,8 +54,9 @@ pub use bevy_mod_outline::ATTRIBUTE_OUTLINE_NORMAL;
 
 pub const INK_SHADER_PATH: &str = "embedded://pieced/shaders/ink.wgsl";
 
-/// Outline width at the reference resolution, in pixels.
-pub const DEFAULT_WIDTH_PX: f32 = 1.5;
+/// Outline width at the reference resolution, in pixels: thick, confident
+/// cartoon ink (doubled from 1.5 px by M2 Amendment B, D47).
+pub const DEFAULT_WIDTH_PX: f32 = 3.0;
 /// Height of the reference render target: the Battery preset's 1.4 MP cap on
 /// the 15" Air's default 1710×1107 window (1470×956).
 pub const REFERENCE_HEIGHT_PX: f32 = 956.0;

@@ -34,6 +34,8 @@ pub struct PerfKnobs {
     pub particles: Option<u32>,
     pub skyrot: Option<bool>,
     pub blobs: Option<bool>,
+    /// FXAA on the final 3D image (`fxaa=on|off`).
+    pub fxaa: Option<bool>,
 }
 
 impl PerfKnobs {
@@ -74,6 +76,7 @@ impl PerfKnobs {
                 "particles" => knobs.particles = value.parse().ok(),
                 "skyrot" => knobs.skyrot = Some(on),
                 "blobs" => knobs.blobs = Some(on),
+                "fxaa" => knobs.fxaa = Some(on),
                 other => eprintln!("unknown knob '{other}'"),
             }
         }
@@ -159,6 +162,8 @@ mod tests {
         );
         // A bare key means on; bad values are ignored.
         assert_eq!(PerfKnobs::parse("far").far, Some(true));
+        assert_eq!(PerfKnobs::parse("fxaa=off").fxaa, Some(false));
+        assert_eq!(PerfKnobs::parse("msaa=4,fxaa").fxaa, Some(true));
         assert_eq!(PerfKnobs::parse("outline=wobbly").outline, None);
         assert_eq!(PerfKnobs::parse("particles=lots").particles, None);
     }

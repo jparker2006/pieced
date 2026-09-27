@@ -5,7 +5,8 @@
 
 With no asset names, builds every asset and every UI image. For each model it starts a clean scene,
 runs the family module's build function (art/blender/assets/*.py), bakes the
-palette tags into COLOR_0, checks the triangle budget, and writes:
+palette tags into COLOR_0 and ambient occlusion into its alpha (lib/ao.py),
+checks the triangle budget, and writes:
 
     <out>/<name>.glb      the model (default out: assets/models)
     <out>/<name>.json     the sidecar: part bounds, attach points (Bevy space)
@@ -73,7 +74,7 @@ def build_one(asset, source, opts):
     scene.reset()
     root = scene.make_root(asset.name)
     asset.build(root)
-    colors = export.finish_meshes(root)
+    colors = export.finish_meshes(root, ao=asset.ao_settings)
     side = export.sidecar(root, asset.kind, source, asset.budget, colors)
     if side["triangles"] > asset.budget:
         raise ValueError(f"{asset.name}: {side['triangles']} triangles is over the "
