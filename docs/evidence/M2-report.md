@@ -268,3 +268,12 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - moss rocks and bark stumps.
 
   Merged scenery on Battery is 116.7k triangles (130k cap), in 16 culled chunks with 6 shared materials. **All four beauty slices are merged.** The round 2 scoring board (offscreen renders of `caee4ca`) was sent to Jake.
+- **Handoff (2026-09-27, before compaction):**
+  - `main` is `3f39f6f`: all M2 build work (look, Amendment A mechanics, Amendment B beauty) is merged; 405 tests pass and `build-art --check` is clean. The release play binary is `~/Library/Caches/pieced-target/pieced-play` (built from `3f39f6f`).
+  - The round 2 scoring page is in the session scratchpad (`board-r2/pieced-scoring-round2.html`). To regenerate: `PIECED_GALLERY_OUT=<dir> cargo test --locked --test gallery_offscreen -- --ignored --nocapture`, then build a side-by-side page.
+  - **Jake's steps left:**
+    - S1 round 2 scores (≥ 4 on every view);
+    - the S2 battery run (charged, Low Power Mode on; `PIECED_BIN=<play binary> scripts/m2-gates.sh --only-perf` under `timed-run`, builds paused);
+    - S8, a 10-minute session with sound on.
+  - **After that:** re-run S3–S10 on the final commit, then final report.
+  - **Worktrees:** only `m2-baseline` remains.
