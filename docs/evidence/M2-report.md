@@ -10,10 +10,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
 |---|---|---|
 | S1 Target board (every view ≥ 4 from Jake) | FAIL (round 1) | Jake's scores 2026-09-26 on offscreen renders of `f5c36e7`: 11 of 12 views below 4 (mean 2.5); see the log |
 | S2 Performance (battery, Low Power Mode, full look) | PENDING | — |
-| S3 Launch < 5 s ×3 | PENDING | — |
-| S4 Motion | PARTIAL | `tests/far.rs` passes (galaxy angle, ships ≥ 5 m on their loops, islands bob, glass pulse) on `12550d4`. Native `sky_check` frames pending (go window) |
+| S3 Launch < 5 s ×3 | PASS (native, `f5c36e7`) | `evidence/m2-20260926-231552-launch{1,2,3}`: 2564, 1208, 1396 ms; every other run 1145–2224 ms. Release build, AC, Low Power Mode on. Re-run on the final commit |
+| S4 Motion | PASS (`f5c36e7`) | `tests/far.rs` plus native `evidence/m2-20260926-231552-sky`: 5 frames 5 s apart, 33.6/34.4/33.4/34.9% of sky pixels changed. Re-run on the final commit |
 | S5 Knight hitbox fit | PASS (on `12550d4`; re-run on the final commit) | `tests/knight.rs`. Worst part outside its hitbox: Helmet +4.6 cm (limit 5). Front fill ≤ 9.2 cm (limit 10) |
-| S6 Feedback timing | PARTIAL | `tests/spells.rs`: impact, hitmarker and damage number on the hit tick; bolt ≤ 2 frames, with the real `HudPlugin`. Native `fx_check` `scenario.s6` pending (go window) |
+| S6 Feedback timing | PASS (`f5c36e7`) | `tests/spells.rs` plus native `evidence/m2-20260926-231552-fx`: 13/13 hits with impact, hitmarker and damage number on the hit frame; 18/18 bolts on their hit point within 2 frames (worst 2). Re-run on the final commit |
 | S7 No regressions (G1, G3, G6, tests, clippy, fmt) | PARTIAL | `cargo test --locked` 331 passed, 0 failed; clippy `-D warnings` and `fmt --check` clean on `12550d4`. Native G1, G3 and G6 pending (go window) |
 | S8 Jake's feel verdict | PARTIAL | Positive on look and feel (2026-09-26, quoted in the log). Sessions were about 3 minutes, muted; sound unheard |
 | S10 Fortnite building and controls (Amendment A) | PASS (headless, on `4d3faed`; re-run on the final commit) | `tests/building.rs`: ramp rush ≥ 10 ramps at ≥ 97% speed in 8 variants, clean stop at the 12-level limit, double ramps (11 + 11), 90s tower, 1×1 box from every corner, ramp + wall. `tests/editing.rs` (16): every edit shape's collision, invalid selections, reset, HP kept, cone places, blocks and breaks. `tests/controls.rs` (5): hold-Shift ADS, W sprint, slide, inert right click. `tests/pieces.rs`: no asset allocation over 50 edits. M1 G4 building tests green |
@@ -225,3 +225,13 @@ Every number here names its run folder, the commit, and the power and Low Power 
   > "Scores: T01: 2; T02: 2; T03: 2; T04: 2; T05: 3; T06: 2; T07: 3; T08: 3; T09: 3; T10: 2; T11: 2; T12: 4"
 
   **FAIL:** only T12 reaches 4. Next: a design ("beauty") pass aimed at the gaps, then re-score. Per the brief, this goes to Jake with evidence and options, since S1 has now failed after two polish rounds.
+- 2026-09-26 23:15: **go window 1** (native, release `f5c36e7`, AC with the battery at 2%, Low Power Mode on, muted, window visible, builders paused; background load 6–14, high):
+  - **S3 PASS:** launches 2.56 / 1.21 / 1.40 s.
+  - **G3 PASS:** input-to-submit median 24.3 ms, p95 32.2 (n = 120).
+  - **G6 PASS:** rifle TTK 1.167–1.500 s ×6; pump max 100, no kill; wall soak 1.167 s.
+  - **S6 PASS:** 13/13 hits same frame; bolts ≤ 2 frames.
+  - **S4 PASS:** the sky changes about 34% per 5 s.
+  - **S2 (AC proxy, not the gate):** mean 16.72 ms, p99 18.68, max 165.6, 40 frames > 25 ms, 96.42% < 18 ms (`evidence/m2-20260926-231552-perf`).
+  - **Knob breakdown** (`evidence/perf-20260926-232342-*`, 45–60 s runs), frames > 25 ms: full 22, `outline=off` 31, `far=off` 17, `halos=off` 9, `blobs=off` 29, **`msaa=1` 1** (p99 18.57).
+
+  **MSAA 4× is the main spike source**, as in Phase 0. The shading builder is switching the Battery preset to MSAA off plus cheap edge smoothing. The native gallery was captured (`evidence/m2-20260926-231552-gallery`, pre-beauty-pass).
