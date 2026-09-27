@@ -729,8 +729,9 @@ def rifle_runes():
 
 
 def chamber_glass(y0, y1, zc, r, body, light, seg=24):
-    """The glass chamber: an open tube, `body` tinted with two long `light`
-    highlight streaks along its top (the targets' glass shine)."""
+    """The glass chamber: an open tube, `body` tinted, with a long `light`
+    highlight streak along its upper side facing the player (the targets'
+    glass shine)."""
     bm = palette.new_bmesh()
     u, v = axis_frame((0.0, 1.0, 0.0))
     rings = []
@@ -744,7 +745,8 @@ def chamber_glass(y0, y1, zc, r, body, light, seg=24):
         faces += shapes.bridge(bm, a, b)
     palette.tag(bm, faces, body)
     bm.normal_update()
-    shine = [f for f in faces if 0.55 < f.normal.z < 0.9 or 0.97 < f.normal.z]
+    # One streak along the upper side facing the player (+X), in the middle.
+    shine = [f for f in faces if 0.5 < f.normal.z < 0.9 and f.normal.x > 0.0]
     mid = [f for f in shine if abs(f.calc_center_median().y - (y0 + y1) / 2) < (y1 - y0) * 0.31]
     palette.tag(bm, mid, light)
     return finish(bm, None)
@@ -891,9 +893,11 @@ def pump_bell():
                (0.024, 0.043), (0.030, 0.039), (0.064, 0.049), (0.092, 0.067),
                (0.116, 0.090), (L - 0.003, 0.100), (L, 0.094), (L - 0.005, 0.083),
                (0.100, 0.064), (0.060, 0.036), (0.034, 0.024)]
-    colors = [BRASS, BRASS, BRASS, BRASS_DARK, BRASS_DARK] + [BRASS] * 9 + [IRON]
-    return [lathe(base, (0.0, -1.0, 0.0), profile, colors, seg=24, flutes=8,
-                  flute_depth=0.06, flute_from=0.05)]
+    # The rolled lip is polished bright, so the bell's rim reads from behind.
+    colors = ([BRASS, BRASS, BRASS, BRASS_DARK, BRASS_DARK] + [BRASS] * 4
+              + [BRASS_LIGHT, BRASS_LIGHT] + [BRASS] * 3 + [IRON])
+    return [lathe(base, (0.0, -1.0, 0.0), profile, colors, seg=28, flutes=14,
+                  flute_depth=0.045, flute_from=0.05)]
 
 
 def pump_rings(center):

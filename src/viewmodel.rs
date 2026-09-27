@@ -131,7 +131,7 @@ impl CrystalGlow {
 pub const CRYSTAL_EMISSIVE: f32 = 1.5;
 /// Each gun's glass chamber glows with its crystal, fainter: the chamber is
 /// lit from inside (T02, T04).
-pub const GLASS_EMISSIVE: f32 = 0.3;
+pub const GLASS_EMISSIVE: f32 = 0.2;
 /// Each wall of the glass chamber's opacity (its tint and shine streaks are
 /// vertex colours).
 pub const GLASS_ALPHA: f32 = 0.5;
@@ -1179,7 +1179,7 @@ fn animate_viewmodel(
             3.0
         } else {
             // The rifle's star, big as T03 paints it.
-            2.6
+            2.1
         };
     let build_kind = match tool {
         ActiveTool::Build(kind) => Some(*kind),

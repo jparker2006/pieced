@@ -103,9 +103,9 @@ pub const RIFLE_HEAD_ANGLE: f32 = 0.24;
 const RIFLE_HEAD_GLOW: f32 = 1.4;
 const RIFLE_RIBBON_GLOW: f32 = 2.2;
 /// Sparkles strewn along a rifle bolt's path (from the glow pool).
-pub const RIFLE_TRAIL_SPARKLES: usize = 30;
+pub const RIFLE_TRAIL_SPARKLES: usize = 36;
 /// The rifle's burst where a shot leaves the gun, per metre from the eye.
-const RIFLE_MUZZLE_BURST: f32 = 0.55;
+const RIFLE_MUZZLE_BURST: f32 = 0.4;
 /// Sparks in the pump's fan out of the bell (T04), and sparkles among them.
 pub const PUMP_FAN_SPARKS: usize = 56;
 pub const PUMP_FAN_SPARKLES: usize = 20;
@@ -365,8 +365,8 @@ fn make_assets(
         bolt_head: add(bolt_head()),
         flash_blue: toon.add(flat_glow(FLASH_BLUE)),
         arcs: [
-            std::array::from_fn(|k| add(lightning_arc(0xA0 + k as u64, BOLT_CORE, BOLT_BLUE))),
-            std::array::from_fn(|k| add(lightning_arc(0xB0 + k as u64, VIOLET_CORE, VIOLET))),
+            std::array::from_fn(|k| add(lightning_arc(0xA0 + k as u64, BOLT_BLUE, BOLT_DEEP))),
+            std::array::from_fn(|k| add(lightning_arc(0xB0 + k as u64, VIOLET, VIOLET_DEEP))),
         ],
         motes: [
             add(sparkle_cross(BOLT_BLUE, BOLT_CORE)),
@@ -1050,10 +1050,10 @@ impl Emitter<'_> {
             s.p.vel = around * side * 0.3 * d.min(4.0);
             s.p.drag = 3.0;
             s.p.life = self.rng.range(0.24, 0.48);
-            // Every fifth one is a big star (T03's trail of stars).
-            let big = if i % 5 == 2 { 2.2 } else { 1.0 };
+            // Every fourth one is a big star (T03's trail of stars).
+            let big = if i % 4 == 2 { 2.4 } else { 1.0 };
             s.p.size =
-                Vec3::splat(apparent_size(0.05, d, 0.042) * self.rng.range(0.7, 1.35) * big);
+                Vec3::splat(apparent_size(0.08, d, 0.065) * self.rng.range(0.7, 1.35) * big);
             s.p.birth_scale = 0.3;
             s.p.shrink_start = 0.5;
             s.face = Face::Billboard {
@@ -1069,7 +1069,7 @@ impl Emitter<'_> {
             } else {
                 1.5 / 60.0
             };
-            s.intensity = 1.9;
+            s.intensity = 2.4;
             self.glow(s);
         }
     }
@@ -1086,6 +1086,8 @@ impl Emitter<'_> {
             self.assets.streak_violet.clone(),
             self.assets.streak_gold.clone(),
             self.assets.streak_violet.clone(),
+            self.assets.streak_gold.clone(),
+            self.assets.streak_violet.clone(),
         ];
         let aim = dirs
             .iter()
@@ -1094,10 +1096,10 @@ impl Emitter<'_> {
             .normalize_or(Vec3::NEG_Z);
         for i in 0..PUMP_FAN_SPARKS {
             // Most follow a pellet; some fill the cone between them.
-            let base = if i % 4 == 3 { aim } else { dirs[i % dirs.len()] };
-            let d = self.rng.cone(base, if i % 4 == 3 { 0.22 } else { 0.12 });
+            let base = if i % 3 == 2 { aim } else { dirs[i % dirs.len()] };
+            let d = self.rng.cone(base, if i % 3 == 2 { 0.32 } else { 0.16 });
             let out = self.rng.range(0.1, 3.2);
-            let mut s = Spark::new(start + d * out, &meshes[i % 3]);
+            let mut s = Spark::new(start + d * out, &meshes[i % 5]);
             s.p.vel = d * self.rng.range(9.0, 20.0);
             s.p.drag = 6.0;
             s.p.life = self.rng.range(0.16, 0.3);
@@ -1116,7 +1118,7 @@ impl Emitter<'_> {
             self.assets.sparkle_white.clone(),
         ];
         for i in 0..PUMP_FAN_SPARKLES {
-            let d = self.rng.cone(aim, 0.3);
+            let d = self.rng.cone(aim, 0.38);
             let out = self.rng.range(0.3, 3.5);
             let roll = self.roll();
             let mut s = Spark::new(start + d * out, &twinkles[i % 3]);
@@ -1289,7 +1291,7 @@ impl Emitter<'_> {
         let roll = self.roll();
         let mut solid = Spark::new(point, &self.assets.pow);
         solid.material = Some(self.assets.flash_blue.clone());
-        solid.p.size = Vec3::splat(apparent_size(0.6, d, 0.05));
+        solid.p.size = Vec3::splat(apparent_size(0.85, d, 0.07));
         solid.p.life = 0.15;
         solid.p.birth_scale = 0.4;
         solid.p.shrink_start = 0.35;
@@ -1309,16 +1311,6 @@ impl Emitter<'_> {
             1.0,
             0.3,
             5.0,
-        );
-        let under = self.assets.burst_blue[1 - k].clone();
-        shown |= self.pop(
-            point,
-            under,
-            apparent_size(0.9, d, 0.075),
-            0.17,
-            0.85,
-            0.31,
-            -4.0,
         );
         let core = self.assets.sparkle_white.clone();
         shown |= self.pop(

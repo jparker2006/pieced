@@ -95,8 +95,8 @@ pub const RIFLE_HIP: HipPose = HipPose {
 /// flare and the chamber show (T04), and high enough that the chamber stays
 /// in view through the big kick.
 pub const PUMP_HIP: HipPose = HipPose {
-    anchor: Vec3::new(0.33, -0.115, -0.52),
-    euler: Vec3::new(0.10, 0.36, -0.12),
+    anchor: Vec3::new(0.34, -0.12, -0.52),
+    euler: Vec3::new(0.10, 0.42, -0.12),
 };
 
 /// The rifle's gallery-only "inspect" pose (target T02): about 30° further

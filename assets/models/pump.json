@@ -3,7 +3,7 @@
   "kind": "gun",
   "source": "art/blender/assets/guns.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 5632,
+  "triangles": 5752,
   "triangle_budget": 6000,
   "bounds": {
     "min": [
@@ -88,16 +88,16 @@
       "bounds": {
         "min": [
           -0.1,
-          0.1655,
+          0.168,
           -0.63
         ],
         "max": [
           0.1,
-          0.3655,
+          0.363,
           -0.5
         ]
       },
-      "triangles": 720,
+      "triangles": 840,
       "colors": [
         "gun_brass",
         "gun_brass_dark",

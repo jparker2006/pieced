@@ -34,10 +34,10 @@ use crate::{
 use bevy::{
     camera::visibility::RenderLayers, light::NotShadowCaster, mesh::MeshTag, prelude::*,
 };
-use std::f32::consts::TAU;
+use std::f32::consts::PI;
 
 /// Lightning arcs per chamber.
-pub const CHAMBER_ARCS: usize = 3;
+pub const CHAMBER_ARCS: usize = 4;
 /// Sparkle motes per chamber.
 pub const CHAMBER_MOTES: usize = 4;
 /// Arc shapes built per colour (the game rolls and flips them too).
@@ -45,12 +45,12 @@ pub const ARC_SHAPES: usize = 6;
 /// Seconds between crackles (each re-strikes every arc), shortest and longest.
 pub const CRACKLE: (f32, f32) = (0.045, 0.09);
 /// An arc's glow (the spell material's intensity) at full crystal glow.
-pub const ARC_GLOW: f32 = 3.0;
+pub const ARC_GLOW: f32 = 4.2;
 /// A mote's glow at full crystal glow.
 pub const MOTE_GLOW: f32 = 2.0;
 /// The inner glow's halo: size (m) and intensity at full crystal glow.
 pub const GLOW_HALO_SIZE: f32 = 0.16;
-pub const GLOW_HALO_INTENSITY: f32 = 0.8;
+pub const GLOW_HALO_INTENSITY: f32 = 0.55;
 /// Mote radius (m).
 pub const MOTE_SIZE: f32 = 0.011;
 /// The inner glow sits this far toward the side of the gun that faces the
@@ -91,13 +91,18 @@ pub fn arc_chance(level: f32) -> f32 {
     0.12 + 0.88 * fill
 }
 
+/// Arcs strike round the half of the glass facing the player (model -X), top
+/// to bottom: there they sort in front of the glass and add over it at full
+/// strength, instead of showing dimmed through its front wall.
+pub const ARC_ROLL: (f32, f32) = (PI - 1.3, PI + 1.3);
+
 /// A fresh strike for one arc at glow `level`.
 pub fn strike(rng: &mut FxRng, level: f32) -> ArcStrike {
     let lit = rng.f() < arc_chance(level);
     ArcStrike {
         lit,
         shape: rng.pick(ARC_SHAPES),
-        roll: rng.range(0.0, TAU),
+        roll: rng.range(ARC_ROLL.0, ARC_ROLL.1),
         flip: rng.f() < 0.5,
         scale: rng.range(0.85, 1.12),
         bright: rng.range(0.7, 1.0),

@@ -618,9 +618,10 @@ pub fn pump_muzzle_fan() -> Mesh {
 /// Beside one end of the crystal (+Z), it zig-zags round the inside of the
 /// glass through about half a turn, from the wall, bowing in toward the
 /// crystal and back out to the wall, with a short fork off its middle. Two
-/// crossed ribbons, so it reads from any side: `core` along the middle, fading
-/// to `edge` and to nothing at the sides, dimmer toward both ends. Seeded, so
-/// each seed is one arc shape; the game rolls, flips and swaps them.
+/// crossed thin ribbons, so it reads from any side: a white-hot filament down
+/// the middle in a band of `core`, fading to `edge` and to nothing at the
+/// sides, dimmer toward both ends. Seeded, so each seed is one arc shape; the
+/// game rolls, flips and swaps them.
 pub fn lightning_arc(seed: u64, core: Color, edge: Color) -> Mesh {
     let mut rng = FxRng::new(seed);
     let mut m = ModelBuilder::new();
@@ -633,7 +634,7 @@ pub fn lightning_arc(seed: u64, core: Color, edge: Color) -> Mesh {
         let a = a0 + span * t;
         // Hugging the glass at the ends, bowing in toward the crystal between.
         let r = 0.046 - 0.012 * (t * PI).sin() + rng.range(-0.005, 0.005);
-        let z = z0 + drift * t + rng.range(-0.008, 0.008);
+        let z = z0 + drift * t + rng.range(-0.011, 0.011);
         Vec3::new(r * a.cos(), r * a.sin(), z)
     };
     let mut main: Vec<Vec3> = (0..=steps)
@@ -669,16 +670,28 @@ pub fn lightning_arc(seed: u64, core: Color, edge: Color) -> Mesh {
             for side in [t.cross(radial).normalize_or(Vec3::Z), radial] {
                 let (wp, wq) = (side * w(i), side * w(i + 1));
                 let (ap, aq) = (fade(i), fade(i + 1));
-                let (cp, cq) = (lin(core, ap), lin(core, aq));
-                let (ep, eq) = (lin(edge, 0.0), lin(edge, 0.0));
+                // A crisp white-hot filament, a band of `core` round it, and
+                // a soft `edge` glow fading out at the sides.
+                let rows = [(-1.0, 0.0), (-0.4, 1.0), (0.0, 2.0), (0.4, 1.0), (1.0, 0.0)];
+                let color = |k: f32, a: f32| match k as u8 {
+                    2 => lin(Color::WHITE, a),
+                    1 => lin(core, a),
+                    _ => lin(edge, 0.0),
+                };
                 let normal = t.cross(side).normalize_or(Vec3::Y);
-                m.poly_colored(&[p - wp, p, q, q - wq], &[ep, cp, cq, eq], normal);
-                m.poly_colored(&[p, p + wp, q + wq, q], &[cp, ep, eq, cq], normal);
+                for pair in rows.windows(2) {
+                    let ((o0, k0), (o1, k1)) = (pair[0], pair[1]);
+                    m.poly_colored(
+                        &[p + wp * o0, p + wp * o1, q + wq * o1, q + wq * o0],
+                        &[color(k0, ap), color(k1, ap), color(k1, aq), color(k0, aq)],
+                        normal,
+                    );
+                }
             }
         }
     };
-    bolt(&mut m, &main, 0.0085);
-    bolt(&mut m, &fork, 0.0055);
+    bolt(&mut m, &main, 0.004);
+    bolt(&mut m, &fork, 0.003);
     m.build()
 }
 
