@@ -8,7 +8,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
 
 | Gate | Status | Evidence |
 |---|---|---|
-| S1 Target board (every view ≥ 4 from Jake) | PENDING | — |
+| S1 Target board (every view ≥ 4 from Jake) | FAIL (round 1) | Jake's scores 2026-09-26 on offscreen renders of `f5c36e7`: 11 of 12 views below 4 (mean 2.5); see the log |
 | S2 Performance (battery, Low Power Mode, full look) | PENDING | — |
 | S3 Launch < 5 s ×3 | PENDING | — |
 | S4 Motion | PARTIAL | `tests/far.rs` passes (galaxy angle, ships ≥ 5 m on their loops, islands bob, glass pulse) on `12550d4`. Native `sky_check` frames pending (go window) |
@@ -221,3 +221,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - fixed a bug where slipping 2 cm off a ramp's side capped your own ramp.
 
   **Amendment A is complete; S10 passes headless.**
+- 2026-09-26: **S1 scoring, round 1** (Jake, on offscreen renders of the 12 gallery views at `f5c36e7`, next to the targets), quoted:
+  > "Scores: T01: 2; T02: 2; T03: 2; T04: 2; T05: 3; T06: 2; T07: 3; T08: 3; T09: 3; T10: 2; T11: 2; T12: 4"
+
+  **FAIL:** only T12 reaches 4. Next: a design ("beauty") pass aimed at the gaps, then re-score. Per the brief, this goes to Jake with evidence and options, since S1 has now failed after two polish rounds.
