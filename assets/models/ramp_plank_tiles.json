@@ -3,7 +3,7 @@
   "kind": "ramp_tiles",
   "source": "art/blender/assets/pieces.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 420,
+  "triangles": 468,
   "triangle_budget": 800,
   "bounds": {
     "min": [
@@ -32,10 +32,13 @@
           2.0022
         ]
       },
-      "triangles": 210,
+      "triangles": 236,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "trunk"
       ]
@@ -54,10 +57,13 @@
           1.9888
         ]
       },
-      "triangles": 210,
+      "triangles": 232,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "trunk"
       ]

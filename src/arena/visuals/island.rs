@@ -1,21 +1,26 @@
-//! Spawns the floating island (client only): the grassy top with the build
-//! grid ([`GroundMaterial`]), the cliff skirt, grass tufts, flowers and
-//! pebbles (merged meshes from [`super::scenery`]), the barrier, and the
-//! Blender models standing on it: the solid arena props (D29, at
-//! [`ARENA_PROPS`], whose colliders `arena` spawns headless) and the margin's
-//! trees, big rocks and stumps. Models are toon-dressed with ink outlines and
-//! blob shadows. Near scenery only; the far view belongs to the sky slice.
+//! Spawns the floating island (client only): the painted grassy top with the
+//! build grid ([`GroundMaterial`]), the cliff skirt, grass tufts, flowers,
+//! pebbles and bushes (merged meshes from [`super::scenery`]), the cloud sea
+//! (unlit [`FarMaterial`], so the far knob hides it with the rest of the far
+//! layer), the barrier, and the Blender models standing on it: the solid
+//! arena props (D29, at [`ARENA_PROPS`], whose colliders `arena` spawns
+//! headless) and the margin's trees, big rocks and stumps. Models are
+//! toon-dressed with ink outlines and blob shadows. Everything is spawned
+//! once; nothing here runs per frame.
 
 use super::{
     PluggedInOnly,
     barrier::{self, BarrierMaterial},
     geo::Geo,
-    scenery::Island,
+    scenery::{ISLAND_TRIANGLE_BUDGET, Island},
 };
 use crate::{
     app::BootGate,
     arena::ARENA_PROPS,
-    look::{BlobShadow, GroundMaterial, Outline, ToonMaterial, preset_look, with_outline_normals},
+    look::{
+        BlobShadow, FarMaterial, GroundMaterial, Outline, ToonMaterial, preset_look,
+        with_outline_normals,
+    },
     models::{ModelLibrary, ModelsPlugin, spawn_model},
     tuning::Tuning,
 };
@@ -106,20 +111,27 @@ fn spawn_island(
     mut meshes: ResMut<Assets<Mesh>>,
     mut toon: ResMut<Assets<ToonMaterial>>,
     mut grounds: ResMut<Assets<GroundMaterial>>,
+    mut far: ResMut<Assets<FarMaterial>>,
     tuning: Res<Tuning>,
 ) {
     let island = Island::generate();
+    let triangles = island.triangles();
     info!(
-        "island: {} triangles of ground, cliffs and clutter, {} margin models",
-        island.triangles(),
+        "island: {triangles} triangles of ground, cliffs, clutter and clouds, {} margin models",
         island.decor.len()
     );
+    if triangles > ISLAND_TRIANGLE_BUDGET {
+        warn!("island: {triangles} triangles is over its budget of {ISLAND_TRIANGLE_BUDGET}");
+    }
     let ground = grounds.add(GroundMaterial::default());
     let cliffs = toon.add(ToonMaterial::vertex_colored());
     // Grass tufts and flowers are single triangles seen from both sides; their
     // normals point up so they shade like the grass they grow from.
     let grass = toon.add(ToonMaterial::vertex_colored().double_sided().with_rim(0.0));
     let pebbles = toon.add(ToonMaterial::vertex_colored().with_rim(0.0));
+    // Clouds are unlit and only lightly hazed: their vertex colours carry
+    // their soft shading, and they stay white against the galaxy.
+    let clouds = far.add(FarMaterial::default().with_haze(0.5));
 
     let Island {
         ground: top,
@@ -129,16 +141,26 @@ fn spawn_island(
         flowers,
         pebbles: stones,
         bushes,
+        prop_bushes,
+        clouds: cloud_sectors,
         decor,
     } = island;
     let (c, m) = (&mut commands, &mut *meshes);
     spawn_part(c, m, "Island top", top, &ground, false);
     spawn_part(c, m, "Island cliffs", skirt, &cliffs, true);
-    spawn_part(c, m, "Bushes", bushes, &cliffs, true);
-    spawn_part(c, m, "Flowers", flowers, &grass, false);
+    for chunk in bushes {
+        spawn_part(c, m, "Bushes", chunk, &cliffs, true);
+    }
+    spawn_part(c, m, "Prop bushes", prop_bushes, &cliffs, true);
     spawn_part(c, m, "Pebbles", stones, &pebbles, false);
+    for chunk in flowers {
+        spawn_part(c, m, "Flowers", chunk, &grass, false);
+    }
     for chunk in tufts {
         spawn_part(c, m, "Grass tufts", chunk, &grass, false);
+    }
+    for sector in cloud_sectors {
+        spawn_part(c, m, "Clouds", sector, &clouds, false);
     }
     let dense = preset_look(tuning.graphics.preset).dense_grass;
     let mut extras = Vec::new();

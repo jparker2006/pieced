@@ -1,10 +1,21 @@
 //! The floating island, generated in code (targets T01, T11): the grassy top
 //! (the 48 m arena square plus a margin ring), rounded cartoon cliffs dropping
-//! into space under its edge, low grass tufts, flowers and pebbles, and where
-//! the margin's trees, big rocks and stumps (Blender models) stand. Everything
-//! here is pure, deterministic CPU work ending in a few merged meshes and a
-//! list of model placements, so it is tested headless and costs almost nothing
-//! per frame. Only near scenery lives here; the sky slice owns the far view.
+//! into space under its edge, dense low grass tufts and white, yellow and pink
+//! flower clusters, pebbles, round bushes (on the margin and hugging the solid
+//! props), a ring of framing trees and the margin's other trees, big rocks and
+//! stumps (Blender models), and a sea of soft cartoon clouds under the rim and
+//! around the far islands (D48). Everything here is pure, deterministic CPU
+//! work ending in a few merged meshes and a list of model placements, so it is
+//! tested headless and costs nothing per frame. The sky slice owns the far
+//! view itself; the clouds only read its island layout.
+//!
+//! Triangle budget (Battery preset; see [`Island::triangles`]): at most
+//! [`ISLAND_TRIANGLE_BUDGET`] for the merged scenery, about 113k today (tufts
+//! about 38k, bushes about 31k, clouds about 22k, flowers about 15k, pebbles,
+//! ground and cliffs the rest), plus about 53 margin models (30 trees ≤ 1.5k
+//! each, rocks and stumps ≤ 300: about 51k). The Plugged-in preset adds about
+//! 18k triangles of extra tufts. All of it is static: merged meshes sharing
+//! six materials, split into chunks so the camera culls what it can't see.
 
 use super::geo::{Geo, Rgba, blob, fbm2, lin, mix, noise2, shade, smoothstep};
 use crate::{palette::cartoon, rng::Rng, shared::ARENA_HALF};
@@ -16,6 +27,17 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 pub const EDGE_CLEARANCE: f32 = 0.35;
 /// Tallest grass, flower or pebble allowed on the playable floor (m).
 pub const FLOOR_CLUTTER_MAX_HEIGHT: f32 = 0.26;
+/// Tallest bush allowed hugging a solid arena prop (m): below every prop's top,
+/// so the prop still reads as the cover it is.
+pub const PROP_BUSH_MAX_HEIGHT: f32 = 0.72;
+/// How far (m) a bush hugging a prop may reach past the prop's footprint.
+pub const PROP_BUSH_REACH: f32 = 0.45;
+/// The merged scenery's triangle budget on the Battery preset (models aside).
+pub const ISLAND_TRIANGLE_BUDGET: usize = 130_000;
+/// Side of the square the island's clutter is chunked over (m), and chunks per
+/// side: tufts and flowers are split into this grid so the camera culls them.
+const CHUNK_SPAN: f32 = 80.0;
+const CHUNKS: usize = 4;
 /// The island's edge is never closer than this to the arena (m): the lip in
 /// the middle of the close edge ([`LIP_Z`]), where the grass ends just past
 /// the barrier.
@@ -176,14 +198,22 @@ pub struct Island {
     pub ground: Geo,
     /// The rounded cliffs under the rim, tapering to a point far below.
     pub skirt: Geo,
-    /// Grass tufts, one soup per quadrant (Battery preset).
+    /// Grass tufts, one soup per chunk (Battery preset).
     pub tufts: Vec<Geo>,
-    /// Extra tufts for the Plugged-in preset, per quadrant.
+    /// Extra tufts for the Plugged-in preset, per chunk.
     pub dense_tufts: Vec<Geo>,
-    pub flowers: Geo,
+    /// White, yellow and pink flower clusters, per chunk.
+    pub flowers: Vec<Geo>,
     pub pebbles: Geo,
-    /// Round cartoon bushes on the margin (outlined).
-    pub bushes: Geo,
+    /// Round cartoon bushes on the margin (outlined), per chunk, so the
+    /// camera culls far chunks and their outline hulls.
+    pub bushes: Vec<Geo>,
+    /// Small bushes hugging the solid arena props' feet (outlined; no
+    /// collision, and never taller than the prop or far past its footprint).
+    pub prop_bushes: Geo,
+    /// Soft cartoon clouds below the rim and around the far islands (the far
+    /// layer's unlit material), per sector of the sky.
+    pub clouds: Vec<Geo>,
     /// Trees, big rocks and stumps on the margin.
     pub decor: Vec<Decor>,
 }
@@ -193,12 +223,14 @@ impl Island {
         let mut rng = Rng::new(0x15_1A_4D);
         let outline = outline();
         let decor = decor(&outline, &mut rng.fork(3));
-        let mut tufts = tufts(&outline, 2000, 0.45, &mut rng.fork(4));
+        let mut tufts = tufts(&outline, 5200, 0.55, &mut rng.fork(4));
         base_clumps(&mut tufts, &outline, &decor, &mut rng.fork(8));
         Island {
             ground: ground(&outline, &mut rng.fork(1)),
             skirt: skirt(&outline, &mut rng.fork(2)),
             bushes: bushes(&outline, &decor, &mut rng.fork(9)),
+            prop_bushes: prop_bushes(&mut rng.fork(10)),
+            clouds: clouds(&outline, &mut rng.fork(11)),
             decor,
             tufts,
             dense_tufts: tufts_dense(&outline, &mut rng.fork(5)),
@@ -209,17 +241,15 @@ impl Island {
 
     /// Triangles drawn on the Battery preset (models aside).
     pub fn triangles(&self) -> usize {
-        [
-            &self.ground,
-            &self.skirt,
-            &self.flowers,
-            &self.pebbles,
-            &self.bushes,
-        ]
-        .iter()
-        .map(|g| g.tri_count())
-        .sum::<usize>()
-            + self.tufts.iter().map(Geo::tri_count).sum::<usize>()
+        [&self.ground, &self.skirt, &self.pebbles, &self.prop_bushes]
+            .iter()
+            .map(|g| g.tri_count())
+            .sum::<usize>()
+            + [&self.tufts, &self.flowers, &self.bushes, &self.clouds]
+                .iter()
+                .flat_map(|v| v.iter())
+                .map(Geo::tri_count)
+                .sum::<usize>()
     }
 }
 
@@ -390,6 +420,23 @@ fn skirt(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
 /// Tree canopy radius at scale 1 (tree_a.json), and its trunk's root flare.
 const TREE_CANOPY: f32 = 2.0;
 const TREE_TRUNK: f32 = 1.1;
+/// The same for the broad, round tree_b (tree_b.json).
+const TREE_B_CANOPY: f32 = 2.45;
+const TREE_B_TRUNK: f32 = 1.2;
+
+/// Whether a margin model is a tree.
+fn is_tree(model: &str) -> bool {
+    model.starts_with("tree_")
+}
+
+/// A tree model's root flare radius at scale 1 (m).
+fn trunk_radius(model: &str) -> f32 {
+    if model == "tree_b" {
+        TREE_B_TRUNK
+    } else {
+        TREE_TRUNK
+    }
+}
 
 /// One kind of margin model and how it is scattered.
 struct DecorKind {
@@ -402,40 +449,96 @@ struct DecorKind {
     shadow: f32,
     /// Minimum spacing to other decor (m).
     spacing: f32,
+    /// A framing ring: stands within this many metres past its closest
+    /// allowed distance to the arena, so it lines the edge of the view from
+    /// anywhere inside (T01, T05, T09, T11).
+    ring: Option<f32>,
 }
 
-const DECOR: [DecorKind; 5] = [
+const DECOR: [DecorKind; 10] = [
+    // The framing ring first, so it gets the spots along the arena's edge:
+    // a few big trees (like the ones the targets paint at the edges of the
+    // view), then both tree shapes, mixed.
+    DecorKind {
+        model: "tree_b",
+        count: 6,
+        scale: (1.55, 1.85),
+        foot: TREE_B_CANOPY,
+        shadow: 2.3,
+        spacing: 7.5,
+        ring: Some(3.0),
+    },
     DecorKind {
         model: "tree_a",
-        count: 24,
+        count: 6,
+        scale: (1.5, 1.8),
+        foot: TREE_CANOPY,
+        shadow: 2.1,
+        spacing: 7.0,
+        ring: Some(3.0),
+    },
+    DecorKind {
+        model: "tree_b",
+        count: 12,
+        scale: (1.0, 1.3),
+        foot: TREE_B_CANOPY,
+        shadow: 2.2,
+        spacing: 5.6,
+        ring: Some(2.6),
+    },
+    DecorKind {
+        model: "tree_a",
+        count: 20,
+        scale: (1.05, 1.4),
+        foot: TREE_CANOPY,
+        shadow: 1.9,
+        spacing: 5.2,
+        ring: Some(2.6),
+    },
+    DecorKind {
+        model: "tree_a",
+        count: 12,
         scale: (0.85, 1.25),
         foot: TREE_CANOPY,
         shadow: 1.8,
         spacing: 5.5,
+        ring: None,
+    },
+    DecorKind {
+        model: "tree_b",
+        count: 8,
+        scale: (0.85, 1.2),
+        foot: TREE_B_CANOPY,
+        shadow: 2.1,
+        spacing: 6.0,
+        ring: None,
     },
     DecorKind {
         model: "rock_a",
-        count: 5,
+        count: 7,
         scale: (1.5, 2.2),
         foot: 0.95,
         shadow: 1.35,
         spacing: 3.5,
+        ring: None,
     },
     DecorKind {
         model: "rock_b",
-        count: 5,
+        count: 7,
         scale: (1.4, 2.0),
         foot: 1.07,
         shadow: 1.45,
         spacing: 3.5,
+        ring: None,
     },
     DecorKind {
         model: "stump_a",
-        count: 6,
+        count: 9,
         scale: (0.9, 1.3),
         foot: 0.64,
         shadow: 0.9,
         spacing: 2.5,
+        ring: None,
     },
     DecorKind {
         model: "tree_a",
@@ -444,6 +547,7 @@ const DECOR: [DecorKind; 5] = [
         foot: TREE_CANOPY,
         shadow: 1.7,
         spacing: 4.5,
+        ring: None,
     },
 ];
 
@@ -451,7 +555,7 @@ fn decor(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Decor> {
     let mut placed: Vec<Decor> = Vec::new();
     let reach = ARENA_HALF + BASE_MARGIN + 5.0;
     for kind in &DECOR {
-        let tree = kind.model == "tree_a";
+        let tree = is_tree(kind.model);
         let mut made = 0;
         let mut attempts = 0;
         while made < kind.count && attempts < kind.count * 400 {
@@ -462,15 +566,20 @@ fn decor(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Decor> {
             // Trees' canopies stay clear of walls on the arena edge; their
             // trunks, like rocks and stumps, sit well inside the rim.
             let (inner, rim_foot) = if tree {
-                (radius + EDGE_CLEARANCE, TREE_TRUNK * scale)
+                (radius + EDGE_CLEARANCE, trunk_radius(kind.model) * scale)
             } else {
                 (radius + 0.8, radius)
             };
-            if edge_distance(p.x, p.y) < inner || inside_rim(outline, p) < rim_foot + 0.9 {
+            let edge = edge_distance(p.x, p.y);
+            if edge < inner || inside_rim(outline, p) < rim_foot + 0.9 {
                 continue;
             }
-            // Trees gather in groves.
-            if tree && fbm2(p.x * 0.05, p.y * 0.05, 71) < 0.35 {
+            if let Some(band) = kind.ring {
+                if edge > inner + band {
+                    continue;
+                }
+            } else if tree && fbm2(p.x * 0.05, p.y * 0.05, 71) < 0.35 {
+                // Other trees gather in groves.
                 continue;
             }
             let crowded = placed.iter().any(|o| {
@@ -498,8 +607,18 @@ fn decor(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Decor> {
 // Clutter: grass tufts, flowers, pebbles (low, never solid)
 // ---------------------------------------------------------------------------
 
-fn quadrant(x: f32, z: f32) -> usize {
-    (x >= 0.0) as usize + 2 * (z >= 0.0) as usize
+/// The clutter chunk a ground point falls in ([`CHUNKS`] × [`CHUNKS`] over
+/// [`CHUNK_SPAN`] m, clamped at the sides).
+fn chunk(x: f32, z: f32) -> usize {
+    let cell = |v: f32| {
+        (((v + CHUNK_SPAN / 2.0) / (CHUNK_SPAN / CHUNKS as f32)).floor() as i32)
+            .clamp(0, CHUNKS as i32 - 1) as usize
+    };
+    cell(x) + CHUNKS * cell(z)
+}
+
+fn chunks() -> Vec<Geo> {
+    vec![Geo::default(); CHUNKS * CHUNKS]
 }
 
 /// A random point on the island top at least `rim_gap` inside the rim, and
@@ -519,32 +638,37 @@ fn island_point(outline: &[EdgeSample], rng: &mut Rng, rim_gap: f32) -> Option<(
     None
 }
 
-/// A cartoon grass clump: 3–5 pointed blades fanning out of one root.
+/// A chunky cartoon grass clump (T01, T09): four to seven wide, pointed
+/// blades fanning out of one dark root, their tips catching the light.
 fn tuft(geo: &mut Geo, at: Vec3, height: f32, rng: &mut Rng) {
-    let blades = 3 + (rng.next_u64() % 3) as usize;
-    let tip = lin(cartoon::TUFT);
-    let root = mix(tip, lin(cartoon::GRASS_SHADOW), 0.7);
+    let blades = 4 + (rng.next_u64() % 4) as usize;
+    let tip = mix(
+        lin(cartoon::TUFT),
+        lin(cartoon::GRASS_LIGHT),
+        rng.range(0.0, 0.45),
+    );
+    let root = mix(lin(cartoon::TUFT), lin(cartoon::GRASS_SHADOW), 1.0);
     let up = Vec3::Y;
     let spin = rng.range(0.0, TAU);
     for b in 0..blades {
         let a = spin + TAU * b as f32 / blades as f32 + rng.range(-0.3, 0.3);
         let out = Vec3::new(a.cos(), 0.0, a.sin());
         let side = out.cross(up);
-        let w = height * rng.range(0.28, 0.4);
-        let h = height * rng.range(0.7, 1.0);
-        let lean = out * h * rng.range(0.25, 0.55);
-        let base = at + out * w * 0.3;
+        let w = height * rng.range(0.42, 0.6);
+        let h = height * rng.range(0.65, 1.0);
+        let lean = out * h * rng.range(0.3, 0.6);
+        let base = at + out * w * 0.25;
         let top = base + lean + Vec3::Y * h;
         geo.tri_raw(
             [base - side * w * 0.5, base + side * w * 0.5, top],
             [up; 3],
-            [root, root, shade(tip, rng.range(0.98, 1.1))],
+            [root, root, shade(tip, rng.range(0.96, 1.12))],
         );
     }
 }
 
 fn tufts(outline: &[EdgeSample], count: usize, margin_share: f32, rng: &mut Rng) -> Vec<Geo> {
-    let mut chunks = vec![Geo::default(); 4];
+    let mut chunks = chunks();
     let mut made = 0;
     let mut attempts = 0;
     while made < count && attempts < count * 20 {
@@ -552,12 +676,19 @@ fn tufts(outline: &[EdgeSample], count: usize, margin_share: f32, rng: &mut Rng)
         let Some((p, on_floor)) = island_point(outline, rng, 0.4) else {
             continue;
         };
-        // Clumped: denser in patches.
+        // Clumped: denser in patches, and along the arena's edge and the
+        // island's rim, where the painted lawn grows thickest.
         let patch = smoothstep(0.42, 0.7, fbm2(p.x * 0.11, p.y * 0.11, 81));
-        let density = if on_floor {
-            0.12 + 0.75 * patch
+        let edge = if on_floor {
+            let to_edge = ARENA_HALF - p.x.abs().max(p.y.abs());
+            1.0 - smoothstep(0.0, 2.5, to_edge)
         } else {
-            margin_share + 0.5 * patch
+            1.0 - smoothstep(0.5, 3.0, inside_rim(outline, p))
+        };
+        let density = if on_floor {
+            0.3 + 0.6 * patch + 0.4 * edge
+        } else {
+            margin_share + 0.4 * patch + 0.3 * edge
         };
         if rng.next_f32() > density {
             continue;
@@ -568,14 +699,14 @@ fn tufts(outline: &[EdgeSample], count: usize, margin_share: f32, rng: &mut Rng)
             rng.range(0.2, 0.45)
         };
         let at = Vec3::new(p.x, 0.0, p.y);
-        tuft(&mut chunks[quadrant(p.x, p.y)], at, height, rng);
+        tuft(&mut chunks[chunk(p.x, p.y)], at, height, rng);
         made += 1;
     }
     chunks
 }
 
 fn tufts_dense(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
-    tufts(outline, 1800, 0.25, rng)
+    tufts(outline, 3200, 0.35, rng)
 }
 
 /// Clumps of grass around the foot of every solid prop and margin model, so
@@ -585,15 +716,15 @@ fn base_clumps(chunks: &mut [Geo], outline: &[EdgeSample], decor: &[Decor], rng:
         .iter()
         .map(|p| (p.position, p.kind.footprint_radius(), true));
     let margin = decor.iter().map(|d| {
-        let r = if d.model == "tree_a" {
-            TREE_TRUNK * d.transform.scale.x * 0.55
+        let r = if is_tree(d.model) {
+            trunk_radius(d.model) * d.transform.scale.x * 0.55
         } else {
             d.radius
         };
         (d.transform.translation, r, false)
     });
     for (at, radius, on_floor) in props.chain(margin) {
-        let n = 5 + (rng.next_u64() % 4) as usize;
+        let n = 8 + (rng.next_u64() % 5) as usize;
         for _ in 0..n {
             let a = rng.range(0.0, TAU);
             let r = radius * rng.range(0.85, 1.2);
@@ -609,15 +740,21 @@ fn base_clumps(chunks: &mut [Geo], outline: &[EdgeSample], decor: &[Decor], rng:
             } else {
                 rng.range(0.25, 0.5)
             };
-            tuft(&mut chunks[quadrant(p.x, p.z)], p, height, rng);
+            tuft(&mut chunks[chunk(p.x, p.z)], p, height, rng);
         }
     }
 }
 
-/// A round cartoon bush: a few overlapping faceted puffs.
+/// A round cartoon bush: a few overlapping faceted puffs, their upward faces
+/// blotched with the lighter, yellower foliage as the painted bushes are.
 fn bush(geo: &mut Geo, at: Vec3, size: f32, rng: &mut Rng) {
+    bush_of(geo, at, size, 3 + (rng.next_u64() % 2) as usize, rng);
+}
+
+fn bush_of(geo: &mut Geo, at: Vec3, size: f32, puffs: usize, rng: &mut Rng) {
     let leaf = lin(cartoon::FOLIAGE);
-    let puffs = 3 + (rng.next_u64() % 2) as usize;
+    let sun = lin(cartoon::FOLIAGE_LIGHT);
+    let seed = rng.next_u64() as u32;
     for k in 0..puffs {
         let r = size * if k == 0 { 1.0 } else { rng.range(0.6, 0.8) };
         let offset = if k == 0 {
@@ -636,93 +773,286 @@ fn bush(geo: &mut Geo, at: Vec3, size: f32, rng: &mut Rng) {
                 let v = Vec3::new(v.x, v.y.max(-0.55), v.z);
                 c + v * r * Vec3::new(1.0, 0.82, 1.0) * shape.range(0.93, 1.07)
             },
-            |n| shade(leaf, tone * (0.97 + 0.08 * n.y.max(0.0))),
+            |n| {
+                let c = shade(leaf, tone * (0.97 + 0.08 * n.y.max(0.0)));
+                let lit = n.y > 0.45 && noise2(n.x * 2.3 + k as f32 * 3.7, n.z * 2.3, seed) > 0.45;
+                if lit { mix(c, sun, 0.8) } else { c }
+            },
         );
     }
 }
 
-fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Geo {
-    let mut geo = Geo::default();
+fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Vec<Geo> {
+    let mut geo = chunks();
     let mut placed: Vec<(Vec2, f32)> = decor
         .iter()
-        .filter(|d| d.model != "tree_a")
+        .filter(|d| !is_tree(d.model))
         .map(|d| (d.transform.translation.xz(), d.radius))
         .collect();
     let reach = ARENA_HALF + BASE_MARGIN + 5.0;
     let mut made = 0;
     let mut attempts = 0;
-    while made < 34 && attempts < 20_000 {
+    while made < 110 && attempts < 60_000 {
         attempts += 1;
         let p = Vec2::new(rng.range(-reach, reach), rng.range(-reach, reach));
-        let size = rng.range(0.6, 1.0);
+        let size = rng.range(0.6, 1.1);
         let foot = size * 1.8;
-        if edge_distance(p.x, p.y) < foot + EDGE_CLEARANCE || inside_rim(outline, p) < foot + 0.3 {
+        let edge = edge_distance(p.x, p.y);
+        if edge < foot + EDGE_CLEARANCE || inside_rim(outline, p) < foot + 0.3 {
             continue;
         }
-        // Bushes gather at tree bases and along the rim.
-        let near_tree = decor
-            .iter()
-            .filter(|d| d.model == "tree_a")
-            .any(|d| d.transform.translation.xz().distance(p) < 3.2 * d.transform.scale.x);
+        // Bushes gather at tree and rock bases, along the rim, and in a
+        // loose hedge just beyond the arena's edge (T01, T11).
+        let near_tree = decor.iter().any(|d| {
+            let reach = if is_tree(d.model) {
+                3.2 * d.transform.scale.x
+            } else {
+                d.radius + 1.6
+            };
+            d.transform.translation.xz().distance(p) < reach
+        });
         let near_rim = inside_rim(outline, p) < foot + 2.0;
-        if !(near_tree || near_rim) {
+        let hedge = edge < foot + EDGE_CLEARANCE + 1.2;
+        if !(near_tree || near_rim || hedge) {
             continue;
         }
         if placed.iter().any(|(q, r)| q.distance(p) < r + foot) {
             continue;
         }
         placed.push((p, foot));
-        bush(&mut geo, Vec3::new(p.x, 0.0, p.y), size, rng);
+        bush(
+            &mut geo[chunk(p.x, p.y)],
+            Vec3::new(p.x, 0.0, p.y),
+            size,
+            rng,
+        );
         made += 1;
     }
     geo
 }
 
-/// A little white daisy with a gold centre, facing up just above the grass.
-fn daisy(geo: &mut Geo, at: Vec3, size: f32, rng: &mut Rng) {
-    let white = lin(cartoon::GLOVE_WHITE);
-    let gold = lin(cartoon::STAR_GOLD);
-    let up = Vec3::Y;
+/// A little five-petal flower just above the grass, tipped a little toward a
+/// random side so it catches the eye (T01, T11): rounded diamond petals in
+/// `petal` round a raised `centre` (white daisies, yellow buttercups, pink
+/// blossoms). 13 triangles.
+fn flower(geo: &mut Geo, at: Vec3, size: f32, petal: Rgba, centre: Rgba, rng: &mut Rng) {
+    let tip_dir = rng.range(0.0, TAU);
+    let up = Quat::from_axis_angle(
+        Vec3::new(tip_dir.cos(), 0.0, tip_dir.sin()),
+        rng.range(0.2, 0.55),
+    ) * Vec3::Y;
+    let t = up.any_orthonormal_vector();
+    let b = up.cross(t);
     let spin = rng.range(0.0, TAU);
-    let c = at + Vec3::Y * rng.range(0.05, 0.1);
+    let c = at + Vec3::Y * rng.range(0.06, 0.12);
+    let dir = |a: f32| t * a.cos() + b * a.sin();
     for k in 0..5 {
         let a = spin + TAU * k as f32 / 5.0;
-        let dir = Vec3::new(a.cos(), 0.0, a.sin());
-        let side = dir.cross(up) * size * 0.32;
-        let tip = c + dir * size + Vec3::Y * size * 0.12;
-        geo.tri_raw([c - side, c + side, tip], [up; 3], [white; 3]);
+        let (d, side) = (dir(a), dir(a + FRAC_PI_2));
+        let root = c + d * size * 0.18;
+        let mid = c + d * size * 0.62 + up * size * 0.08;
+        let tip = c + d * size + up * size * 0.14;
+        let (l, r) = (mid - side * size * 0.3, mid + side * size * 0.3);
+        geo.tri_raw([root, r, tip], [up; 3], [petal; 3]);
+        geo.tri_raw([root, tip, l], [up; 3], [petal; 3]);
     }
-    let r = size * 0.32;
     let ring: Vec<Vec3> = (0..3)
-        .map(|k| {
-            let a = spin + TAU * k as f32 / 3.0;
-            c + Vec3::Y * 0.004 + Vec3::new(a.cos(), 0.0, a.sin()) * r
-        })
+        .map(|k| c + up * size * 0.06 + dir(spin + TAU * k as f32 / 3.0) * size * 0.3)
         .collect();
-    geo.tri_raw([ring[0], ring[2], ring[1]], [up; 3], [gold; 3]);
+    geo.tri_raw([ring[0], ring[2], ring[1]], [up; 3], [centre; 3]);
+    geo.tri_raw([ring[0], ring[1], ring[2]], [up; 3], [centre; 3]);
+    geo.tri_raw(
+        [ring[0], ring[1], c + up * size * 0.16],
+        [up; 3],
+        [shade(centre, 1.1); 3],
+    );
 }
 
-fn flowers(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
-    let mut geo = Geo::default();
-    // Flowers grow in little clusters.
-    for _ in 0..70 {
+fn flowers(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
+    let mut geo = chunks();
+    let kinds = [
+        (lin(cartoon::GLOVE_WHITE), lin(cartoon::STAR_GOLD)),
+        (lin(cartoon::GLOVE_WHITE), lin(cartoon::STAR_GOLD)),
+        (lin(cartoon::SPELL_GOLD), lin(cartoon::STAR_GOLD)),
+        (lin(cartoon::FLOWER_PINK), lin(cartoon::SPELL_GOLD)),
+    ];
+    // Flowers grow in little clusters of one kind.
+    for _ in 0..260 {
         let Some((p, on_floor)) = island_point(outline, rng, 0.6) else {
             continue;
         };
-        let n = 2 + (rng.next_u64() % 4) as usize;
+        let (petal, centre) = kinds[(rng.next_u64() % kinds.len() as u64) as usize];
+        let n = 3 + (rng.next_u64() % 4) as usize;
         for _ in 0..n {
             let q = p + Vec2::new(rng.range(-0.6, 0.6), rng.range(-0.6, 0.6));
             let off_floor = q.x.abs() > ARENA_HALF - 0.2 || q.y.abs() > ARENA_HALF - 0.2;
             if (on_floor && off_floor) || (!on_floor && inside_rim(outline, q) < 0.4) {
                 continue;
             }
-            daisy(
-                &mut geo,
+            flower(
+                &mut geo[chunk(q.x, q.y)],
                 Vec3::new(q.x, 0.0, q.y),
-                rng.range(0.055, 0.085),
+                rng.range(0.08, 0.12),
+                petal,
+                centre,
                 rng,
             );
         }
+    }
+    geo
+}
+
+/// Two or three small bushes hugging the foot of every solid arena prop
+/// (T01, T05): tucked mostly under the prop's own footprint, no taller than
+/// [`PROP_BUSH_MAX_HEIGHT`], so they dress the cover without changing it.
+fn prop_bushes(rng: &mut Rng) -> Geo {
+    let mut geo = Geo::default();
+    for prop in crate::arena::ARENA_PROPS {
+        let foot = prop.kind.footprint_radius();
+        // A two-puff bush reaches about 1.75 × its size from its root and
+        // stands about 1.45 × its size tall.
+        let largest = 0.4_f32
+            .min((PROP_BUSH_REACH + 0.4 * foot) / 1.75)
+            .min(0.9 * prop.kind.height().min(PROP_BUSH_MAX_HEIGHT) / 1.45);
+        let n = 2 + (rng.next_u64() % 2) as usize;
+        let spin = rng.range(0.0, TAU);
+        for k in 0..n {
+            let a = spin + TAU * k as f32 / n as f32 + rng.range(-0.4, 0.4);
+            let size = largest * rng.range(0.8, 1.0);
+            let r = foot * rng.range(0.5, 0.6);
+            let at = prop.position + Vec3::new(a.cos() * r, 0.0, a.sin() * r);
+            bush_of(&mut geo, at, size, 2, rng);
+        }
+    }
+    geo
+}
+
+/// A soft cartoon cloud: overlapping domes, flat underneath, their colour
+/// running per vertex from the lavender `cloud` in the hollows and under the
+/// puffs to the pale `cloud_light` on their sunlit tops (T01, T03, T11).
+///
+/// Each puff is a dome of `segments` sides: 12 for the banks close under the
+/// rim (120 triangles a puff), 8 far away (64).
+fn cloud(geo: &mut Geo, centre: Vec3, radius: f32, puffs: usize, segments: usize, rng: &mut Rng) {
+    let segments = segments.max(3);
+    // Latitudes from the top down to a little past the equator.
+    const LATS: [f32; 6] = [0.0, 0.42, 0.8, 1.15, 1.45, 1.75];
+    let (body, top) = (lin(cartoon::CLOUD), lin(cartoon::CLOUD_LIGHT));
+    for k in 0..puffs {
+        // The middle puffs are the biggest and highest.
+        let f = if puffs > 1 {
+            k as f32 / (puffs - 1) as f32 * 2.0 - 1.0
+        } else {
+            0.0
+        };
+        let along = f * radius * 0.85;
+        let r = radius * rng.range(0.42, 0.6) * (1.0 - 0.35 * f.abs());
+        let c = centre
+            + Vec3::new(along, r * 0.1 + (1.0 - f.abs()) * radius * 0.12, 0.0)
+            + Vec3::new(0.0, 0.0, rng.range(-0.3, 0.3) * radius);
+        let squash = rng.range(0.62, 0.78);
+        let spin = rng.range(0.0, TAU);
+        let ring = |lat: f32| -> Vec<(Vec3, Rgba)> {
+            (0..segments)
+                .map(|i| {
+                    let a = spin + TAU * i as f32 / segments as f32;
+                    let n = Vec3::new(lat.sin() * a.cos(), lat.cos(), lat.sin() * a.sin());
+                    let p = c + Vec3::new(n.x * r, n.y.max(-0.25) * r * squash, n.z * r);
+                    let t = smoothstep(-0.2, 0.8, n.y + (c.y - centre.y) / radius);
+                    (p, mix(body, top, t))
+                })
+                .collect()
+        };
+        let apex = (c + Vec3::Y * r * squash, top);
+        let rings: Vec<Vec<(Vec3, Rgba)>> = LATS[1..].iter().map(|&l| ring(l)).collect();
+        let mut face = |a: (Vec3, Rgba), b: (Vec3, Rgba), d: (Vec3, Rgba)| {
+            let n = (b.0 - a.0).cross(d.0 - a.0).normalize_or_zero();
+            if n != Vec3::ZERO {
+                geo.tri_raw([a.0, b.0, d.0], [n; 3], [a.1, b.1, d.1]);
+            }
+        };
+        for i in 0..segments {
+            let j = (i + 1) % segments;
+            face(apex, rings[0][j], rings[0][i]);
+            for w in rings.windows(2) {
+                let (u, l) = (&w[0], &w[1]);
+                face(u[i], u[j], l[j]);
+                face(u[i], l[j], l[i]);
+            }
+        }
+        // A flat underside.
+        let last = rings.last().unwrap();
+        let under = (c - Vec3::Y * r * squash * 0.25, body);
+        for i in 0..segments {
+            face(under, last[i], last[(i + 1) % segments]);
+        }
+    }
+}
+
+/// Sky sectors the clouds are split into (for culling).
+const CLOUD_SECTORS: usize = 8;
+
+fn sector(p: Vec3) -> usize {
+    let a = p.x.atan2(-p.z).rem_euclid(TAU);
+    ((a / TAU * CLOUD_SECTORS as f32) as usize).min(CLOUD_SECTORS - 1)
+}
+
+/// The cloud sea (T01, T03, T10, T11): banks just under the rim, where the
+/// cliffs drop away; a bank round the station's rock; puffs wrapped round the
+/// middle of every far island's rocky underside; and a low band far out that
+/// peeks over the rim at the horizon.
+/// Nothing rises above the island top near it, so no cloud ever sits on the
+/// grass or in front of the far view's landmarks.
+fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
+    let mut geo = vec![Geo::default(); CLOUD_SECTORS];
+    fn put(geo: &mut [Geo], c: Vec3, r: f32, puffs: usize, rng: &mut Rng) {
+        let yaw = rng.range(0.0, TAU);
+        let mut one = Geo::default();
+        let segments = if c.xz().length() < 90.0 { 12 } else { 8 };
+        cloud(&mut one, Vec3::ZERO, r, puffs, segments, rng);
+        let t = Transform::from_translation(c).with_rotation(Quat::from_rotation_y(yaw));
+        geo[sector(c)].append(&one, &t);
+    }
+    // Banks under the rim, evenly round the island.
+    let banks = 22;
+    for k in 0..banks {
+        let s =
+            &outline[(k * outline.len() / banks + (rng.next_u64() % 3) as usize) % outline.len()];
+        let out = rng.range(10.0, 42.0);
+        let r = rng.range(6.0, 11.0);
+        // Deep under the rim close in; the farthest rise toward the horizon.
+        let y = rng.range(-24.0, -12.0) + (out - 22.0).max(0.0) * 0.3;
+        put(&mut geo, s.edge() + s.normal * out + Vec3::Y * y, r, 5, rng);
+    }
+    let far = crate::far::FarLayout::default();
+    // A bank round the middle of the station's rock (it hangs about 175 m
+    // under its platform), on the side facing the arena (T01, T10).
+    let station = far.station.position;
+    let toward = (-station.with_y(0.0)).normalize_or(Vec3::Z);
+    let side = toward.cross(Vec3::Y);
+    for k in 0..7 {
+        let across = (k as f32 / 6.0 * 2.0 - 1.0) * 210.0 + rng.range(-20.0, 20.0);
+        let c = station.with_y(0.0)
+            + side * across
+            + toward * rng.range(120.0, 170.0)
+            + Vec3::Y * rng.range(35.0, 85.0);
+        put(&mut geo, c, rng.range(45.0, 65.0), 5, rng);
+    }
+    // Round the far islands' undersides.
+    for island in &far.islands {
+        let p = island.piece.position;
+        let s = island.piece.scale;
+        let out = p.with_y(0.0).normalize_or(Vec3::Z);
+        let side = out.cross(Vec3::Y);
+        let c = p - Vec3::Y * 30.0 * s + side * rng.range(-8.0, 8.0) * s + out * 6.0 * s;
+        put(&mut geo, c, rng.range(17.0, 24.0) * s, 5, rng);
+    }
+    // A low band far out, at the horizon.
+    for k in 0..12 {
+        let a = TAU * (k as f32 + rng.range(0.1, 0.9)) / 12.0;
+        let d = rng.range(270.0, 380.0);
+        let c = Vec3::new(a.sin() * d, rng.range(-38.0, -24.0), -a.cos() * d);
+        put(&mut geo, c, rng.range(30.0, 44.0), 4, rng);
     }
     geo
 }
@@ -846,13 +1176,15 @@ mod tests {
     fn clutter_is_low_on_the_floor_and_never_leaves_the_island() {
         let island = generated();
         let outline = outline();
-        for geo in island
+        let clutter: Vec<&Geo> = island
             .tufts
             .iter()
             .chain(&island.dense_tufts)
-            .chain([&island.flowers, &island.pebbles])
-        {
-            assert!(!geo.is_empty());
+            .chain(&island.flowers)
+            .chain([&island.pebbles])
+            .collect();
+        assert!(clutter.iter().all(|g| g.tri_count() < 20_000));
+        for geo in clutter {
             for v in geo.vertices() {
                 if edge_distance(v.x, v.z) <= 0.0 {
                     assert!(v.y <= FLOOR_CLUTTER_MAX_HEIGHT, "clutter too tall: {v}");
@@ -869,11 +1201,124 @@ mod tests {
     }
 
     #[test]
+    fn the_lawn_is_dense_with_tufts_and_three_kinds_of_flowers() {
+        let island = generated();
+        // Tufts on the arena floor near the spawn view: at least one per
+        // square metre, like the painted lawn.
+        let (lo, hi) = (Vec2::new(-10.0, -6.0), Vec2::new(14.0, 18.0));
+        let roots = island
+            .tufts
+            .iter()
+            .flat_map(|g| g.positions.chunks(3))
+            .filter(|t| {
+                let p = Vec3::from_array(t[0]).xz();
+                p.cmpge(lo).all() && p.cmple(hi).all()
+            })
+            .count();
+        let tufts = roots as f32 / 5.5; // about 5.5 blades a tuft
+        let area = (hi - lo).x * (hi - lo).y;
+        assert!(tufts / area > 1.0, "{} tufts per m²", tufts / area);
+        // White, yellow and pink petals.
+        let petals: Vec<Rgba> = island
+            .flowers
+            .iter()
+            .flat_map(|g| g.colors.iter().copied())
+            .collect();
+        for (name, color) in [
+            ("white", cartoon::GLOVE_WHITE),
+            ("yellow", cartoon::SPELL_GOLD),
+            ("pink", cartoon::FLOWER_PINK),
+        ] {
+            let c = lin(color);
+            assert!(
+                petals.iter().filter(|p| **p == c).count() > 300,
+                "{name} flowers"
+            );
+        }
+    }
+
+    #[test]
+    fn prop_bushes_hug_the_solid_props_and_stay_low() {
+        let island = generated();
+        assert!(island.prop_bushes.tri_count() > 1000);
+        for v in island.prop_bushes.vertices() {
+            assert!(v.y <= PROP_BUSH_MAX_HEIGHT, "a prop bush too tall at {v}");
+            let near = crate::arena::ARENA_PROPS
+                .iter()
+                .any(|p| p.footprint_distance(v.xz()) <= PROP_BUSH_REACH);
+            assert!(near, "a bush strays from the props at {v}");
+            assert!(edge_distance(v.x, v.z) <= 0.0, "inside the arena");
+        }
+        // Every prop is dressed.
+        for prop in crate::arena::ARENA_PROPS {
+            assert!(
+                island
+                    .prop_bushes
+                    .vertices()
+                    .any(|v| v.xz().distance(prop.position.xz()) < 1.5),
+                "{prop:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn framing_trees_ring_the_arena_on_every_side() {
+        let island = generated();
+        let ring: Vec<&Decor> = island
+            .decor
+            .iter()
+            .filter(|d| {
+                is_tree(d.model)
+                    && edge_distance(d.transform.translation.x, d.transform.translation.z)
+                        < d.radius + EDGE_CLEARANCE + 2.7
+            })
+            .collect();
+        assert!(ring.len() >= 24, "{} framing trees", ring.len());
+        // North, east, south and west of the arena all have some (the east's
+        // close edge has room for fewer).
+        for (dir, need) in [(-Vec2::Y, 5), (Vec2::X, 2), (Vec2::Y, 5), (-Vec2::X, 5)] {
+            let n = ring
+                .iter()
+                .filter(|d| d.transform.translation.xz().normalize().dot(dir) > 0.7)
+                .count();
+            assert!(n >= need, "{n} framing trees toward {dir}");
+        }
+    }
+
+    #[test]
+    fn clouds_hang_below_the_island_and_clear_of_the_arena() {
+        let island = generated();
+        assert_eq!(island.clouds.len(), CLOUD_SECTORS);
+        let mut total = 0;
+        let outline = outline();
+        for v in island.clouds.iter().flat_map(|g| g.vertices()) {
+            total += 1;
+            // Never over the island's top: past its rim, or well under it.
+            assert!(
+                inside_rim(&outline, v.xz()) < 0.0 || v.y < -6.0,
+                "a cloud over the island at {v}"
+            );
+            // Near the island they stay under its top, so none sits by the
+            // grass; far out they may peek over the rim at the horizon.
+            if edge_distance(v.x, v.z) < 25.0 {
+                assert!(v.y < -2.0, "a cloud too high near the rim at {v}");
+            }
+        }
+        assert!(total > 0);
+        // Some bank under the rim close enough to see over the edge (T11), and
+        // some far out round the far islands.
+        let verts: Vec<Vec3> = island.clouds.iter().flat_map(|g| g.vertices()).collect();
+        assert!(verts.iter().any(|v| edge_distance(v.x, v.z) < 25.0));
+        assert!(verts.iter().any(|v| v.xz().length() > 150.0 && v.y > 0.0));
+    }
+
+    #[test]
     fn margin_decor_stays_off_the_arena_and_on_the_island() {
         let island = generated();
         let outline = outline();
-        let trees = island.decor.iter().filter(|d| d.model == "tree_a").count();
-        assert!(trees >= 18, "{trees} trees");
+        let trees = island.decor.iter().filter(|d| is_tree(d.model)).count();
+        assert!(trees >= 28, "{trees} trees");
+        assert!(island.decor.iter().any(|d| d.model == "tree_b"));
         assert!(island.decor.iter().any(|d| d.model.starts_with("rock")));
         assert!(island.decor.iter().any(|d| d.model == "stump_a"));
         for d in &island.decor {
@@ -897,8 +1342,9 @@ mod tests {
     fn bushes_grow_on_the_margin_only() {
         let island = generated();
         let outline = outline();
-        assert!(island.bushes.tri_count() > 1000);
-        for v in island.bushes.vertices() {
+        let tris: usize = island.bushes.iter().map(Geo::tri_count).sum();
+        assert!(tris > 10_000, "{tris}");
+        for v in island.bushes.iter().flat_map(|g| g.vertices()) {
             assert!(
                 edge_distance(v.x, v.z) >= EDGE_CLEARANCE - 1e-3,
                 "a bush reaches the arena at {v}"
@@ -920,7 +1366,21 @@ mod tests {
         assert_eq!(a.skirt.colors, b.skirt.colors);
         assert_eq!(a.decor, b.decor);
         let tris = a.triangles();
-        assert!(tris < 40_000, "island has {tris} triangles");
-        assert_eq!(a.tufts.len(), 4);
+        // Each layer within its share of the budget.
+        let sum = |v: &Vec<Geo>| v.iter().map(Geo::tri_count).sum::<usize>();
+        let layers = [
+            ("tufts", sum(&a.tufts), 45_000),
+            ("extra tufts (Plugged in)", sum(&a.dense_tufts), 25_000),
+            ("flowers", sum(&a.flowers), 20_000),
+            ("bushes", sum(&a.bushes), 36_000),
+            ("prop bushes", a.prop_bushes.tri_count(), 6_000),
+            ("clouds", sum(&a.clouds), 30_000),
+            ("pebbles", a.pebbles.tri_count(), 20_000),
+        ];
+        for (name, n, cap) in layers {
+            assert!(n <= cap, "{name}: {n} triangles, over {cap}");
+        }
+        assert!(tris < ISLAND_TRIANGLE_BUDGET, "island has {tris} triangles");
+        assert_eq!(a.tufts.len(), CHUNKS * CHUNKS);
     }
 }

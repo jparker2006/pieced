@@ -3,18 +3,18 @@
   "kind": "cone",
   "source": "art/blender/assets/pieces.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 644,
+  "triangles": 668,
   "triangle_budget": 700,
   "bounds": {
     "min": [
-      -1.995,
+      -2.0049,
       -0.004,
-      -1.995
+      -2.0063
     ],
     "max": [
-      1.9987,
+      2.0075,
       1.6626,
-      1.995
+      2.004
     ]
   },
   "parts": {
@@ -22,20 +22,23 @@
       "parent": "cone_plank_tent_crack1",
       "bounds": {
         "min": [
-          -1.995,
+          -2.0049,
           -0.004,
-          -1.995
+          -2.0063
         ],
         "max": [
-          1.9987,
+          2.0075,
           1.6626,
-          1.995
+          2.004
         ]
       },
-      "triangles": 644,
+      "triangles": 668,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "stump_bark_line",
         "trunk"

@@ -86,6 +86,8 @@ pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "rock_b",
     "stump_a",
     "tree_a",
+    // A broad, round margin tree beside tree_a (D48).
+    "tree_b",
     "wall_brick",
     "wall_brick_crack1",
     "wall_brick_crack2",

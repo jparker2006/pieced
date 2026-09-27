@@ -35,6 +35,9 @@
       "triangles": 88,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -55,6 +58,9 @@
       "triangles": 96,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -75,6 +81,9 @@
       "triangles": 92,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -95,6 +104,9 @@
       "triangles": 96,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -115,6 +127,9 @@
       "triangles": 64,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -135,6 +150,8 @@
       "triangles": 72,
       "colors": [
         "brick",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -155,6 +172,9 @@
       "triangles": 92,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -175,6 +195,9 @@
       "triangles": 92,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -195,6 +218,9 @@
       "triangles": 92,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -215,6 +241,9 @@
       "triangles": 96,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -235,6 +264,8 @@
       "triangles": 64,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_top",
         "mortar"
       ]
     },
@@ -255,6 +286,8 @@
       "triangles": 72,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_top",
         "mortar"
       ]
     },
@@ -275,6 +308,9 @@
       "triangles": 108,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -295,6 +331,8 @@
       "triangles": 96,
       "colors": [
         "brick",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -315,6 +353,9 @@
       "triangles": 108,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -335,6 +376,9 @@
       "triangles": 132,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -355,6 +399,9 @@
       "triangles": 132,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -375,6 +422,9 @@
       "triangles": 132,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -395,6 +445,9 @@
       "triangles": 96,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -415,6 +468,9 @@
       "triangles": 108,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -435,6 +491,8 @@
       "triangles": 96,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_top",
         "mortar"
       ]
     },

@@ -3,13 +3,13 @@
   "kind": "cone",
   "source": "art/blender/assets/pieces.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 626,
+  "triangles": 674,
   "triangle_budget": 700,
   "bounds": {
     "min": [
-      -1.996,
+      -2.0058,
       -0.004,
-      -1.9981
+      -2.0041
     ],
     "max": [
       1.995,
@@ -22,9 +22,9 @@
       "parent": "cone_plank_peak_crack2",
       "bounds": {
         "min": [
-          -1.996,
+          -2.0058,
           -0.004,
-          -1.9981
+          -2.0041
         ],
         "max": [
           1.995,
@@ -32,10 +32,13 @@
           1.995
         ]
       },
-      "triangles": 626,
+      "triangles": 674,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "stump_bark_line",
         "trunk"

@@ -85,14 +85,20 @@ pub mod cartoon {
     pub const BRASS: Color = rgb(0xC8, 0x93, 0x4E);
     pub const BRASS_SHADOW: Color = rgb(0x70, 0x4E, 0x23);
     pub const BRICK: Color = rgb(0xC6, 0x67, 0x48);
+    pub const BRICK_DARK: Color = rgb(0xB4, 0x58, 0x3E);
+    pub const BRICK_LIGHT: Color = rgb(0xCE, 0x82, 0x50);
     pub const BRICK_SHADOW: Color = rgb(0x85, 0x48, 0x3B);
+    pub const BRICK_TOP: Color = rgb(0xE8, 0x97, 0x6A);
     pub const CLIFF_DIRT: Color = rgb(0xA6, 0x7E, 0x6F);
     pub const CLIFF_DIRT_SHADOW: Color = rgb(0x6E, 0x5E, 0x68);
     pub const CLOUD: Color = rgb(0xAB, 0xB8, 0xF8);
+    pub const CLOUD_LIGHT: Color = rgb(0xE6, 0xE4, 0xFA);
     pub const CRYSTAL_BLUE: Color = rgb(0x4D, 0xD0, 0xFD);
     pub const CRYSTAL_VIOLET: Color = rgb(0x9C, 0x52, 0xDA);
     pub const EYE_WHITE: Color = rgb(0xFF, 0xFF, 0xCE);
+    pub const FLOWER_PINK: Color = rgb(0xF5, 0x9A, 0xC0);
     pub const FOLIAGE: Color = rgb(0x65, 0x97, 0x40);
+    pub const FOLIAGE_LIGHT: Color = rgb(0x69, 0x98, 0x2C);
     pub const FOLIAGE_SHADOW: Color = rgb(0x2A, 0x69, 0x5C);
     pub const GALAXY_DEEP: Color = rgb(0x5E, 0x77, 0xDD);
     pub const GALAXY_PURPLE: Color = rgb(0x83, 0x6D, 0xE4);
@@ -107,6 +113,7 @@ pub mod cartoon {
     pub const GLOVE_WHITE_SHADOW: Color = rgb(0xC5, 0xBE, 0xCF);
     pub const GOLD_RINGS: Color = rgb(0xC1, 0x7E, 0x2A);
     pub const GRASS: Color = rgb(0x7A, 0xAE, 0x49);
+    pub const GRASS_LIGHT: Color = rgb(0x85, 0xBE, 0x4E);
     pub const GRASS_SHADOW: Color = rgb(0x51, 0x7A, 0x38);
     pub const GRID_LINE: Color = rgb(0xE4, 0xFF, 0xF5);
     pub const GUN_BRASS: Color = rgb(0xE7, 0xB0, 0x48);
@@ -129,11 +136,15 @@ pub mod cartoon {
     pub const MORTAR: Color = rgb(0xBA, 0xA7, 0x9D);
     pub const MORTAR_SHADOW: Color = rgb(0x78, 0x71, 0x82);
     pub const NAIL_HEAD: Color = rgb(0x84, 0x83, 0x9A);
+    pub const NAIL_HIGHLIGHT: Color = rgb(0xCF, 0xD1, 0xE0);
     pub const PLANET_VIOLET: Color = rgb(0x7B, 0x87, 0xDD);
     pub const PLANK: Color = rgb(0x9F, 0x6E, 0x46);
+    pub const PLANK_GRAIN: Color = rgb(0x61, 0x40, 0x29);
+    pub const PLANK_LIGHT: Color = rgb(0xC5, 0x8B, 0x58);
     pub const PLANK_SHADOW: Color = rgb(0x6E, 0x48, 0x33);
     pub const PUPIL_BLACK: Color = rgb(0x00, 0x00, 0x00);
     pub const ROCK: Color = rgb(0xB8, 0xA2, 0x9F);
+    pub const ROCK_DARK: Color = rgb(0x96, 0x85, 0x8E);
     pub const ROCK_SHADOW: Color = rgb(0x61, 0x65, 0x89);
     pub const SHIELD_CYAN: Color = rgb(0x73, 0xC4, 0xFB);
     pub const SPELL_BLUE: Color = rgb(0x38, 0x85, 0xFC);
@@ -161,14 +172,20 @@ pub mod cartoon {
         ("brass", BRASS),
         ("brass_shadow", BRASS_SHADOW),
         ("brick", BRICK),
+        ("brick_dark", BRICK_DARK),
+        ("brick_light", BRICK_LIGHT),
         ("brick_shadow", BRICK_SHADOW),
+        ("brick_top", BRICK_TOP),
         ("cliff_dirt", CLIFF_DIRT),
         ("cliff_dirt_shadow", CLIFF_DIRT_SHADOW),
         ("cloud", CLOUD),
+        ("cloud_light", CLOUD_LIGHT),
         ("crystal_blue", CRYSTAL_BLUE),
         ("crystal_violet", CRYSTAL_VIOLET),
         ("eye_white", EYE_WHITE),
+        ("flower_pink", FLOWER_PINK),
         ("foliage", FOLIAGE),
+        ("foliage_light", FOLIAGE_LIGHT),
         ("foliage_shadow", FOLIAGE_SHADOW),
         ("galaxy_deep", GALAXY_DEEP),
         ("galaxy_purple", GALAXY_PURPLE),
@@ -183,6 +200,7 @@ pub mod cartoon {
         ("glove_white_shadow", GLOVE_WHITE_SHADOW),
         ("gold_rings", GOLD_RINGS),
         ("grass", GRASS),
+        ("grass_light", GRASS_LIGHT),
         ("grass_shadow", GRASS_SHADOW),
         ("grid_line", GRID_LINE),
         ("gun_brass", GUN_BRASS),
@@ -205,11 +223,15 @@ pub mod cartoon {
         ("mortar", MORTAR),
         ("mortar_shadow", MORTAR_SHADOW),
         ("nail_head", NAIL_HEAD),
+        ("nail_highlight", NAIL_HIGHLIGHT),
         ("planet_violet", PLANET_VIOLET),
         ("plank", PLANK),
+        ("plank_grain", PLANK_GRAIN),
+        ("plank_light", PLANK_LIGHT),
         ("plank_shadow", PLANK_SHADOW),
         ("pupil_black", PUPIL_BLACK),
         ("rock", ROCK),
+        ("rock_dark", ROCK_DARK),
         ("rock_shadow", ROCK_SHADOW),
         ("shield_cyan", SHIELD_CYAN),
         ("spell_blue", SPELL_BLUE),

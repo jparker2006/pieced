@@ -47,6 +47,8 @@ from `art/palette.json`, sampled from the target images by
 | `models/stump_a.json` | `art/blender/assets/props.py` | Sidecar |
 | `models/tree_a.glb` | `art/blender/assets/props.py` | Puffy island-margin tree, about 5.7 m |
 | `models/tree_a.json` | `art/blender/assets/props.py` | Sidecar |
+| `models/tree_b.glb` | `art/blender/assets/props.py` | Broad, round island-margin tree, about 5.3 m |
+| `models/tree_b.json` | `art/blender/assets/props.py` | Sidecar |
 | `models/brick_chunk.glb` | `art/blender/assets/pieces.py` | Wall debris: a broken brick with a mortar crumb, about 0.3 m |
 | `models/brick_chunk.json` | `art/blender/assets/pieces.py` | Sidecar |
 | `models/floor_plank.glb` | `art/blender/assets/pieces.py` | Plank floor piece, 4 x 4 m: five warped planks, big nail heads, two beams (292 tris) |

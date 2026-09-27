@@ -4,6 +4,11 @@ Chunky, rounded, flat-colour cartoon shapes. Rocks and stumps are the solid aren
 props of D29: rocks 1.0-1.4 m tall (crouch cover), stumps at most 0.7 m (jumpable).
 Trees stand on the island margin. All sit on the ground at the origin and face
 Blender -Y.
+
+Painted detail (D48) is baked into the face colours, never into the shapes (the
+solid props' colliders are fitted to their bounds): rocks mix lighter and darker
+facets and grow moss on their crowns, stumps alternate bark shades and keep a
+dark heart in their rings, and tree canopies catch sunlit highlights.
 """
 
 import math
@@ -54,6 +59,45 @@ def rock_mesh(parts):
     return shapes.mesh_from_bmesh(out)
 
 
+def paint_rock(mesh, seed, crown):
+    """Facet colours for a rock (T01, T05): mostly `rock`, some side facets the
+    darker `rock_dark`, and a moss patch (`tuft`) on the crown: the flattest
+    facets above `crown` metres are cut by two planes across the top (in their
+    own planes, so the rock's shape and bounds don't change) and the corner
+    between the cuts turns green, leaving bare rock around it."""
+    r = shapes.rng(seed)
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.normal_update()
+
+    def crown_faces():
+        return [f for f in bm.faces
+                if f.normal.z > 0.72 and f.calc_center_median().z > crown]
+
+    dark = [f for f in bm.faces if f.normal.z < 0.5 and r.random() < 0.45]
+    palette.tag(bm, dark, "rock_dark")
+    top = crown_faces()
+    if top:
+        centre = sum((f.calc_center_median() for f in top), Vector()) / len(top)
+        spin = r.uniform(0.0, 2 * math.pi)
+        planes = []
+        for k in range(2):
+            a = spin + k * math.radians(r.uniform(80.0, 110.0))
+            no = Vector((math.cos(a), math.sin(a), 0.0))
+            planes.append((centre - no * r.uniform(0.08, 0.18), no))
+        for co, no in planes:
+            faces = crown_faces()
+            geom = list({e for f in faces for e in f.edges}) + faces + \
+                list({v for f in faces for v in f.verts})
+            bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-5, plane_co=co, plane_no=no)
+        moss = [f for f in crown_faces()
+                if all((f.calc_center_median() - co).dot(no) > 0.0 for co, no in planes)]
+        palette.tag(bm, moss, "tuft")
+    bm.to_mesh(mesh)
+    bm.free()
+    return mesh
+
+
 def finish_rock(root, mesh):
     body = scene.make_part("Body", mesh, root)
     shapes.flat_shading(body)
@@ -63,7 +107,7 @@ def finish_rock(root, mesh):
 def build_rock_a(root):
     """A big leaning boulder, 1.25 m: the main crouch cover (T05, T03)."""
     main = boulder(seed=11, size=(1.9, 1.5, 1.25), points=110, exponent=2.5, lean=0.16)
-    finish_rock(root, rock_mesh([(main, Vector((0, 0, 0)))]))
+    finish_rock(root, paint_rock(rock_mesh([(main, Vector((0, 0, 0)))]), 11, 1.05))
     scene.make_attach("Top", root, (0.0, 0.0, 1.25))
 
 
@@ -71,7 +115,8 @@ def build_rock_b(root):
     """A rounder 1.05 m boulder with a small buddy rock at its front-right (T01)."""
     main = boulder(seed=23, size=(1.45, 1.3, 1.05), points=90, exponent=2.2, lean=-0.1)
     buddy = boulder(seed=29, size=(0.7, 0.62, 0.5), points=40, exponent=2.3, lean=0.05)
-    finish_rock(root, rock_mesh([(main, Vector((0, 0, 0))), (buddy, Vector((0.72, -0.42, 0)))]))
+    finish_rock(root, paint_rock(rock_mesh([(main, Vector((0, 0, 0))),
+                                            (buddy, Vector((0.72, -0.42, 0)))]), 23, 0.85))
     scene.make_attach("Top", root, (0.0, 0.0, 1.05))
 
 
@@ -108,15 +153,22 @@ def build_stump_a(root):
             rr = r_fn(a) * (0.955 if kind == "groove" else 1.0)
             ring.append(bm.verts.new((math.cos(a) * rr, math.sin(a) * rr, z_fn(i, a))))
         rings.append(ring)
+    # Bark plates alternate two shades (every third a lighter ridge, T01, T11)
+    # between the dark grooves.
     for lower, upper in zip(rings, rings[1:]):
         faces = shapes.bridge(bm, lower, upper)
         for i, f in enumerate(faces):
-            palette.tag(bm, [f], "stump_bark_line" if angles[i][1] == "groove" else "stump_bark")
+            if angles[i][1] == "groove":
+                color = "stump_bark_line"
+            else:
+                color = "trunk" if (i // 2) % 3 == 1 else "stump_bark"
+            palette.tag(bm, [f], color)
     bands, centre = shapes.cap_rings(bm, rings[-1], [0.035, 0.085, 0.024, 0.085, 0.024],
                                      z=height)
     for k, band in enumerate(bands):
         palette.tag(bm, band, "stump_ring_line" if k in (0, 2, 4) else "stump_rings")
-    palette.tag(bm, [centre], "stump_rings")
+    # The heart of the rings: a darker core, as the painted stumps show.
+    palette.tag(bm, [centre], "stump_ring_line")
     body = scene.make_part("Body", shapes.mesh_from_bmesh(bm), root)
     shapes.smooth_shading(body, sharp_angle_deg=50.0)
     scene.make_attach("Top", root, (0.0, 0.0, height))
@@ -181,13 +233,88 @@ def build_tree_a(root):
     canopy_mesh = shapes.metaball_mesh("Canopy", balls, resolution=0.14, threshold=0.6)
     canopy = shapes.temp_object("CanopyTmp", canopy_mesh)
     shapes.decimate_to(canopy, 1500 - shapes.triangles(trunk_obj) - 20)
+    finish_canopy(root, canopy, 43)
+
+
+def finish_canopy(root, canopy, seed):
+    """Tags a decimated canopy `foliage`, with sunlit puffs: blotches of the
+    lighter, yellower foliage on the upward faces (T01, T05), so it reads
+    painted rather than flat. Makes it the `Canopy` part."""
     bm = bmesh.new()
     bm.from_mesh(canopy.data)
+    # Decimation can leave a doubled face (the same three corners twice) or a
+    # sliver of zero area; the glTF exporter drops those, and the sidecar's
+    # triangle count must match the file's.
+    seen = set()
+    junk = []
+    for f in bm.faces:
+        key = tuple(sorted(v.index for v in f.verts))
+        if key in seen or f.calc_area() < 1e-5:
+            junk.append(f)
+        seen.add(key)
+    if junk:
+        bmesh.ops.delete(bm, geom=junk, context="FACES_ONLY")
     palette.tag_all(bm, "foliage")
+    bm.normal_update()
+    palette.tag(bm, [f for f in bm.faces
+                     if f.normal.z > 0.35 and
+                     shapes.perlin(f.calc_center_median(), seed, 0.9) + 0.45 * f.normal.z > 0.42],
+                "foliage_light")
     mesh = shapes.mesh_from_bmesh(bm)
     shapes.detach_mesh(canopy)
     canopy_obj = scene.make_part("Canopy", mesh, root)
     shapes.smooth_shading(canopy_obj, sharp_angle_deg=60.0)
+
+
+def build_tree_b(root):
+    """A broad, round cartoon tree, about 5.3 m (T01, T09): a short, thick,
+    leaning trunk forking low into two limbs under a wide, flattened
+    cauliflower canopy, for variety beside `tree_a` on the margin."""
+    bm = palette.new_bmesh()
+    roots = [0.9, 2.8, 4.6]
+
+    def flare(amount):
+        return lambda a: 1.0 + amount * sum(max(0.0, math.cos(a - c)) ** 3 for c in roots)
+
+    trunk_path = [
+        ((0.0, 0.0, 0.0), 0.52, flare(0.7)),
+        ((-0.02, 0.0, 0.16), 0.45, flare(0.35)),
+        ((-0.06, 0.01, 0.55), 0.38, flare(0.08)),
+        ((-0.14, 0.02, 1.15), 0.34, flare(0.0)),
+        ((-0.18, 0.02, 1.7), 0.32, flare(0.0)),
+        ((-0.16, 0.02, 2.05), 0.3, flare(0.0)),
+    ]
+    rings, sides, caps = shapes.loft(
+        bm, [(c, (lambda f, r: lambda a: r * f(a))(f, r)) for c, r, f in trunk_path], 12)
+    for v in rings[0]:
+        v.co.z = 0.0
+    limbs = [
+        [((-0.16, 0.02, 1.85), 0.24), ((-0.75, 0.1, 2.5), 0.19), ((-1.3, 0.15, 3.05), 0.15)],
+        [((-0.14, 0.02, 1.95), 0.24), ((0.5, -0.1, 2.6), 0.19), ((1.1, -0.2, 3.1), 0.15)],
+    ]
+    for limb in limbs:
+        shapes.loft(bm, [(c, (lambda r: lambda a: r)(r)) for c, r in limb], 8)
+    palette.tag_all(bm, "trunk")
+    trunk_obj = scene.make_part("Trunk", shapes.mesh_from_bmesh(bm), root)
+    shapes.smooth_shading(trunk_obj, sharp_angle_deg=60.0)
+
+    rng = shapes.rng(61)
+    cx, cy = -0.1, 0.0
+    balls = [((cx, cy, 3.5), 1.45)]
+    for k in range(9):
+        a = 2 * math.pi * k / 9 + rng.uniform(-0.12, 0.12)
+        rad = 1.62 + rng.uniform(-0.1, 0.14)
+        balls.append(((cx + math.cos(a) * rad, cy + math.sin(a) * rad,
+                       3.3 + rng.uniform(-0.15, 0.25)), 1.05 + rng.uniform(-0.1, 0.12)))
+    for k in range(5):
+        a = 2 * math.pi * k / 5 + 0.3 + rng.uniform(-0.2, 0.2)
+        balls.append(((cx + math.cos(a) * 0.95, cy + math.sin(a) * 0.9,
+                       4.15 + rng.uniform(-0.1, 0.15)), 0.9 + rng.uniform(-0.08, 0.08)))
+    balls.append(((cx, cy, 4.55), 0.85))
+    canopy_mesh = shapes.metaball_mesh("CanopyB", balls, resolution=0.15, threshold=0.6)
+    canopy = shapes.temp_object("CanopyBTmp", canopy_mesh)
+    shapes.decimate_to(canopy, 1500 - shapes.triangles(trunk_obj) - 20)
+    finish_canopy(root, canopy, 67)
 
 
 ASSETS = [
@@ -195,4 +322,5 @@ ASSETS = [
     Asset("rock_b", "rock", build_rock_b, "round boulder with a buddy rock, 1.05 m"),
     Asset("stump_a", "stump", build_stump_a, "sawn stump with rings, 0.56 m"),
     Asset("tree_a", "tree", build_tree_a, "puffy margin tree, about 5.6 m"),
+    Asset("tree_b", "tree", build_tree_b, "broad round margin tree, about 5.3 m"),
 ]

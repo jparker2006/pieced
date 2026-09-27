@@ -3,7 +3,7 @@
   "kind": "ramp",
   "source": "art/blender/assets/pieces.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 332,
+  "triangles": 368,
   "triangle_budget": 400,
   "bounds": {
     "min": [
@@ -32,10 +32,13 @@
           2.0022
         ]
       },
-      "triangles": 332,
+      "triangles": 368,
       "colors": [
         "nail_head",
+        "nail_highlight",
         "plank",
+        "plank_grain",
+        "plank_light",
         "stump_bark",
         "trunk"
       ]

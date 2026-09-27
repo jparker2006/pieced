@@ -35,6 +35,9 @@
       "triangles": 84,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -55,6 +58,9 @@
       "triangles": 78,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -76,6 +82,9 @@
       "triangles": 110,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -97,6 +106,9 @@
       "triangles": 102,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -118,6 +130,9 @@
       "triangles": 64,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar"
       ]
     },
@@ -138,6 +153,8 @@
       "triangles": 88,
       "colors": [
         "brick",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -159,6 +176,9 @@
       "triangles": 118,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -180,6 +200,9 @@
       "triangles": 144,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -201,6 +224,9 @@
       "triangles": 96,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -222,6 +248,9 @@
       "triangles": 96,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -243,6 +272,8 @@
       "triangles": 70,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -264,6 +295,8 @@
       "triangles": 64,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -285,6 +318,9 @@
       "triangles": 158,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -306,6 +342,8 @@
       "triangles": 132,
       "colors": [
         "brick",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -327,6 +365,9 @@
       "triangles": 110,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -348,6 +389,9 @@
       "triangles": 122,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -369,6 +413,9 @@
       "triangles": 148,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -390,6 +437,9 @@
       "triangles": 144,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -411,6 +461,9 @@
       "triangles": 112,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -432,6 +485,9 @@
       "triangles": 116,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_light",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
@@ -453,6 +509,8 @@
       "triangles": 102,
       "colors": [
         "brick",
+        "brick_dark",
+        "brick_top",
         "mortar",
         "stump_bark_line"
       ]
