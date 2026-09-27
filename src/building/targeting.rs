@@ -4,7 +4,7 @@
 //!
 //! The rules, in player terms:
 //! - Everything snaps to the nearest of the four yaws you're looking along (`facing`).
-//! - Reach (Fortnite's): floors and ramps go in the tile the aim ray lands on,
+//! - Reach (Fortnite's): floors, ramps and cones go in the tile the aim ray lands on,
 //!   among the tiles around yours, diagonals included (`reach_tiles`, 1 or 2),
 //!   at your level looking down or one level up looking up. When the ray lands
 //!   nowhere within reach (looking about level), they go in the cell ahead.
@@ -21,6 +21,9 @@
 //!   point is pushed [`FORWARD_BIAS`] further ahead. Ramps rise away from you. Climbing a ramp, the
 //!   cell above it is never targeted (it would cap the ramp and wedge you under
 //!   it); turn away from its rise and it is (that's how 90s stack up).
+//! - **Cone:** like a floor (D43, research R11), with the same reach: where the
+//!   aim lands, your own cell looking steeply down, or on top of your box looking
+//!   steeply up. A ramp rush never changes it.
 //!
 //! **Ramp rushing** (moving forward with the ramp: `advancing`) swaps the pitch
 //! rules for the chain rule, so holding forward and build runs up an endless ramp
@@ -147,6 +150,44 @@ fn ramp_underfoot(feet: Vec3, own: GridCell, map: &PieceMap) -> Option<(i32, Fac
         })
 }
 
+/// How far across a ramp's side edge the feet may slip (the body still on it)
+/// and still count as standing on that ramp: the body's radius.
+const SIDE_SLIP: f32 = 0.35;
+
+/// The cell we build from, at `base`: the one the feet are in or, with the feet
+/// a hair across a side edge of the ramp the body is standing on, that ramp's
+/// cell (so running up near a ramp's edge never builds on top of it).
+fn own_cell(feet: Vec3, base: i32, map: &PieceMap) -> GridCell {
+    let c = GridCell::containing(feet);
+    let own = GridCell::new(c.x, c.z, base);
+    if ramp_underfoot(feet, own, map).is_some() {
+        return own;
+    }
+    Facing::ALL
+        .into_iter()
+        .filter(|&side| distance_to_front_edge(feet, own, side) < SIDE_SLIP)
+        .map(|side| {
+            (
+                side,
+                GridCell::new(own.x + side.offset().x, own.z + side.offset().y, base),
+            )
+        })
+        .find(|&(side, cell)| {
+            map.ramp_at(GridCell::new(
+                cell.x,
+                cell.z,
+                (feet.y / LEVEL_HEIGHT).floor() as i32,
+            ))
+            .is_some_and(|(_, rise)| {
+                let run = CELL_SIZE - distance_to_front_edge(feet, cell, rise);
+                let level = (feet.y / LEVEL_HEIGHT).floor();
+                let surface = (level + (run / CELL_SIZE).clamp(0.0, 1.0)) * LEVEL_HEIGHT;
+                rise != side && rise != side.opposite() && (surface - feet.y).abs() < LEVEL_SNAP
+            })
+        })
+        .map_or(own, |(_, cell)| cell)
+}
+
 /// Level of the ground just across the front edge of the feet's cell: one level
 /// up while climbing a ramp that rises along `facing`, the ramp's base while
 /// descending one, otherwise the feet level.
@@ -159,8 +200,8 @@ fn level_across_front(feet: Vec3, own: GridCell, facing: Facing, map: &PieceMap)
 }
 
 /// One builder's view of the grid, which every piece kind picks its slot from
-/// (see [`target_slot`]). A new floor-like piece (the cone) takes its cell from
-/// [`View::floor_cell`], like floors do.
+/// (see [`target_slot`]). Floor-like pieces (floors, standing ramps, cones)
+/// take their cell from [`View::floor_cell`].
 struct View<'a> {
     eye: Vec3,
     /// Unit look direction.
@@ -211,10 +252,7 @@ impl<'a> View<'a> {
             facing.vector()
         };
         let base = feet_level(feet.y);
-        let own = {
-            let c = GridCell::containing(feet);
-            GridCell::new(c.x, c.z, base)
-        };
+        let own = own_cell(feet, base, map);
         let ahead_level = level_across_front(feet, own, facing, map);
         Self {
             eye,
@@ -428,9 +466,11 @@ pub fn target_slot(
     }
     match kind {
         PieceKind::Wall => view.wall(),
-        // A cone (when it lands) targets like a floor, sharing the cell with a
-        // floor or ramp at that level: add it to this arm.
-        PieceKind::Floor | PieceKind::Ramp => PieceSlot::new(kind, view.floor_cell(), view.facing),
+        // Cones target like floors (docs/research/fortnite-building.md, R11),
+        // sharing the cell with a floor or ramp at that level.
+        PieceKind::Floor | PieceKind::Ramp | PieceKind::Cone => {
+            PieceSlot::new(kind, view.floor_cell(), view.facing)
+        }
     }
 }
 
@@ -500,7 +540,7 @@ pub fn build_target(
 
 /// Whether `slot` is the ramp past the top of the ramp under `feet`.
 fn continues_ramp_underfoot(slot: &PieceSlot, feet: Vec3, map: &PieceMap) -> bool {
-    let own = GridCell::containing(feet);
+    let own = own_cell(feet, feet_level(feet.y), map);
     let o = slot.facing.offset();
     (own.x + o.x, own.z + o.y) == (slot.cell.x, slot.cell.z)
         && ramp_underfoot(feet, own, map) == Some((slot.cell.level - 1, slot.facing))

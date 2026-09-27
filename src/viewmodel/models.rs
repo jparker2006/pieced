@@ -277,6 +277,27 @@ pub fn mini_piece(kind: crate::shared::PieceKind) -> ModelBuilder {
             );
             m.cube(v3(0.044, 0.0, -0.052), v3(0.052, 0.075, -0.044), WOOD_TRIM);
         }
+        PieceKind::Cone => {
+            // A little plank pyramid: four sloped faces meeting at a peak.
+            let (w, h) = (0.05, 0.038);
+            let apex = v3(0.0, h, 0.0);
+            let base = [
+                v3(-w, 0.0, -w),
+                v3(w, 0.0, -w),
+                v3(w, 0.0, w),
+                v3(-w, 0.0, w),
+            ];
+            let inside = v3(0.0, h * 0.3, 0.0);
+            for k in 0..4 {
+                let (a, b) = (base[k], base[(k + 1) % 4]);
+                let color = if k % 2 == 0 { WOOD_LIGHT } else { WOOD };
+                m.poly(&[a, b, apex], inside, linear(color, 1.0));
+                // A plank line across each face.
+                let (c, d) = (a.lerp(apex, 0.5), b.lerp(apex, 0.5));
+                m.bar(c, d, 0.0012, WOOD_DARK);
+            }
+            m.poly(&base, inside, linear(WOOD_TRIM, 1.0));
+        }
     }
     m
 }

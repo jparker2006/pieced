@@ -1,4 +1,4 @@
-"""HUD icons (targets T01-T11): the hotbar's five slot icons, rendered from the
+"""HUD icons (targets T01-T11): the hotbar's six slot icons, rendered from the
 real models, and the small crystal and heart icons of the bars, the ammo
 readout and the menu buttons.
 
@@ -9,6 +9,7 @@ build. Output (under `assets/ui/`):
 
     icons/rifle.png  icons/pump.png          the guns, muzzle up and to the right
     icons/wall_brick.png  icons/ramp_plank.png  icons/floor_plank.png
+    icons/cone_plank.png
     icons/crystal_blue.png  icons/crystal_violet.png   ammo, shield, buttons
     icons/heart.png                                    the health bar
 """
@@ -162,6 +163,9 @@ IMAGES = [
     UiImage("icon_floor", "icons/floor_plank.png",
             _slot_icon(pieces.ASSETS, "floor_plank", 35.0, 38.0, outline=4.5),
             "hotbar: the plank floor"),
+    UiImage("icon_cone", "icons/cone_plank.png",
+            _slot_icon(pieces.ASSETS, "cone_plank", 32.0, 13.0, outline=4.5),
+            "hotbar: the plank cone"),
     UiImage("icon_crystal_blue", "icons/crystal_blue.png",
             _crystal_icon(("spell_blue", "crystal_blue", "barrier_cyan")),
             "the blue crystal: shield bar, rifle ammo, menu buttons"),

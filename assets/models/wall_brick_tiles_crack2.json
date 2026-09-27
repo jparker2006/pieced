@@ -1,0 +1,519 @@
+{
+  "name": "wall_brick_tiles_crack2",
+  "kind": "wall_tiles",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 2294,
+  "triangle_budget": 2600,
+  "bounds": {
+    "min": [
+      -2.4,
+      -0.06,
+      -0.218
+    ],
+    "max": [
+      2.4,
+      2.9985,
+      0.18
+    ]
+  },
+  "parts": {
+    "A2Hi": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.6667,
+          2.0,
+          -0.15
+        ],
+        "max": [
+          1.26,
+          2.9959,
+          0.15
+        ]
+      },
+      "triangles": 84,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "A2Lo": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.6667,
+          2.0,
+          -0.155
+        ],
+        "max": [
+          1.9987,
+          2.445,
+          0.155
+        ]
+      },
+      "triangles": 78,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "A4Hi": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.155
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.155
+        ]
+      },
+      "triangles": 110,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "A4Lo": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.155
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.155
+        ]
+      },
+      "triangles": 102,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "A6Hi": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -2.0076,
+          0.0085,
+          -0.218
+        ],
+        "max": [
+          -0.6667,
+          1.0,
+          0.1579
+        ]
+      },
+      "triangles": 64,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "A6Lo": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -1.9888,
+          -0.0027,
+          -0.155
+        ],
+        "max": [
+          -0.6667,
+          1.0,
+          0.155
+        ]
+      },
+      "triangles": 88,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "B0Hi": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -1.9533,
+          2.0,
+          -0.155
+        ],
+        "max": [
+          -0.6667,
+          2.9959,
+          0.155
+        ]
+      },
+      "triangles": 118,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "B0Lo": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -1.9923,
+          2.0,
+          -0.2076
+        ],
+        "max": [
+          -0.6667,
+          2.965,
+          0.155
+        ]
+      },
+      "triangles": 144,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "B4Hi": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.155
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.155
+        ]
+      },
+      "triangles": 96,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "B4Lo": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.155
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.155
+        ]
+      },
+      "triangles": 96,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "B8Hi": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.6667,
+          0.0225,
+          -0.155
+        ],
+        "max": [
+          1.9984,
+          1.0,
+          0.155
+        ]
+      },
+      "triangles": 70,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "B8Lo": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.6667,
+          -0.0016,
+          -0.15
+        ],
+        "max": [
+          1.97,
+          1.0,
+          0.15
+        ]
+      },
+      "triangles": 64,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "T0": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -1.9923,
+          2.0,
+          -0.2076
+        ],
+        "max": [
+          -0.6667,
+          2.9959,
+          0.155
+        ]
+      },
+      "triangles": 158,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "T1": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -0.6667,
+          2.0,
+          -0.155
+        ],
+        "max": [
+          0.6667,
+          2.9985,
+          0.155
+        ]
+      },
+      "triangles": 132,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "T2": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.6667,
+          2.0,
+          -0.155
+        ],
+        "max": [
+          1.9987,
+          2.9959,
+          0.155
+        ]
+      },
+      "triangles": 110,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "T3": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -2.0049,
+          1.0,
+          -0.2177
+        ],
+        "max": [
+          -0.6667,
+          2.0,
+          0.158
+        ]
+      },
+      "triangles": 122,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "T4": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.155
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.155
+        ]
+      },
+      "triangles": 148,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "T5": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.6667,
+          1.0,
+          -0.155
+        ],
+        "max": [
+          1.9994,
+          2.0,
+          0.155
+        ]
+      },
+      "triangles": 144,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "T6": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -2.0076,
+          -0.0027,
+          -0.218
+        ],
+        "max": [
+          -0.6667,
+          1.0,
+          0.1579
+        ]
+      },
+      "triangles": 112,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "T7": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -0.6667,
+          -0.003,
+          -0.155
+        ],
+        "max": [
+          0.6667,
+          1.0,
+          0.155
+        ]
+      },
+      "triangles": 116,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "T8": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.6667,
+          -0.0016,
+          -0.155
+        ],
+        "max": [
+          1.9984,
+          1.0,
+          0.155
+        ]
+      },
+      "triangles": 102,
+      "colors": [
+        "brick",
+        "mortar",
+        "stump_bark_line"
+      ]
+    },
+    "TrimD": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -2.4,
+          -0.06,
+          -0.17
+        ],
+        "max": [
+          2.4,
+          0.06,
+          0.17
+        ]
+      },
+      "triangles": 12,
+      "colors": [
+        "trunk"
+      ]
+    },
+    "TrimH": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -0.6667,
+          -0.06,
+          -0.18
+        ],
+        "max": [
+          0.6667,
+          0.06,
+          0.18
+        ]
+      },
+      "triangles": 12,
+      "colors": [
+        "trunk"
+      ]
+    },
+    "TrimV": {
+      "parent": "wall_brick_tiles_crack2",
+      "bounds": {
+        "min": [
+          -0.5,
+          -0.06,
+          -0.175
+        ],
+        "max": [
+          0.5,
+          0.06,
+          0.175
+        ]
+      },
+      "triangles": 12,
+      "colors": [
+        "trunk"
+      ]
+    }
+  },
+  "attach": {}
+}

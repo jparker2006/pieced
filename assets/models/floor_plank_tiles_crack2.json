@@ -1,0 +1,134 @@
+{
+  "name": "floor_plank_tiles_crack2",
+  "kind": "floor_tiles",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 416,
+  "triangle_budget": 700,
+  "bounds": {
+    "min": [
+      -2.0,
+      -0.13,
+      -2.0
+    ],
+    "max": [
+      2.0,
+      0.134,
+      2.0
+    ]
+  },
+  "parts": {
+    "Q0": {
+      "parent": "floor_plank_tiles_crack2",
+      "bounds": {
+        "min": [
+          -2.0,
+          -0.1,
+          -2.0
+        ],
+        "max": [
+          0.0,
+          0.134,
+          0.0
+        ]
+      },
+      "triangles": 97,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "stump_bark_line",
+        "trunk"
+      ]
+    },
+    "Q1": {
+      "parent": "floor_plank_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.0,
+          -0.1,
+          -2.0
+        ],
+        "max": [
+          2.0,
+          0.134,
+          0.0
+        ]
+      },
+      "triangles": 111,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "stump_bark_line",
+        "trunk"
+      ]
+    },
+    "Q2": {
+      "parent": "floor_plank_tiles_crack2",
+      "bounds": {
+        "min": [
+          -2.0,
+          -0.1,
+          0.0
+        ],
+        "max": [
+          0.0,
+          0.1318,
+          2.0
+        ]
+      },
+      "triangles": 96,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "stump_bark_line",
+        "trunk"
+      ]
+    },
+    "Q3": {
+      "parent": "floor_plank_tiles_crack2",
+      "bounds": {
+        "min": [
+          0.0,
+          -0.1,
+          0.0
+        ],
+        "max": [
+          2.0,
+          0.1291,
+          2.0
+        ]
+      },
+      "triangles": 100,
+      "colors": [
+        "nail_head",
+        "plank",
+        "stump_bark",
+        "stump_bark_line",
+        "trunk"
+      ]
+    },
+    "Trim": {
+      "parent": "floor_plank_tiles_crack2",
+      "bounds": {
+        "min": [
+          -1.0,
+          -0.13,
+          -0.07
+        ],
+        "max": [
+          1.0,
+          0.13,
+          0.07
+        ]
+      },
+      "triangles": 12,
+      "colors": [
+        "stump_bark"
+      ]
+    }
+  },
+  "attach": {}
+}

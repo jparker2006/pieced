@@ -628,7 +628,11 @@ fn queue_cue_sounds(
                 WeaponKind::Pump => (who, Sfx::PumpRack),
             },
             GameCue::WeaponSwitch { who, .. } => (who, Sfx::WeaponSwitch),
-            GameCue::PlacementRejected { who } => (who, Sfx::Rejected),
+            GameCue::PlacementRejected { who } | GameCue::EditRejected { who } => {
+                (who, Sfx::Rejected)
+            }
+            // An edit clicks into place.
+            GameCue::PieceEdited { who, .. } => (who, Sfx::WeaponSwitch),
             GameCue::AdsChanged { .. } | GameCue::Respawned { .. } => continue,
         };
         let own = Some(who) == player;

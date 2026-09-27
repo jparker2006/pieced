@@ -1,0 +1,500 @@
+{
+  "name": "wall_brick_tiles",
+  "kind": "wall_tiles",
+  "source": "art/blender/assets/pieces.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 2060,
+  "triangle_budget": 2600,
+  "bounds": {
+    "min": [
+      -2.4,
+      -0.06,
+      -0.18
+    ],
+    "max": [
+      2.4,
+      2.9985,
+      0.18
+    ]
+  },
+  "parts": {
+    "A2Hi": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          0.6667,
+          2.0,
+          -0.15
+        ],
+        "max": [
+          1.9533,
+          2.9959,
+          0.15
+        ]
+      },
+      "triangles": 88,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "A2Lo": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          0.6667,
+          2.0,
+          -0.15
+        ],
+        "max": [
+          1.9987,
+          2.965,
+          0.15
+        ]
+      },
+      "triangles": 96,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "A4Hi": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.15
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.15
+        ]
+      },
+      "triangles": 92,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "A4Lo": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.15
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.15
+        ]
+      },
+      "triangles": 96,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "A6Hi": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -1.994,
+          0.0085,
+          -0.15
+        ],
+        "max": [
+          -0.6667,
+          1.0,
+          0.15
+        ]
+      },
+      "triangles": 64,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "A6Lo": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -1.9888,
+          -0.0027,
+          -0.15
+        ],
+        "max": [
+          -0.6667,
+          1.0,
+          0.15
+        ]
+      },
+      "triangles": 72,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "B0Hi": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -1.9533,
+          2.0,
+          -0.15
+        ],
+        "max": [
+          -0.6667,
+          2.9959,
+          0.15
+        ]
+      },
+      "triangles": 92,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "B0Lo": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -1.9923,
+          2.0,
+          -0.15
+        ],
+        "max": [
+          -0.6667,
+          2.965,
+          0.15
+        ]
+      },
+      "triangles": 92,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "B4Hi": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.15
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.15
+        ]
+      },
+      "triangles": 92,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "B4Lo": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.15
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.15
+        ]
+      },
+      "triangles": 96,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "B8Hi": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          0.6667,
+          0.0225,
+          -0.15
+        ],
+        "max": [
+          1.9984,
+          1.0,
+          0.15
+        ]
+      },
+      "triangles": 64,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "B8Lo": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          0.6667,
+          -0.0016,
+          -0.15
+        ],
+        "max": [
+          1.97,
+          1.0,
+          0.15
+        ]
+      },
+      "triangles": 72,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "T0": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -1.9923,
+          2.0,
+          -0.15
+        ],
+        "max": [
+          -0.6667,
+          2.9959,
+          0.15
+        ]
+      },
+      "triangles": 108,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "T1": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -0.6667,
+          2.0,
+          -0.15
+        ],
+        "max": [
+          0.6667,
+          2.9985,
+          0.15
+        ]
+      },
+      "triangles": 96,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "T2": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          0.6667,
+          2.0,
+          -0.15
+        ],
+        "max": [
+          1.9987,
+          2.9959,
+          0.15
+        ]
+      },
+      "triangles": 108,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "T3": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -1.994,
+          1.0,
+          -0.15
+        ],
+        "max": [
+          -0.6667,
+          2.0,
+          0.15
+        ]
+      },
+      "triangles": 132,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "T4": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -0.6667,
+          1.0,
+          -0.15
+        ],
+        "max": [
+          0.6667,
+          2.0,
+          0.15
+        ]
+      },
+      "triangles": 132,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "T5": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          0.6667,
+          1.0,
+          -0.15
+        ],
+        "max": [
+          1.9994,
+          2.0,
+          0.15
+        ]
+      },
+      "triangles": 132,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "T6": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -1.994,
+          -0.0027,
+          -0.15
+        ],
+        "max": [
+          -0.6667,
+          1.0,
+          0.15
+        ]
+      },
+      "triangles": 96,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "T7": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -0.6667,
+          -0.003,
+          -0.15
+        ],
+        "max": [
+          0.6667,
+          1.0,
+          0.15
+        ]
+      },
+      "triangles": 108,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "T8": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          0.6667,
+          -0.0016,
+          -0.15
+        ],
+        "max": [
+          1.9984,
+          1.0,
+          0.15
+        ]
+      },
+      "triangles": 96,
+      "colors": [
+        "brick",
+        "mortar"
+      ]
+    },
+    "TrimD": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -2.4,
+          -0.06,
+          -0.17
+        ],
+        "max": [
+          2.4,
+          0.06,
+          0.17
+        ]
+      },
+      "triangles": 12,
+      "colors": [
+        "trunk"
+      ]
+    },
+    "TrimH": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -0.6667,
+          -0.06,
+          -0.18
+        ],
+        "max": [
+          0.6667,
+          0.06,
+          0.18
+        ]
+      },
+      "triangles": 12,
+      "colors": [
+        "trunk"
+      ]
+    },
+    "TrimV": {
+      "parent": "wall_brick_tiles",
+      "bounds": {
+        "min": [
+          -0.5,
+          -0.06,
+          -0.175
+        ],
+        "max": [
+          0.5,
+          0.06,
+          0.175
+        ]
+      },
+      "triangles": 12,
+      "colors": [
+        "trunk"
+      ]
+    }
+  },
+  "attach": {}
+}

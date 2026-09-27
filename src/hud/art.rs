@@ -36,6 +36,7 @@ pub const UI_IMAGES: &[(&str, &[u8])] = ui_images![
     "icons/wall_brick.png",
     "icons/ramp_plank.png",
     "icons/floor_plank.png",
+    "icons/cone_plank.png",
     "icons/crystal_blue.png",
     "icons/crystal_violet.png",
     "icons/heart.png",
@@ -46,8 +47,8 @@ pub const UI_IMAGES: &[(&str, &[u8])] = ui_images![
 /// image store, e.g. headless tests).
 #[derive(Resource, Debug, Clone, Default)]
 pub struct UiArt {
-    /// Hotbar icons in slot order: rifle, pump, wall, ramp, floor.
-    pub slots: [Handle<Image>; 5],
+    /// Hotbar icons in slot order: rifle, pump, wall, ramp, floor, cone.
+    pub slots: [Handle<Image>; 6],
     pub crystal_blue: Handle<Image>,
     pub crystal_violet: Handle<Image>,
     pub heart: Handle<Image>,
@@ -110,6 +111,7 @@ pub fn install(app: &mut App) {
                     load("icons/wall_brick.png").0,
                     load("icons/ramp_plank.png").0,
                     load("icons/floor_plank.png").0,
+                    load("icons/cone_plank.png").0,
                 ],
                 crystal_blue: load("icons/crystal_blue.png").0,
                 crystal_violet: load("icons/crystal_violet.png").0,

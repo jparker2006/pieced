@@ -1420,6 +1420,46 @@ fn ramp_rush_targeting_ignores_the_look_pitch() {
 }
 
 #[test]
+fn running_up_near_a_ramps_side_edge_still_counts_as_on_it() {
+    // Feet a hair across the ramp's side edge (the body still on the ramp):
+    // building continues the chain, never caps the ramp you're on.
+    let own = cell(5, 5, 0);
+    for f in Facing::ALL {
+        let mut sim = empty_sim();
+        place_piece(sim.world_mut(), PieceSlot::ramp(own, f)).unwrap();
+        let map = sim.world().resource::<PieceMap>().clone();
+        let next = PieceSlot::ramp(cell(ahead(own, f).x, ahead(own, f).z, 1), f);
+        let side = f.vector().cross(Vec3::Y);
+        for along in [-1.0f32, 0.5, 1.5] {
+            let feet = center(5, 5)
+                + f.vector() * along
+                + side * (CELL_SIZE / 2.0 + 0.05)
+                + Vec3::Y * (ramp_surface_height(-along) + 0.09);
+            for (pitch, advancing) in [(8.0, false), (8.0, true), (-20.0, false), (20.0, true)] {
+                let slot = target_slot(
+                    feet + Vec3::Y * EYE,
+                    dir(f.yaw(), deg(pitch)),
+                    feet,
+                    PieceKind::Ramp,
+                    advancing,
+                    &map,
+                    &BuildTuning::default(),
+                );
+                assert_ne!(
+                    slot.cell,
+                    cell(5, 5, 1),
+                    "{f:?} at {along}: capped the ramp"
+                );
+                assert_eq!(
+                    slot, next,
+                    "{f:?} at {along}, pitch {pitch}, advancing {advancing}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn floors_and_ramps_go_where_the_aim_lands_around_you() {
     // Fortnite reach: the tile under where the aim ray lands, among the 3×3
     // tiles around yours (diagonals included), at your level looking down or

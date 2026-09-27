@@ -531,7 +531,12 @@ fn spawn_viewmodel(
         models::blueprint().build(),
         Transform::IDENTITY,
     );
-    for kind in [PieceKind::Wall, PieceKind::Floor, PieceKind::Ramp] {
+    for kind in [
+        PieceKind::Wall,
+        PieceKind::Floor,
+        PieceKind::Ramp,
+        PieceKind::Cone,
+    ] {
         let mini = tablet_part(
             &mut commands,
             models::mini_piece(kind).build(),

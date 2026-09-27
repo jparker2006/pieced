@@ -1,7 +1,7 @@
 //! The logical build grid: slot keys, piece placements and the piece map.
 //! Pure data and geometry; no systems. Also the future bot navigation graph.
 
-use super::BuildTuning;
+use super::{BuildTuning, edit::PieceEdit};
 use crate::shared::{
     ARENA_CELLS, CELL_SIZE, Facing, GridCell, LEVEL_HEIGHT, MAX_LEVELS, PieceKind,
 };
@@ -79,20 +79,26 @@ impl EdgeKey {
     }
 }
 
-/// A piece slot in the map. Each cell has one floor slot and one ramp slot (any
-/// facing); each cell edge has one wall slot.
+/// A piece slot in the map. Each cell has one floor slot, one ramp slot (any
+/// facing) and one cone slot; each cell edge has one wall slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SlotKey {
     Floor(GridCell),
     Ramp(GridCell),
     Wall(EdgeKey),
+    Cone(GridCell),
 }
+
+/// A cone's height: half a level (Fortnite's roof is 1.92 m on a 3.84 m level).
+pub const CONE_HEIGHT: f32 = LEVEL_HEIGHT / 2.0;
 
 /// A concrete placement: which piece, in which cell, facing which way.
 ///
 /// - Wall: on the `facing` edge of `cell`.
 /// - Floor: covers `cell` at its base height (`facing` only orients the planks).
 /// - Ramp: fills `cell`, rising `LEVEL_HEIGHT` toward `facing`.
+/// - Cone: a [`CONE_HEIGHT`] pyramid standing on `cell`'s base, where a floor
+///   of that cell would be (so it caps a box built one level down).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PieceSlot {
     pub kind: PieceKind,
@@ -117,11 +123,16 @@ impl PieceSlot {
         Self::new(PieceKind::Ramp, cell, facing)
     }
 
+    pub const fn cone(cell: GridCell) -> Self {
+        Self::new(PieceKind::Cone, cell, Facing::North)
+    }
+
     pub fn key(&self) -> SlotKey {
         match self.kind {
             PieceKind::Wall => SlotKey::Wall(EdgeKey::of(self.cell, self.facing)),
             PieceKind::Floor => SlotKey::Floor(self.cell),
             PieceKind::Ramp => SlotKey::Ramp(self.cell),
+            PieceKind::Cone => SlotKey::Cone(self.cell),
         }
     }
 
@@ -143,14 +154,15 @@ impl PieceSlot {
     }
 
     /// The piece entity's transform. Its collider and meshes are authored around it:
-    /// walls and floors are centered on it, ramps rise from it (base center).
+    /// walls and floors are centered on it, ramps and cones rise from it (base
+    /// center).
     pub fn transform(&self) -> Transform {
         let base = self.cell.base_center();
         let translation = match self.kind {
             PieceKind::Wall => {
                 base + self.facing.vector() * (CELL_SIZE / 2.0) + Vec3::Y * (LEVEL_HEIGHT / 2.0)
             }
-            PieceKind::Floor | PieceKind::Ramp => base,
+            PieceKind::Floor | PieceKind::Ramp | PieceKind::Cone => base,
         };
         Transform::from_translation(translation).with_rotation(self.rotation())
     }
@@ -160,6 +172,7 @@ impl PieceSlot {
         let t = self.transform().translation;
         match self.kind {
             PieceKind::Ramp => t + Vec3::Y * (LEVEL_HEIGHT / 3.0),
+            PieceKind::Cone => t + Vec3::Y * (CONE_HEIGHT / 3.0),
             _ => t,
         }
     }
@@ -174,6 +187,8 @@ impl PieceSlot {
             PieceKind::Floor => Collider::cuboid(CELL_SIZE, tuning.floor_thickness, CELL_SIZE),
             PieceKind::Ramp => Collider::convex_hull(ramp_hull_points())
                 .unwrap_or_else(|| Collider::cuboid(CELL_SIZE, LEVEL_HEIGHT / 2.0, CELL_SIZE)),
+            PieceKind::Cone => Collider::convex_hull(cone_hull_points())
+                .unwrap_or_else(|| Collider::cuboid(CELL_SIZE, CONE_HEIGHT / 2.0, CELL_SIZE)),
         }
     }
 
@@ -188,9 +203,14 @@ impl PieceSlot {
                     + self.facing.vector().abs() * (tuning.wall_thickness / 2.0)
             }
             PieceKind::Floor => Vec3::new(CELL_SIZE, tuning.floor_thickness, CELL_SIZE) / 2.0,
-            PieceKind::Ramp => {
-                let c = t.translation + Vec3::Y * (LEVEL_HEIGHT / 2.0);
-                let h = Vec3::new(CELL_SIZE, LEVEL_HEIGHT, CELL_SIZE) / 2.0;
+            PieceKind::Ramp | PieceKind::Cone => {
+                let height = if self.kind == PieceKind::Ramp {
+                    LEVEL_HEIGHT
+                } else {
+                    CONE_HEIGHT
+                };
+                let c = t.translation + Vec3::Y * (height / 2.0);
+                let h = Vec3::new(CELL_SIZE, height, CELL_SIZE) / 2.0;
                 return (c - h, c + h);
             }
         };
@@ -230,6 +250,18 @@ pub fn ramp_hull_points() -> Vec<Vec3> {
     ]
 }
 
+/// The cone pyramid in local space: base center at the origin, apex above it.
+pub fn cone_hull_points() -> Vec<Vec3> {
+    let h = CELL_SIZE / 2.0;
+    vec![
+        Vec3::new(-h, 0.0, -h),
+        Vec3::new(h, 0.0, -h),
+        Vec3::new(-h, 0.0, h),
+        Vec3::new(h, 0.0, h),
+        Vec3::new(0.0, CONE_HEIGHT, 0.0),
+    ]
+}
+
 /// Height of a ramp's walking surface above its base at a local Z (−2 = top).
 pub fn ramp_surface_height(local_z: f32) -> f32 {
     ((CELL_SIZE / 2.0 - local_z) / CELL_SIZE * LEVEL_HEIGHT).clamp(0.0, LEVEL_HEIGHT)
@@ -240,6 +272,9 @@ pub fn ramp_surface_height(local_z: f32) -> f32 {
 pub struct MapEntry {
     pub entity: Entity,
     pub slot: PieceSlot,
+    /// The piece's edit (full when unedited). An edited piece still occupies
+    /// its slot.
+    pub edit: PieceEdit,
 }
 
 /// The source of truth for every placed piece. Colliders and meshes are derived
@@ -271,14 +306,20 @@ impl PieceMap {
             .map(|e| (e.entity, e.slot.facing))
     }
 
+    pub fn cone_at(&self, cell: GridCell) -> Option<Entity> {
+        self.get(SlotKey::Cone(cell)).map(|e| e.entity)
+    }
+
     pub fn wall_at(&self, cell: GridCell, facing: Facing) -> Option<Entity> {
         self.get(SlotKey::Wall(EdgeKey::of(cell, facing)))
             .map(|e| e.entity)
     }
 
-    /// True when a wall blocks walking from `cell` toward `facing` at its level.
+    /// True when a wall blocks walking from `cell` toward `facing` at its level
+    /// (a wall edited into a door or an arch lets you through).
     pub fn is_edge_blocked(&self, cell: GridCell, facing: Facing) -> bool {
-        self.wall_at(cell, facing).is_some()
+        self.get(SlotKey::Wall(EdgeKey::of(cell, facing)))
+            .is_some_and(|e| !e.edit.is_walkable_opening())
     }
 
     /// True while a destroyed piece's slot is still locked at `tick`.
@@ -300,7 +341,23 @@ impl PieceMap {
     }
 
     pub(crate) fn insert(&mut self, slot: PieceSlot, entity: Entity) {
-        self.slots.insert(slot.key(), MapEntry { entity, slot });
+        self.slots.insert(
+            slot.key(),
+            MapEntry {
+                entity,
+                slot,
+                edit: PieceEdit::FULL,
+            },
+        );
+    }
+
+    /// Records `entity`'s edit, if it still occupies `key`.
+    pub(crate) fn set_edit(&mut self, key: SlotKey, entity: Entity, edit: PieceEdit) {
+        if let Some(entry) = self.slots.get_mut(&key)
+            && entry.entity == entity
+        {
+            entry.edit = edit;
+        }
     }
 
     /// Frees the slot if `entity` still occupies it.

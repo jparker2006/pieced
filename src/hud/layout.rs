@@ -94,6 +94,8 @@ pub(super) enum El {
     Slot(u8),
     SlotIcon(u8),
     BuildBadge,
+    /// The badge's words: BUILD MODE, or EDIT MODE while editing (D44).
+    BuildBadgeText,
     PieceGroup,
     PieceFill,
     PieceName,
@@ -149,7 +151,7 @@ pub(super) const NUMBER_BOX: Vec2 = Vec2::new(190.0, 72.0);
 pub(super) const TICK_LEN: f32 = 7.0;
 pub(super) const TICK_WIDTH: f32 = 2.5;
 
-pub(super) const SLOT_KEYS: [&str; 5] = ["1", "2", "Q", "E", "F"];
+pub(super) const SLOT_KEYS: [&str; 6] = ["1", "2", "Q", "E", "F", "V"];
 
 /// Where each HUD group is anchored (px from the screen edges). Milestone 2
 /// restyles the HUD without moving it.
@@ -649,6 +651,7 @@ fn spawn_hotbar(root: &mut ChildSpawnerCommands, art: &UiArt) {
         ))
         .with_children(|b| {
             b.spawn((
+                El::BuildBadgeText,
                 Text::new("BUILD MODE"),
                 TextFont::from_font_size(13.0),
                 TextColor(INK),
