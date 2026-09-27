@@ -177,3 +177,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - the T12 background isn't blurred (a dark overlay only, by the spec's cost rule).
 - 2026-09-26 17:13: **Jake's first play session**, on the release build `713feb0`, muted at his request: about 2–3 minutes, and the game quit cleanly (exit 0, no errors). This isn't the S8 session, which needs at least 10 minutes and a verdict; his impressions are pending.
   - Launch took **10.7 s**, but it was the first launch of a new build with a cold Metal shader cache. S3 measures warm launches (in the go window). If warm launches aren't well under 5 s, the warm-up and pipeline count are the first suspects.
+- 2026-09-26: **Jake's first impressions** (after about 3 minutes, not yet the S8 session), quoted:
+  > "Okay, it plays really fun. I think the rebuild mechanics need to act a little bit more like Fortnite, like when I ramp up, I feel just infinite ramp, stuff like that. I was just shooting the robot. It was really fun. It looked really good."
+
+  A feedback grill (Q30–Q38: ramp rush, missing Fortnite building, guns, aim, movement, visual issues, bots, scope, priority) was sent to Jake. Waiting on his answers.
