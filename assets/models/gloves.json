@@ -3,18 +3,18 @@
   "kind": "gloves",
   "source": "art/blender/assets/gloves.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 1960,
+  "triangles": 1904,
   "triangle_budget": 2000,
   "bounds": {
     "min": [
-      -0.143,
+      -0.3274,
       0.0,
-      -0.2718
+      -0.2776
     ],
     "max": [
-      0.0947,
-      0.4448,
-      0.451
+      0.1219,
+      0.7615,
+      0.8713
     ]
   },
   "parts": {
@@ -22,40 +22,40 @@
       "parent": "gloves",
       "bounds": {
         "min": [
-          -0.143,
+          -0.3274,
           0.0,
-          -0.2718
+          -0.2776
         ],
         "max": [
-          0.0787,
-          0.4448,
-          -0.1298
+          0.0845,
+          0.7615,
+          0.2281
         ]
       },
-      "triangles": 968,
+      "triangles": 940,
       "colors": [
         "glove_white",
-        "gun_iron"
+        "hud_panel"
       ]
     },
     "GloveR": {
       "parent": "gloves",
       "bounds": {
         "min": [
-          -0.0577,
-          0.0383,
-          0.0184
+          -0.0633,
+          0.2146,
+          0.0088
         ],
         "max": [
-          0.0947,
-          0.3319,
-          0.451
+          0.1219,
+          0.6416,
+          0.8713
         ]
       },
-      "triangles": 992,
+      "triangles": 964,
       "colors": [
         "glove_white",
-        "gun_iron"
+        "hud_panel"
       ]
     }
   },

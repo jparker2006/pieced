@@ -236,7 +236,8 @@ fn every_glb_matches_its_sidecar() {
 /// before outlines). `probe` is the orientation fixture.
 fn spec_budget(kind: &str) -> u32 {
     match kind {
-        "gun" => 6000,
+        // S1 round 3 (rounder, smooth-shaded guns): up from the spec's 6k.
+        "gun" => 8000,
         "gloves" => 2000,
         "knight" => 8000,
         "wall" => 600,
