@@ -3,18 +3,18 @@
   "kind": "far_island",
   "source": "art/blender/assets/far.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 430,
+  "triangles": 418,
   "triangle_budget": 1500,
   "bounds": {
     "min": [
-      -10.5868,
+      -11.1047,
       0.0,
-      -12.0103
+      -12.0988
     ],
     "max": [
-      11.4645,
-      48.4841,
-      10.9688
+      10.3323,
+      57.8752,
+      10.4522
     ]
   },
   "parts": {
@@ -22,26 +22,25 @@
       "parent": "far_island_c",
       "bounds": {
         "min": [
-          -10.5868,
-          11.7868,
-          -12.0103
+          -11.1047,
+          25.2,
+          -12.0988
         ],
         "max": [
-          11.4645,
-          48.4841,
-          10.9688
+          10.3323,
+          57.8752,
+          10.4522
         ]
       },
-      "triangles": 400,
+      "triangles": 388,
       "colors": [
-        "cliff_dirt",
-        "cliff_dirt_shadow",
+        "far_rock",
+        "far_rock_dark",
+        "far_rock_shade",
         "foliage",
         "foliage_shadow",
         "grass",
         "grass_shadow",
-        "rock",
-        "rock_shadow",
         "trunk",
         "trunk_shadow"
       ]
@@ -50,14 +49,14 @@
       "parent": "far_island_c",
       "bounds": {
         "min": [
-          1.2517,
+          3.5072,
           0.0,
-          -10.2155
+          -10.5555
         ],
         "max": [
-          4.6484,
-          32.0,
-          -8.7225
+          6.6568,
+          44.0,
+          -8.6976
         ]
       },
       "triangles": 30,
@@ -70,9 +69,9 @@
     "Mist": {
       "parent": "far_island_c",
       "position": [
-        3.0458,
+        5.209,
         0.0,
-        -9.7321
+        -9.8671
       ],
       "rotation": [
         0.0,
@@ -85,7 +84,7 @@
       "parent": "far_island_c",
       "position": [
         0.0,
-        32.6,
+        44.6,
         0.0
       ],
       "rotation": [

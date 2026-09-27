@@ -80,6 +80,14 @@
     "file": "far_island_c.glb"
   },
   {
+    "name": "far_island_d",
+    "file": "far_island_d.glb"
+  },
+  {
+    "name": "far_islet",
+    "file": "far_islet.glb"
+  },
+  {
     "name": "floor_plank",
     "file": "floor_plank.glb"
   },

@@ -5,11 +5,18 @@
 //!   background thread at launch, shown with Bevy's `Skybox` on the main camera
 //!   and turned once every 10 minutes about its own core ([`GalaxySpin`];
 //!   `--knobs skyrot=off` freezes it, `sky=off` leaves the sky out).
-//! - **Far models** (`art/blender/assets/far.py`): the stained-glass cathedral
-//!   station, far islands with waterfalls, ships and the ringed planet, placed by
-//!   [`FarLayout`] and drawn with the far material (no outlines). Glass parts
-//!   pulse and glow through halos, waterfall strips scroll ([`WaterfallMaterial`]),
-//!   ships trail additive streaks, and a soft glow band lifts the horizon.
+//! - **Far models** (`art/blender/assets/far.py`): the gothic cathedral station,
+//!   a field of floating islands with waterfalls, ships and the ringed planet,
+//!   placed by [`FarLayout`] and drawn with the far material (no outlines).
+//!   Glass parts pulse and glow through halos, waterfall strips scroll
+//!   ([`WaterfallMaterial`]), ships trail additive streaks, and a soft glow band
+//!   lifts the horizon.
+//! - **Cost:** the far layer shares a handful of materials (stone, islands,
+//!   planet, ships, four glass pulse groups, trails, one waterfall material) and
+//!   meshes: every island instance of a model shares its meshes, and every
+//!   waterfall strip in every model is drawn from one unit mesh
+//!   ([`FarAssets::waterfall_mesh`]), so instances batch. Nothing here allocates
+//!   per frame.
 //! - **Motion** ([`motion`], [`FarMotionPlugin`]): pure transform and parameter
 //!   updates on [`SkyClock`], testable headless.
 //!
@@ -301,7 +308,14 @@ pub struct FarModelSlot {
     pub scale: f32,
     pub kind: FarKind,
     pub waterfall: bool,
+    /// Its waterfalls end in a mist halo (not for islands past [`MIST_RANGE`]).
+    pub mist: bool,
 }
+
+/// Islands farther than this from the arena centre (m) pour their waterfalls
+/// without a mist halo: it would be a few pixels there, and leaving it out
+/// lets the distant waterfalls batch back to back on their shared strip mesh.
+pub const MIST_RANGE: f32 = 500.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FarKind {
@@ -316,6 +330,7 @@ pub enum FarKind {
 pub struct FarModel {
     pub kind: FarKind,
     pub waterfall: bool,
+    pub mist: bool,
 }
 
 /// The soft glow band on the horizon.
@@ -362,6 +377,7 @@ pub fn spawn_far_view(mut commands: Commands, layout: Res<FarLayout>) {
                     scale: spec.scale,
                     kind: FarKind::Ship,
                     waterfall: false,
+                    mist: false,
                 },
                 ChildOf(station),
             ));
@@ -375,7 +391,7 @@ pub fn spawn_far_view(mut commands: Commands, layout: Res<FarLayout>) {
         slot(&layout.planet, FarKind::Planet, false),
         ChildOf(root),
     ));
-    for (i, island) in layout.islands.iter().enumerate() {
+    for (i, island) in layout.all_islands().enumerate() {
         commands.spawn((
             Name::new(format!("Far island {i}")),
             Transform::from_translation(island.piece.position)
@@ -394,12 +410,14 @@ pub fn spawn_far_view(mut commands: Commands, layout: Res<FarLayout>) {
 }
 
 fn slot(piece: &FarPiece, kind: FarKind, waterfall: bool) -> FarModelSlot {
+    let near = kind != FarKind::Island || piece.position.xz().length() < MIST_RANGE;
     FarModelSlot {
         model: piece.model,
         anchor: piece.anchor,
         scale: piece.scale,
         kind,
         waterfall,
+        mist: waterfall && near,
     }
 }
 
@@ -431,6 +449,7 @@ fn attach_far_models(
             FarModel {
                 kind: slot.kind,
                 waterfall: slot.waterfall,
+                mist: slot.mist,
             },
             ChildOf(anchor),
         ));
@@ -474,22 +493,28 @@ pub struct FarAssets {
     pub horizon: Handle<FarMaterial>,
     pub waterfall: Handle<WaterfallMaterial>,
     pub horizon_mesh: Handle<Mesh>,
+    /// The one unit waterfall strip every `Waterfall*` part draws with: the
+    /// first one dressed (every model builds the same strip, `far.py`).
+    pub waterfall_mesh: Option<Handle<Mesh>>,
 }
 
-/// Pulse phases (turns) of the glass groups: the sails ripple out of step with
-/// the great window; the little windows breathe on their own.
+/// Pulse phases (turns) of the glass groups: the wing towers' windows ripple
+/// out of step with the great window; the other tower windows and the warm
+/// arcade lamps breathe on their own.
 pub const GLASS_PHASES: [f32; 4] = [0.0, 0.33, 0.66, 0.5];
 
-/// Which glass group a `Glass*` / `Glow*` part belongs to.
+/// Which glass group a `Glass*` part or `Glow*` point belongs to: 0 the wing
+/// towers' tall windows, 1 the great window and the crystal over the door, 2
+/// the other tower windows, 3 the arcade's warm windows.
 pub fn glass_group(part: &str) -> usize {
     let name = part
         .strip_prefix("Glass")
         .or_else(|| part.strip_prefix("Glow"))
         .unwrap_or(part);
     match name {
-        "SailLeftInner" | "SailRightOuter" => 0,
-        "Nave" => 1,
-        "SailLeftOuter" | "SailRightInner" => 2,
+        "Towers" | "TowerLeft" | "TowerRight" => 0,
+        "Nave" | "Crystal" => 1,
+        "Side" => 2,
         _ => 3,
     }
 }
@@ -551,6 +576,7 @@ fn create_far_assets(
             0.8,
         )),
         horizon_mesh: meshes.add(horizon_mesh(layout.horizon_radius)),
+        waterfall_mesh: None,
     };
     commands.insert_resource(assets);
 }
@@ -652,12 +678,12 @@ fn dress_far_models(
     models: Query<&FarModel>,
     children: Query<&Children>,
     names: Query<&Name>,
-    far_meshes: Query<(), With<MeshMaterial3d<FarMaterial>>>,
-    assets: Option<Res<FarAssets>>,
+    far_meshes: Query<&Mesh3d, With<MeshMaterial3d<FarMaterial>>>,
+    assets: Option<ResMut<FarAssets>>,
     library: Option<Res<ModelLibrary>>,
     mut boot: ResMut<FarBoot>,
 ) {
-    let Some(assets) = assets else { return };
+    let Some(mut assets) = assets else { return };
     for event in dressed.read() {
         let Ok(model) = models.get(event.root) else {
             continue;
@@ -675,17 +701,21 @@ fn dress_far_models(
                 continue;
             }
             for &mesh in children.get(node).into_iter().flatten() {
-                if !far_meshes.contains(mesh) {
+                let Ok(Mesh3d(handle)) = far_meshes.get(mesh) else {
                     continue;
-                }
+                };
                 let mut e = commands.entity(mesh);
                 match &dress {
                     PartDress::Far(material) => {
                         e.insert(MeshMaterial3d(material.clone()));
                     }
                     PartDress::Waterfall => {
+                        let strip = assets
+                            .waterfall_mesh
+                            .get_or_insert_with(|| handle.clone())
+                            .clone();
                         e.remove::<MeshMaterial3d<FarMaterial>>()
-                            .insert(MeshMaterial3d(assets.waterfall.clone()));
+                            .insert((Mesh3d(strip), MeshMaterial3d(assets.waterfall.clone())));
                     }
                     PartDress::Hide => {}
                 }
@@ -739,32 +769,36 @@ fn part_dress(model: &FarModel, part: &str, assets: &FarAssets) -> PartDress {
 /// The halo an attach point carries (sizes in model metres).
 fn attach_halo(model: &FarModel, point: &str) -> Option<(Halo, Option<GlassGlow>)> {
     let glow = |phase: f32, low: f32, high: f32| GlassGlow { phase, low, high };
-    if let Some(sail) = point.strip_prefix("Glow") {
+    if let Some(glass) = point.strip_prefix("Glow") {
         let phase = GLASS_PHASES[glass_group(point)];
-        let (size, color) = match sail {
-            "Nave" => (70.0, cartoon::GLASS_YELLOW),
-            s if s.ends_with("Inner") => (120.0, cartoon::GLASS_VIOLET),
-            _ => (100.0, cartoon::GLASS_CYAN),
+        let (size, color, low, high) = match glass {
+            // The great window: a soft blue-white bloom over its jewel colours.
+            "Nave" => (130.0, cartoon::GLASS_CYAN, 0.16, 0.45),
+            // The crystal over the door burns brightest.
+            "Crystal" => (60.0, cartoon::CRYSTAL_BLUE, 0.5, 1.1),
+            // The wing towers' tall windows.
+            _ => (100.0, cartoon::GLASS_VIOLET, 0.14, 0.4),
         };
-        return Some((Halo::new(color, size, 0.3), Some(glow(phase, 0.18, 0.55))));
+        return Some((Halo::new(color, size, 0.3), Some(glow(phase, low, high))));
     }
     if point.starts_with("Mist") {
-        if !model.waterfall {
+        if !model.mist {
             return None;
         }
-        let size = if model.kind == FarKind::Station {
-            40.0
+        // A soft, wide puff where the water dissolves, not a bright bead.
+        let (size, intensity) = if model.kind == FarKind::Station {
+            (54.0, 0.55)
         } else {
-            16.0
+            (24.0, 0.4)
         };
-        return Some((Halo::new(cartoon::WATERFALL_BLUE, size, 0.9), None));
+        return Some((Halo::new(cartoon::WATERFALL_BLUE, size, intensity), None));
     }
     if point == "Engine" {
         return Some((Halo::new(cartoon::CRYSTAL_BLUE, 9.0, 2.2), None));
     }
     if point == "Center" && model.kind == FarKind::Planet {
-        // A thin atmosphere so the planet stands off the sky.
-        return Some((Halo::new(cartoon::GLASS_VIOLET, 250.0, 0.3), None));
+        // A thin lavender atmosphere so the planet stands off the sky.
+        return Some((Halo::new(cartoon::FAR_PLANET_LIGHT, 240.0, 0.22), None));
     }
     None
 }
@@ -775,20 +809,17 @@ mod tests {
 
     #[test]
     fn glass_parts_and_their_glows_share_a_phase_group() {
-        for suffix in [
-            "Nave",
-            "SailLeftInner",
-            "SailLeftOuter",
-            "SailRightInner",
-            "SailRightOuter",
+        for (glass, glows) in [
+            ("GlassNave", &["GlowNave", "GlowCrystal"][..]),
+            ("GlassTowers", &["GlowTowerLeft", "GlowTowerRight"][..]),
         ] {
-            assert_eq!(
-                glass_group(&format!("Glass{suffix}")),
-                glass_group(&format!("Glow{suffix}"))
-            );
+            for glow in glows {
+                assert_eq!(glass_group(glass), glass_group(glow), "{glow}");
+            }
         }
+        assert_eq!(glass_group("GlassSide"), 2);
         assert_eq!(glass_group("GlassWindows"), 3);
-        assert_ne!(glass_group("GlassNave"), glass_group("GlassSailLeftInner"));
+        assert_ne!(glass_group("GlassNave"), glass_group("GlassTowers"));
     }
 
     #[test]
