@@ -4,9 +4,10 @@
 //! (unlit [`FarMaterial`], so the far knob hides it with the rest of the far
 //! layer), the barrier, and the Blender models standing on it: the solid
 //! arena props (D29, at [`ARENA_PROPS`], whose colliders `arena` spawns
-//! headless) and the margin's trees, big rocks and stumps. Models are
-//! toon-dressed with ink outlines and blob shadows. Everything is spawned
-//! once; nothing here runs per frame.
+//! headless) and the margin's trees, big rocks and stumps, and the knoll under
+//! the station view (T10) with its trees. Models are toon-dressed with ink
+//! outlines and blob shadows. Everything is spawned once; nothing here runs per
+//! frame.
 
 use super::{
     PluggedInOnly,
@@ -142,6 +143,7 @@ fn spawn_island(
         pebbles: stones,
         bushes,
         prop_bushes,
+        edge_bushes,
         clouds: cloud_sectors,
         mut decor,
         knoll,
@@ -153,6 +155,7 @@ fn spawn_island(
         spawn_part(c, m, "Bushes", chunk, &cliffs, true);
     }
     spawn_part(c, m, "Prop bushes", prop_bushes, &cliffs, true);
+    spawn_part(c, m, "Edge bushes", edge_bushes, &cliffs, true);
     spawn_part(c, m, "Pebbles", stones, &pebbles, false);
     for chunk in flowers {
         spawn_part(c, m, "Flowers", chunk, &grass, false);

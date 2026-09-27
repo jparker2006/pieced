@@ -1,21 +1,26 @@
 //! The floating island, generated in code (targets T01, T11): the grassy top
-//! (the 48 m arena square plus a margin ring), rounded cartoon cliffs dropping
-//! into space under its edge, dense low grass tufts and white, yellow and pink
-//! flower clusters, pebbles, round bushes (on the margin and hugging the solid
-//! props), a ring of framing trees and the margin's other trees, big rocks and
-//! stumps (Blender models), and a sea of soft cartoon clouds under the rim and
-//! around the far islands (D48). Everything here is pure, deterministic CPU
-//! work ending in a few merged meshes and a list of model placements, so it is
-//! tested headless and costs nothing per frame. The sky slice owns the far
-//! view itself; the clouds only read its island layout.
+//! (the 48 m arena square plus a margin ring), cliffs under its edge (a grassy
+//! lip overhanging brown rock in strata, dropping into space), dense low grass
+//! tufts and white, yellow and pink flower clusters, pebbles, leafy bushes (on
+//! the margin, hugging the solid props, and low at the arena's edge where the
+//! gallery views stand), a ring of framing trees and the margin's other trees,
+//! big rocks and stumps (Blender models, some placed by hand to frame the
+//! gallery views: [`FRAMING`]), the small knoll the station view looks up
+//! from, and a sea of soft cartoon clouds under the rim and around the far
+//! islands (D48). Everything here is pure, deterministic CPU work ending in a
+//! few merged meshes and a list of model placements, so it is tested headless
+//! and costs nothing per frame. The sky slice owns the far view itself; the
+//! clouds only read its island layout.
 //!
 //! Triangle budget (Battery preset; see [`Island::triangles`]): at most
-//! [`ISLAND_TRIANGLE_BUDGET`] for the merged scenery, about 113k today (tufts
-//! about 38k, bushes about 31k, clouds about 22k, flowers about 15k, pebbles,
-//! ground and cliffs the rest), plus about 53 margin models (30 trees ≤ 1.5k
-//! each, rocks and stumps ≤ 300: about 51k). The Plugged-in preset adds about
-//! 18k triangles of extra tufts. All of it is static: merged meshes sharing
-//! six materials, split into chunks so the camera culls what it can't see.
+//! [`ISLAND_TRIANGLE_BUDGET`] for the merged scenery, about 121k today (bushes
+//! about 32k with 5k more at the arena's edge, tufts about 32k, clouds about
+//! 25k, flowers about 14k, pebbles 4k, the knoll 3k, ground and cliffs the
+//! rest), plus about 60 models on the margin and the knoll (about 36 trees
+//! ≤ 1.4k each, rocks and stumps ≤ 300: about 52k), instanced per model. The
+//! Plugged-in preset adds about 18k triangles of extra tufts. All of it is
+//! static: merged meshes sharing six materials, split into chunks so the
+//! camera culls what it can't see.
 
 use super::geo::{Geo, Rgba, blob, fbm2, lin, mix, noise2, shade, smooth_blob, smoothstep};
 use crate::{palette::cartoon, rng::Rng, shared::ARENA_HALF};
@@ -214,6 +219,9 @@ pub struct Island {
     /// Small bushes hugging the solid arena props' feet (outlined; no
     /// collision, and never taller than the prop or far past its footprint).
     pub prop_bushes: Geo,
+    /// Low bushes just inside the arena's edge where the gallery views stand
+    /// (outlined; no collision; see [`EDGE_COVER`]).
+    pub edge_bushes: Geo,
     /// Soft cartoon clouds below the rim and around the far islands (the far
     /// layer's unlit material), per sector of the sky.
     pub clouds: Vec<Geo>,
@@ -246,13 +254,13 @@ impl Island {
         let decor = decor(&outline, &mut rng.fork(3));
         let mut tufts = tufts(&outline, 5200, 0.55, &mut rng.fork(4));
         base_clumps(&mut tufts, &outline, &decor, &mut rng.fork(8));
-        let mut bushes = bushes(&outline, &decor, &mut rng.fork(9));
         let mut flowers = flowers(&outline, &mut rng.fork(6));
-        edge_cover(&mut bushes, &mut flowers, &mut tufts, &mut rng.fork(12));
+        let edge_bushes = edge_cover(&mut flowers, &mut tufts, &mut rng.fork(12));
         Island {
             ground: ground(&outline, &mut rng.fork(1)),
             skirt: skirt(&outline, &mut rng.fork(2)),
-            bushes,
+            bushes: bushes(&outline, &decor, &mut rng.fork(9)),
+            edge_bushes,
             prop_bushes: prop_bushes(&mut rng.fork(10)),
             clouds: clouds(&outline, &mut rng.fork(11)),
             decor,
@@ -271,7 +279,13 @@ impl Island {
             .as_ref()
             .map_or(0, |k| k.top.tri_count() + k.rock.tri_count() + k.grass.tri_count());
         knoll
-            + [&self.ground, &self.skirt, &self.pebbles, &self.prop_bushes]
+            + [
+                &self.ground,
+                &self.skirt,
+                &self.pebbles,
+                &self.prop_bushes,
+                &self.edge_bushes,
+            ]
                 .iter()
                 .map(|g| g.tri_count())
                 .sum::<usize>()
@@ -407,6 +421,23 @@ fn skirt(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
     let rings = SKIRT.len();
     // Per-column bulge noise so the cliff reads as rounded lumps and columns.
     let lumps: Vec<f32> = (0..count).map(|_| rng.range(-0.3, 0.4)).collect();
+    // Each column's rock steps out square to the rim itself, not just to the
+    // arena's side, so where the rim turns (the step out north of the lip,
+    // T11) the ledges and the overhang face the way the cliff does.
+    let out_dir: Vec<Vec3> = (0..count)
+        .map(|i| {
+            let (prev, next) = (
+                outline[(i + count - 1) % count].edge(),
+                outline[(i + 1) % count].edge(),
+            );
+            let along = (next - prev).with_y(0.0);
+            let mut n = Vec3::new(-along.z, 0.0, along.x).normalize_or(outline[i].normal);
+            if n.dot(outline[i].normal) < 0.0 {
+                n = -n;
+            }
+            (n + outline[i].normal).normalize_or(outline[i].normal)
+        })
+        .collect();
     let mut grid = vec![vec![Vec3::ZERO; count]; rings];
     for (i, s) in outline.iter().enumerate() {
         let edge = s.edge();
@@ -422,7 +453,7 @@ fn skirt(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
                 _ => (0.0, 0.0),
             };
             let flat = edge.with_y(0.0) * shrink;
-            grid[k][i] = flat + s.normal * (out + wobble) * shrink + Vec3::Y * (y + dy);
+            grid[k][i] = flat + out_dir[i] * (out + wobble) * shrink + Vec3::Y * (y + dy);
         }
     }
     // Smooth normals per grid vertex (rounded cartoon rock), from the quads
@@ -450,15 +481,15 @@ fn skirt(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
             let band = SKIRT[k].3.max(SKIRT[k + 1].3);
             // Strata: each stratum a shade of its own, ledge tops (the quads
             // stepping out as they go down) lit, cracks dark.
-            let stratum = [1.0, 0.9, 1.04, 0.86, 0.97, 0.9, 1.0, 0.88][k % 8];
+            let stratum = [1.0, 0.8, 1.06, 0.74, 0.96, 0.82, 1.02, 0.76][k % 8];
             let ledge = SKIRT[k + 1].1 > SKIRT[k].1 + 0.15;
             let color = match band {
                 0 if k == 0 => mix(grass, lit_grass, 0.5),
                 0 => grass,
                 1 => shade(grass, 0.82),
                 2 => tucked,
-                3 if crack(i) || crack(j) => shade(dirt, 0.72),
-                3 if ledge => shade(dirt, 1.1),
+                3 if crack(i) || crack(j) => shade(dirt, 0.62),
+                3 if ledge => shade(dirt, 1.22),
                 3 => shade(dirt, stratum),
                 _ => under,
             };
@@ -642,7 +673,7 @@ const fn framing(model: &'static str, x: f32, z: f32, yaw_deg: f32, scale: f32) 
 const FRAMING: [Framing; 9] = [
     // T01, from the west edge: a big tree at the left of the shot, a rock and
     // a stump under it.
-    framing("tree_b", -28.6, 4.2, 200.0, 1.7),
+    framing("tree_b", -29.6, 4.2, 200.0, 1.7),
     framing("rock_a", -26.0, 8.4, 150.0, 1.4),
     framing("stump_a", -25.6, 6.1, 0.0, 1.25),
     // T05, from the north-west corner: a big tree at the left.
@@ -1120,7 +1151,8 @@ const EDGE_COVER: [(f32, f32, f32, usize); 5] = [
     (-2.6, -15.2, 1.2, 0),
 ];
 
-fn edge_cover(bushes: &mut [Geo], flowers: &mut [Geo], tufts: &mut [Geo], rng: &mut Rng) {
+fn edge_cover(flowers: &mut [Geo], tufts: &mut [Geo], rng: &mut Rng) -> Geo {
+    let mut bushes = Geo::default();
     // A bush stands about 1.35 × its size tall.
     let largest = EDGE_BUSH_MAX_HEIGHT / 1.4;
     let petals = [
@@ -1138,13 +1170,7 @@ fn edge_cover(bushes: &mut [Geo], flowers: &mut [Geo], tufts: &mut [Geo], rng: &
             let p = centre + Vec2::new(a.cos(), a.sin()) * radius * rng.range(0.2, 0.75);
             let size = largest * rng.range(0.72, 1.0);
             if inside(p) {
-                bush_of(
-                    &mut bushes[chunk(p.x, p.y)],
-                    Vec3::new(p.x, 0.0, p.y),
-                    size,
-                    6,
-                    rng,
-                );
+                bush_of(&mut bushes, Vec3::new(p.x, 0.0, p.y), size, 6, rng);
             }
         }
         for _ in 0..14 {
@@ -1175,6 +1201,7 @@ fn edge_cover(bushes: &mut [Geo], flowers: &mut [Geo], tufts: &mut [Geo], rng: &
             }
         }
     }
+    bushes
 }
 
 // ---------------------------------------------------------------------------
@@ -1774,6 +1801,132 @@ mod tests {
     }
 
     #[test]
+    fn edge_cover_stays_low_by_the_edge_and_off_the_spawns() {
+        let island = generated();
+        assert!(island.edge_bushes.tri_count() > 1000);
+        let layout = crate::arena::ArenaLayout::default();
+        for v in island.edge_bushes.vertices() {
+            assert!(v.y <= EDGE_BUSH_MAX_HEIGHT + 1e-3, "an edge bush too tall at {v}");
+            assert!(edge_distance(v.x, v.z) <= 0.0, "inside the arena at {v}");
+            let to_edge = ARENA_HALF - v.x.abs().max(v.z.abs());
+            assert!(to_edge <= EDGE_COVER_BAND, "an edge bush mid-field at {v}");
+            for spawn in [layout.player_spawn, layout.dummy_spawn] {
+                assert!(v.xz().distance(spawn.xz()) > 3.0, "a bush on a spawn at {v}");
+            }
+            for prop in crate::arena::ARENA_PROPS {
+                assert!(prop.footprint_distance(v.xz()) > 0.0, "a bush in {prop:?}");
+            }
+        }
+    }
+
+    /// The camera a gallery view renders from, worked out from the view
+    /// table alone (for still and aimed views, what the runner computes).
+    fn view_camera(id: &str) -> (Transform, f32) {
+        use crate::scenario::gallery::{
+            Aim, Framing as View, GALLERY_FOV_DEG, framed_camera, views,
+        };
+        use crate::shared::{EyeHeight, LookAngles};
+        let fov = GALLERY_FOV_DEG.to_radians();
+        let v = views().into_iter().find(|v| v.id == id).unwrap();
+        let height = if v.crouch {
+            crate::movement::MovementTuning::default().crouch_eye_height
+        } else {
+            EyeHeight::default().0
+        };
+        let eye = v.feet + Vec3::Y * height;
+        let aim = match v.aim {
+            Aim::Look { yaw, pitch } => eye + LookAngles { yaw, pitch }.forward(),
+            Aim::At(point) => point,
+            Aim::Knight { up, right } => {
+                let feet = v.knight.unwrap().feet;
+                let across = (feet - eye).with_y(0.0).normalize_or(Vec3::NEG_Z);
+                feet + Vec3::Y * up + across.cross(Vec3::Y) * right
+            }
+        };
+        let camera = match v.framing {
+            View::Eye => Transform::from_translation(eye).looking_at(aim, Vec3::Y),
+            View::Offset { screen } => framed_camera(eye, aim, screen, fov),
+            View::Behind { back } => {
+                let fwd = (aim - eye).normalize();
+                Transform::from_translation(eye - fwd * back).looking_at(aim, Vec3::Y)
+            }
+            View::Fixed { eye, look_at } => {
+                Transform::from_translation(eye).looking_at(look_at, Vec3::Y)
+            }
+        };
+        (camera, fov)
+    }
+
+    /// Where the middle of a tree's crown is.
+    fn crown(d: &Decor) -> Vec3 {
+        let h = if d.model == "tree_b" { 4.6 } else { 4.3 };
+        d.transform.translation + Vec3::Y * h * d.transform.scale.y
+    }
+
+    #[test]
+    fn the_gallery_views_are_framed_by_trees_as_the_targets_are() {
+        let island = generated();
+        let trees: Vec<Vec3> = island
+            .decor
+            .iter()
+            .chain(island.knoll.iter().flat_map(|k| k.decor.iter()))
+            .filter(|d| is_tree(d.model))
+            .map(crown)
+            .collect();
+        // (view, the screen box a tree's crown must fall in: x range, y
+        // range, in half-heights from the centre).
+        let wanted: [(&str, (f32, f32), (f32, f32)); 7] = [
+            ("T01", (-1.6, -0.8), (0.1, 1.2)),
+            ("T03", (-1.6, -0.7), (0.1, 1.2)),
+            ("T04", (0.8, 1.6), (0.0, 1.2)),
+            ("T05", (-1.6, -0.8), (0.0, 1.2)),
+            ("T10", (-1.6, -0.8), (-1.0, 0.2)),
+            ("T10", (0.8, 1.6), (-1.0, 0.2)),
+            ("T11", (-1.6, -0.6), (0.0, 1.2)),
+        ];
+        for (id, (x0, x1), (y0, y1)) in wanted {
+            let (camera, fov) = view_camera(id);
+            let framed = trees.iter().any(|&c| {
+                crate::scenario::gallery::screen_point(&camera, fov, c)
+                    .is_some_and(|s| (x0..x1).contains(&s.x) && (y0..y1).contains(&s.y))
+            });
+            assert!(framed, "{id}: no tree frames the shot at x {x0}..{x1}, y {y0}..{y1}");
+        }
+        // Low bushes at the foot of the shot, bottom left (T01, T05, T11).
+        for id in ["T01", "T05", "T11"] {
+            let (camera, fov) = view_camera(id);
+            let low = island.edge_bushes.vertices().any(|v| {
+                crate::scenario::gallery::screen_point(&camera, fov, v)
+                    .is_some_and(|s| s.x < -0.4 && s.x > -1.6 && s.y < -0.4)
+            });
+            assert!(low, "{id}: no bush at the foot of the shot");
+        }
+    }
+
+    #[test]
+    fn the_knoll_carries_its_trees_under_the_station_view() {
+        let island = generated();
+        let knoll = island.knoll.as_ref().expect("the station view has its knoll");
+        assert!(knoll.decor.iter().filter(|d| is_tree(d.model)).count() >= 3);
+        let (lo, hi) = knoll.top.bounds().unwrap();
+        for d in &knoll.decor {
+            let p = d.transform.translation;
+            assert!(
+                p.xz().cmpge(lo.xz()).all() && p.xz().cmple(hi.xz()).all(),
+                "{} off the knoll",
+                d.model
+            );
+            assert!(p.y >= lo.y - 1e-3 && p.y <= hi.y + 1e-3);
+        }
+        // Far out over the void, clear of the island and its clouds' rim.
+        let outline = outline();
+        assert!(inside_rim(&outline, lo.xz()) < -100.0);
+        // Its cliffs hang under its top.
+        let (rock_lo, _) = knoll.rock.bounds().unwrap();
+        assert!(rock_lo.y < lo.y - 8.0);
+    }
+
+    #[test]
     fn the_island_is_deterministic_and_cheap() {
         let a = Island::generate();
         let b = generated();
@@ -1789,6 +1942,14 @@ mod tests {
             ("flowers", sum(&a.flowers), 20_000),
             ("bushes", sum(&a.bushes), 36_000),
             ("prop bushes", a.prop_bushes.tri_count(), 6_000),
+            ("edge bushes", a.edge_bushes.tri_count(), 10_000),
+            (
+                "knoll",
+                a.knoll.as_ref().map_or(0, |k| {
+                    k.top.tri_count() + k.rock.tri_count() + k.grass.tri_count()
+                }),
+                6_000,
+            ),
             ("clouds", sum(&a.clouds), 30_000),
             ("pebbles", a.pebbles.tri_count(), 20_000),
         ];
@@ -1797,76 +1958,5 @@ mod tests {
         }
         assert!(tris < ISLAND_TRIANGLE_BUDGET, "island has {tris} triangles");
         assert_eq!(a.tufts.len(), CHUNKS * CHUNKS);
-    }
-}
-
-#[cfg(test)]
-mod dump_map {
-    use super::*;
-
-    /// TEMP (round 3): prints the island's triangle counts by layer.
-    #[test]
-    #[ignore]
-    fn print_island_triangles() {
-        let a = Island::generate();
-        let sum = |v: &Vec<Geo>| v.iter().map(Geo::tri_count).sum::<usize>();
-        let k = a.knoll.as_ref().map_or(0, |k| k.top.tri_count() + k.rock.tri_count() + k.grass.tri_count());
-        println!(
-            "TRIS total {} ground {} skirt {} tufts {} dense {} flowers {} bushes {} prop_bushes {} clouds {} pebbles {} knoll {} decor {} knoll_decor {}",
-            a.triangles(), a.ground.tri_count(), a.skirt.tri_count(), sum(&a.tufts), sum(&a.dense_tufts),
-            sum(&a.flowers), sum(&a.bushes), a.prop_bushes.tri_count(), sum(&a.clouds), a.pebbles.tri_count(), k,
-            a.decor.len(), a.knoll.as_ref().map_or(0, |k| k.decor.len())
-        );
-        let mut models = std::collections::BTreeMap::new();
-        for d in a.decor.iter().chain(a.knoll.iter().flat_map(|k| k.decor.iter())) {
-            *models.entry(d.model).or_insert(0) += 1;
-        }
-        println!("MODELS {models:?}");
-    }
-
-    /// TEMP (round 3 planning): dumps the island layout for a top-down map.
-    #[test]
-    #[ignore]
-    fn dump_island_layout() {
-        let Ok(path) = std::env::var("PIECED_MAP_DUMP") else {
-            return;
-        };
-        let island = Island::generate();
-        let rim: Vec<[f32; 2]> = outline().iter().map(|s| s.edge().xz().to_array()).collect();
-        let decor: Vec<serde_json::Value> = island
-            .decor
-            .iter()
-            .map(|d| {
-                serde_json::json!({
-                    "model": d.model,
-                    "x": d.transform.translation.x,
-                    "z": d.transform.translation.z,
-                    "scale": d.transform.scale.x,
-                    "radius": d.radius,
-                })
-            })
-            .collect();
-        let props: Vec<serde_json::Value> = crate::arena::ARENA_PROPS
-            .iter()
-            .map(|p| {
-                serde_json::json!({
-                    "model": p.kind.model(),
-                    "x": p.position.x,
-                    "z": p.position.z,
-                    "radius": p.kind.footprint_radius(),
-                })
-            })
-            .collect();
-        let bushes: Vec<[f32; 3]> = island
-            .bushes
-            .iter()
-            .flat_map(|g| g.positions.chunks(80 * 3))
-            .map(|c| {
-                let p = c.iter().map(|p| Vec3::from_array(*p)).sum::<Vec3>() / c.len() as f32;
-                [p.x, p.z, 1.0]
-            })
-            .collect();
-        let json = serde_json::json!({ "rim": rim, "decor": decor, "props": props, "bushes": bushes });
-        std::fs::write(path, serde_json::to_string(&json).unwrap()).unwrap();
     }
 }

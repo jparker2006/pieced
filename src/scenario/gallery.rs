@@ -23,6 +23,18 @@
 //! in (T03 8 m, T04 4 m, T05 5 m, T06 6 m, T07 4.5 m, T08 5 m) and crouches the
 //! player in those views; round 2 brought T06 to 5.2 m. The distances are
 //! one-line changes in the table.
+//!
+//! Every target also frames its shot with set dressing: a big tree at an edge,
+//! bushes, rocks and stumps near the camera. Round 3 moved T01, T03, T04, T05
+//! and T11 to spots near the arena's edge where the island's margin falls at the
+//! frame's edge, and hand-placed trees, rocks and stumps there
+//! (`arena::visuals::scenery`'s framing models, low bushes just inside the edge
+//! and the knoll under T10's camera; a scenery test holds each view to its
+//! framing): T01 from the west edge, T03 by the north edge, T04 from the
+//! south-east, T05 in the north-west with the knight 3.6 m out in front of the
+//! corner's arena rock (as T05 paints him), and T11 on the east lip looking
+//! north at the cliff where the island steps back out. T03 captures the bolt
+//! as it reaches him, so its burst lands on his chest.
 
 use super::{
     Director, DirectorStatus, ScenarioClock, capture, player_entity, teleport, with_intent,
