@@ -2,11 +2,11 @@
 //! app wall-clock pacing between frames (including renderer backpressure), not GPU
 //! timestamps.
 
-use crate::{render::GraphicsTuning, shared::AppState, tuning::Tuning};
+use crate::{app::BootGate, render::GraphicsTuning, shared::AppState, tuning::Tuning};
 use bevy::{
     prelude::*,
     render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems},
-    window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowOccluded},
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowCreated, WindowOccluded},
 };
 use serde::Serialize;
 use std::{
@@ -59,6 +59,21 @@ pub struct FrameStats {
     recent: std::collections::VecDeque<(f64, f64)>,
 }
 
+/// The frame that just ended (updated in `Last`, in [`TelemetrySystems`]).
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq)]
+pub struct LastFrame {
+    pub frame: u64,
+    /// Milliseconds since process start at the end of this frame.
+    pub t_ms: f64,
+    /// Wall time since the previous frame ended (0 on the first frame).
+    pub dt_ms: f64,
+}
+
+/// The telemetry systems in `Last` (frame clock, boot phases, launch time,
+/// occlusion). Readers of [`LastFrame`] or [`RunConditions`] run after it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TelemetrySystems;
+
 #[derive(Resource, Debug, Default)]
 struct FrameClock {
     frame: u64,
@@ -78,9 +93,21 @@ impl Plugin for TelemetryPlugin {
             .init_resource::<MainFrame>()
             .insert_resource(submits.clone())
             .init_resource::<RunConditions>()
+            .init_resource::<LastFrame>()
+            .init_resource::<BootPhases>()
             .add_systems(First, count_main_frame)
             .add_systems(FixedFirst, count_fixed_tick)
-            .add_systems(Last, (record_frame, detect_controllable, track_occlusion));
+            .add_systems(
+                Last,
+                (
+                    record_frame,
+                    track_boot,
+                    detect_controllable,
+                    track_occlusion,
+                )
+                    .chain()
+                    .in_set(TelemetrySystems),
+            );
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .insert_resource(submits)
@@ -104,6 +131,7 @@ fn record_frame(
     mut clock: ResMut<FrameClock>,
     mut log: ResMut<FrameLog>,
     mut stats: ResMut<FrameStats>,
+    mut last: ResMut<LastFrame>,
     state: Res<State<AppState>>,
 ) {
     let now = Instant::now();
@@ -125,21 +153,25 @@ fn record_frame(
         log.rows.push(row);
     }
     clock.fixed_ticks = 0;
+    *last = LastFrame {
+        frame: clock.frame,
+        t_ms,
+        dt_ms,
+    };
 
     stats.last_dt_ms = dt_ms;
     stats.recent.push_back((t_ms, dt_ms));
     while stats.recent.front().is_some_and(|(t, _)| t_ms - t > 5000.0) {
         stats.recent.pop_front();
     }
-    let one_second: Vec<f64> = stats
+    // Folded rather than collected: no allocation every frame.
+    let (count, total) = stats
         .recent
         .iter()
         .filter(|(t, _)| t_ms - t <= 1000.0)
-        .map(|(_, dt)| *dt)
-        .collect();
-    let total: f64 = one_second.iter().sum();
+        .fold((0usize, 0.0f64), |(n, sum), (_, dt)| (n + 1, sum + dt));
     stats.fps = if total > 0.0 {
-        one_second.len() as f64 * 1000.0 / total
+        count as f64 * 1000.0 / total
     } else {
         0.0
     };
@@ -148,9 +180,11 @@ fn record_frame(
 
 fn detect_controllable(
     mut launch: ResMut<LaunchTime>,
+    mut phases: ResMut<BootPhases>,
     state: Res<State<AppState>>,
     cursor: Option<Single<&CursorOptions, With<PrimaryWindow>>>,
     scenario: Option<Res<crate::scenario::ScenarioRun>>,
+    info: Option<Res<crate::session::LaunchInfo>>,
 ) {
     if launch.0.is_some() || *state.get() != AppState::Playing {
         return;
@@ -160,8 +194,111 @@ fn detect_controllable(
     if input_live {
         let elapsed = process_start().elapsed();
         launch.0 = Some(elapsed);
-        println!("PIECED_LAUNCH_MS {:.1}", elapsed.as_secs_f64() * 1000.0);
+        let ms = elapsed.as_secs_f64() * 1000.0;
+        phases.controllable_ms = Some(ms);
+        // The ms token stays first so older tooling keeps parsing it.
+        match info {
+            Some(info) => println!("PIECED_LAUNCH_MS {ms:.1} {}", info.kind.label()),
+            None => println!("PIECED_LAUNCH_MS {ms:.1}"),
+        }
+        println!("{}", phases.line());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Boot phases (what the launch time was spent on)
+// ---------------------------------------------------------------------------
+
+/// When each boot milestone was reached, in milliseconds since process start:
+/// the window, the first frame, each [`BootGate`] key's release, `Playing`
+/// and controllable. Each time is the end of the frame where the milestone
+/// was seen, so it includes that frame's work (for example a warm-up frame's
+/// synchronous pipeline compiles).
+#[derive(Resource, Debug, Default, Clone, Serialize, PartialEq)]
+pub struct BootPhases {
+    pub window_ms: Option<f64>,
+    pub first_frame_ms: Option<f64>,
+    /// `BootGate` keys in release order, each with its last release time.
+    pub gates: Vec<(&'static str, f64)>,
+    pub playing_ms: Option<f64>,
+    pub controllable_ms: Option<f64>,
+    #[serde(skip)]
+    held: Vec<&'static str>,
+}
+
+impl BootPhases {
+    /// Records one frame's observations at `t_ms`: the gate keys held now,
+    /// whether a window was created, and whether the game is `Playing`.
+    pub fn observe(
+        &mut self,
+        t_ms: f64,
+        held_now: &[&'static str],
+        window_created: bool,
+        playing: bool,
+    ) {
+        self.first_frame_ms.get_or_insert(t_ms);
+        if window_created {
+            self.window_ms.get_or_insert(t_ms);
+        }
+        let mut released = std::mem::take(&mut self.held);
+        released.retain(|key| !held_now.contains(key));
+        for key in released {
+            self.gates.retain(|(k, _)| *k != key);
+            self.gates.push((key, t_ms));
+        }
+        self.held.extend_from_slice(held_now);
+        if playing {
+            self.playing_ms.get_or_insert(t_ms);
+        }
+    }
+
+    /// Every recorded phase in time order, as `(name, ms)`.
+    pub fn phases(&self) -> Vec<(String, f64)> {
+        let mut out = Vec::new();
+        if let Some(ms) = self.window_ms {
+            out.push(("window".to_string(), ms));
+        }
+        if let Some(ms) = self.first_frame_ms {
+            out.push(("first_frame".to_string(), ms));
+        }
+        out.extend(self.gates.iter().map(|(k, ms)| (k.to_string(), *ms)));
+        if let Some(ms) = self.playing_ms {
+            out.push(("playing".to_string(), ms));
+        }
+        if let Some(ms) = self.controllable_ms {
+            out.push(("controllable".to_string(), ms));
+        }
+        // Stable: ties keep the order above.
+        out.sort_by(|a, b| a.1.total_cmp(&b.1));
+        out
+    }
+
+    /// `PIECED_BOOT window=412 first_frame=780 models=1650 ... playing=5130`.
+    pub fn line(&self) -> String {
+        let mut line = String::from("PIECED_BOOT");
+        for (name, ms) in self.phases() {
+            line.push_str(&format!(" {name}={ms:.0}"));
+        }
+        line
+    }
+}
+
+fn track_boot(
+    mut phases: ResMut<BootPhases>,
+    mut created: MessageReader<WindowCreated>,
+    last: Res<LastFrame>,
+    state: Res<State<AppState>>,
+    gate: Option<Res<BootGate>>,
+) {
+    let window_created = created.read().count() > 0;
+    if phases.playing_ms.is_some() {
+        return;
+    }
+    let playing = *state.get() == AppState::Playing;
+    // Boot frames only (this returns early once playing), so the small
+    // allocation here is not an every-frame cost.
+    let held: Vec<&'static str> = gate.map(|g| g.held().collect()).unwrap_or_default();
+    phases.observe(last.t_ms, &held, window_created, playing);
 }
 
 // ---------------------------------------------------------------------------
@@ -629,7 +766,8 @@ pub fn power_state() -> PowerState {
     }
 }
 
-/// Short git commit of the working tree, when available.
+/// Short git commit of the working tree, when available; otherwise the commit
+/// embedded at build time ([`crate::session::build_commit`]).
 pub fn git_commit() -> String {
     std::process::Command::new("git")
         .args(["rev-parse", "--short=12", "HEAD"])
@@ -638,7 +776,7 @@ pub fn git_commit() -> String {
         .ok()
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_else(|| "unknown".into())
+        .unwrap_or_else(crate::session::build_commit)
 }
 
 /// Human description of the active graphics configuration.
