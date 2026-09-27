@@ -121,6 +121,8 @@ pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "far_island_a",
     "far_island_b",
     "far_island_c",
+    "far_island_d",
+    "far_islet",
     "planet",
     "ship",
     "station",

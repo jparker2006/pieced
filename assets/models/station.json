@@ -3,18 +3,18 @@
   "kind": "station",
   "source": "art/blender/assets/far.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 12689,
+  "triangles": 14760,
   "triangle_budget": 25000,
   "bounds": {
     "min": [
-      -183.1144,
-      0.0,
-      -121.164
+      -225.1619,
+      0.4,
+      -203.0
     ],
     "max": [
-      185.8225,
-      433.5,
-      130.0
+      218.1462,
+      463.0,
+      203.0
     ]
   },
   "parts": {
@@ -22,224 +22,159 @@
       "parent": "station",
       "bounds": {
         "min": [
-          -153.7908,
-          41.2082,
-          -121.164
+          -225.1619,
+          65.1202,
+          -196.2762
         ],
         "max": [
-          155.156,
-          183.78,
-          103.0622
+          218.1462,
+          196.0,
+          161.3785
         ]
       },
-      "triangles": 802,
+      "triangles": 3626,
       "colors": [
-        "cliff_dirt",
-        "cliff_dirt_shadow",
+        "far_rock",
+        "far_rock_dark",
+        "far_rock_shade",
+        "far_stone_light",
         "grass",
-        "grass_shadow",
-        "rock",
-        "rock_shadow",
-        "station_stone",
-        "station_stone_shadow"
+        "grass_shadow"
       ]
     },
     "Cathedral": {
       "parent": "station",
       "bounds": {
         "min": [
-          -183.1144,
-          166.6649,
-          -57.92
+          -204.1384,
+          196.0,
+          -203.0
         ],
         "max": [
-          183.1144,
-          433.5,
-          90.6563
+          204.1384,
+          463.0,
+          203.0
         ]
       },
-      "triangles": 3749,
+      "triangles": 5870,
       "colors": [
-        "station_stone",
-        "station_stone_shadow"
+        "far_stone",
+        "far_stone_dark",
+        "far_stone_light",
+        "far_stone_shade"
       ]
     },
     "GlassNave": {
       "parent": "station",
       "bounds": {
         "min": [
-          -16.0,
-          210.5,
-          -31.0
+          -22.0,
+          199.0,
+          -147.5
         ],
         "max": [
-          16.0,
-          296.5,
-          -31.0
+          22.0,
+          350.0,
+          -66.3
         ]
       },
-      "triangles": 1416,
+      "triangles": 2378,
       "colors": [
         "crystal_blue",
+        "far_glass_blue",
+        "far_glass_gold",
+        "far_glass_magenta",
+        "far_glass_teal",
+        "far_glass_white",
         "glass_cyan",
-        "glass_pink",
         "glass_violet",
-        "glass_yellow",
-        "gun_iron",
-        "star_gold"
+        "gun_iron"
       ]
     },
-    "GlassSailLeftInner": {
+    "GlassSide": {
       "parent": "station",
       "bounds": {
         "min": [
-          42.7974,
-          178.9194,
-          11.7059
+          -138.3,
+          246.0,
+          -72.8
         ],
         "max": [
-          114.139,
-          398.9456,
-          27.6593
+          138.3,
+          326.0,
+          -21.691
         ]
       },
-      "triangles": 1519,
+      "triangles": 884,
       "colors": [
-        "crystal_blue",
+        "far_glass_blue",
+        "far_glass_gold",
+        "far_glass_magenta",
+        "far_glass_teal",
+        "far_glass_white",
         "glass_cyan",
-        "glass_pink",
         "glass_violet",
-        "glass_yellow",
-        "gun_iron",
-        "star_gold"
+        "gun_iron"
       ]
     },
-    "GlassSailLeftOuter": {
+    "GlassTowers": {
       "parent": "station",
       "bounds": {
         "min": [
-          86.218,
-          170.9529,
-          21.5117
+          -109.0,
+          234.0,
+          -56.3
         ],
         "max": [
-          185.8225,
-          344.2697,
-          68.4036
+          109.0,
+          338.0,
+          -56.3
         ]
       },
-      "triangles": 1182,
+      "triangles": 1570,
       "colors": [
-        "crystal_blue",
+        "far_glass_blue",
+        "far_glass_gold",
+        "far_glass_magenta",
+        "far_glass_teal",
+        "far_glass_white",
         "glass_cyan",
-        "glass_pink",
         "glass_violet",
-        "glass_yellow",
-        "gun_iron",
-        "star_gold"
-      ]
-    },
-    "GlassSailRightInner": {
-      "parent": "station",
-      "bounds": {
-        "min": [
-          -114.139,
-          178.9194,
-          11.7059
-        ],
-        "max": [
-          -42.7974,
-          398.9456,
-          27.6593
-        ]
-      },
-      "triangles": 1519,
-      "colors": [
-        "crystal_blue",
-        "glass_cyan",
-        "glass_pink",
-        "glass_violet",
-        "glass_yellow",
-        "gun_iron",
-        "star_gold"
-      ]
-    },
-    "GlassSailRightOuter": {
-      "parent": "station",
-      "bounds": {
-        "min": [
-          -179.1917,
-          170.9529,
-          21.5117
-        ],
-        "max": [
-          -86.218,
-          344.2697,
-          65.2819
-        ]
-      },
-      "triangles": 1182,
-      "colors": [
-        "crystal_blue",
-        "glass_cyan",
-        "glass_pink",
-        "glass_violet",
-        "glass_yellow",
-        "gun_iron",
-        "star_gold"
+        "gun_iron"
       ]
     },
     "GlassWindows": {
       "parent": "station",
       "bounds": {
         "min": [
-          -45.7,
-          184.5,
-          -42.9349
+          -202.9765,
+          200.0,
+          -202.9765
         ],
         "max": [
-          45.7,
-          290.9,
-          -18.9651
+          202.9765,
+          236.8,
+          202.9765
         ]
       },
-      "triangles": 256,
+      "triangles": 222,
       "colors": [
-        "glass_yellow"
-      ]
-    },
-    "Ring": {
-      "parent": "station",
-      "bounds": {
-        "min": [
-          -124.0,
-          224.9,
-          -118.0
-        ],
-        "max": [
-          124.0,
-          230.7,
-          130.0
-        ]
-      },
-      "triangles": 944,
-      "colors": [
-        "station_stone",
-        "station_stone_shadow"
+        "glass_yellow",
+        "star_gold"
       ]
     },
     "Waterfall1": {
       "parent": "station",
       "bounds": {
         "min": [
-          62.8797,
-          25.0,
-          -53.3211
+          76.9631,
+          10.4,
+          -122.838
         ],
         "max": [
-          73.4321,
-          175.0,
-          -45.7154
+          89.987,
+          195.4,
+          -113.071
         ]
       },
       "triangles": 30,
@@ -251,14 +186,14 @@
       "parent": "station",
       "bounds": {
         "min": [
-          5.7533,
-          0.0,
-          -63.214
+          35.3656,
+          25.4,
+          -141.6826
         ],
         "max": [
-          21.798,
-          175.0,
-          -59.5612
+          47.1788,
+          195.4,
+          -137.2417
         ]
       },
       "triangles": 30,
@@ -270,14 +205,14 @@
       "parent": "station",
       "bounds": {
         "min": [
-          -42.4996,
-          15.0,
-          -65.8527
+          -30.0576,
+          0.4,
+          -142.8865
         ],
         "max": [
-          -31.8244,
-          175.0,
-          -61.1602
+          -13.0217,
+          195.4,
+          -138.8041
         ]
       },
       "triangles": 30,
@@ -289,14 +224,71 @@
       "parent": "station",
       "bounds": {
         "min": [
-          -75.5868,
-          35.0,
-          -61.3718
+          -94.0695,
+          35.4,
+          -135.2248
         ],
         "max": [
-          -65.7146,
-          175.0,
-          -51.2077
+          -83.5218,
+          195.4,
+          -127.6116
+        ]
+      },
+      "triangles": 30,
+      "colors": [
+        "waterfall_blue"
+      ]
+    },
+    "Waterfall5": {
+      "parent": "station",
+      "bounds": {
+        "min": [
+          212.2971,
+          49.4,
+          -107.5061
+        ],
+        "max": [
+          217.6571,
+          179.4,
+          -99.3909
+        ]
+      },
+      "triangles": 30,
+      "colors": [
+        "waterfall_blue"
+      ]
+    },
+    "Waterfall6": {
+      "parent": "station",
+      "bounds": {
+        "min": [
+          -222.5825,
+          43.4,
+          -106.8688
+        ],
+        "max": [
+          -216.5225,
+          183.4,
+          -97.91
+        ]
+      },
+      "triangles": 30,
+      "colors": [
+        "waterfall_blue"
+      ]
+    },
+    "Waterfall7": {
+      "parent": "station",
+      "bounds": {
+        "min": [
+          120.6175,
+          59.4,
+          -192.092
+        ],
+        "max": [
+          127.2663,
+          169.4,
+          -188.6632
         ]
       },
       "triangles": 30,
@@ -306,12 +298,26 @@
     }
   },
   "attach": {
+    "GlowCrystal": {
+      "parent": "station",
+      "position": [
+        0.0,
+        227.0,
+        -145.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
     "GlowNave": {
       "parent": "station",
       "position": [
         0.0,
-        257.8,
-        -34.0
+        296.9,
+        -72.0
       ],
       "rotation": [
         0.0,
@@ -320,12 +326,12 @@
         1.0
       ]
     },
-    "GlowSailLeftInner": {
+    "GlowTowerLeft": {
       "parent": "station",
       "position": [
-        82.0915,
-        290.7228,
-        16.3941
+        98.0,
+        286.0,
+        -62.0
       ],
       "rotation": [
         0.0,
@@ -334,40 +340,12 @@
         1.0
       ]
     },
-    "GlowSailLeftOuter": {
+    "GlowTowerRight": {
       "parent": "station",
       "position": [
-        138.8576,
-        261.3849,
-        41.8723
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ]
-    },
-    "GlowSailRightInner": {
-      "parent": "station",
-      "position": [
-        -82.0915,
-        290.7228,
-        16.3941
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ]
-    },
-    "GlowSailRightOuter": {
-      "parent": "station",
-      "position": [
-        -138.8576,
-        261.3849,
-        41.8723
+        -98.0,
+        286.0,
+        -62.0
       ],
       "rotation": [
         0.0,
@@ -379,9 +357,9 @@
     "Mist1": {
       "parent": "station",
       "position": [
-        68.6927,
-        25.0,
-        -50.3141
+        84.1683,
+        10.4,
+        -118.934
       ],
       "rotation": [
         0.0,
@@ -393,9 +371,9 @@
     "Mist2": {
       "parent": "station",
       "position": [
-        13.9538,
-        0.0,
-        -62.6552
+        41.5446,
+        25.4,
+        -140.3827
       ],
       "rotation": [
         0.0,
@@ -407,9 +385,9 @@
     "Mist3": {
       "parent": "station",
       "position": [
-        -37.4629,
-        15.0,
-        -64.3334
+        -21.7453,
+        0.4,
+        -142.1897
       ],
       "rotation": [
         0.0,
@@ -421,9 +399,51 @@
     "Mist4": {
       "parent": "station",
       "position": [
-        -71.3988,
-        35.0,
-        -57.0122
+        -89.3331,
+        35.4,
+        -132.2136
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "Mist5": {
+      "parent": "station",
+      "position": [
+        215.5927,
+        49.4,
+        -103.8219
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "Mist6": {
+      "parent": "station",
+      "position": [
+        -220.231,
+        43.4,
+        -102.8131
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "Mist7": {
+      "parent": "station",
+      "position": [
+        124.1701,
+        59.4,
+        -190.8889
       ],
       "rotation": [
         0.0,
@@ -436,8 +456,8 @@
       "parent": "station",
       "position": [
         0.0,
-        176.5,
-        8.0
+        196.0,
+        0.0
       ],
       "rotation": [
         0.0,
