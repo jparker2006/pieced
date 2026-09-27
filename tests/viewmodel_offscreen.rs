@@ -130,6 +130,9 @@ fn hold(tool: ActiveTool, ads: bool) -> impl Fn(&mut World) {
     move |world: &mut World| {
         player_mut::<ActiveTool>(world, |t| *t = tool);
         player_mut::<Ads>(world, |a| a.0 = ads);
+        // Aiming follows the held Shift (Amendment A): hold it in the intent
+        // too, or the next tick puts the gun back at the hip.
+        player_mut::<PlayerIntent>(world, |i| i.ads_held = ads);
     }
 }
 
@@ -175,6 +178,7 @@ fn review(app: &mut App, out: &Path) {
     capture_with(app, out.join("vm-03-rifle-half-mag.png"), |w| {
         hold(rifle, false)(w);
         player_mut::<Ads>(w, |a| a.0 = false);
+        player_mut::<PlayerIntent>(w, |i| i.ads_held = false);
         player_mut::<Loadout>(w, |l| l.rifle.ammo = 8);
     });
     frames(app, 10);
@@ -199,6 +203,7 @@ fn review(app: &mut App, out: &Path) {
     frames(app, 20);
     capture_with(app, out.join("vm-07-pump-ads.png"), hold(pump, true));
     player_mut::<Ads>(app.world_mut(), |a| a.0 = false);
+    player_mut::<PlayerIntent>(app.world_mut(), |i| i.ads_held = false);
     frames(app, 20);
     // Fire the pump and catch the rack.
     player_mut::<PlayerIntent>(app.world_mut(), |i| {

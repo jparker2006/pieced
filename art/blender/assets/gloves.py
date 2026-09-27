@@ -1,7 +1,8 @@
 """Gloves: white four-finger cartoon gloves for the viewmodel (targets T02, T04).
 
-Looney-style: fat sausage fingers (three plus a thumb), a puffy palm and a
-flared, rolled cuff, over a thin dark sleeve that runs off screen. Two parts:
+Looney-style: big, fat sausage fingers (three plus a thumb), a puffy palm and a
+rolled white cuff, over a dark cloth sleeve that bends at the elbow back toward
+the player and runs off screen however far out the gun is held. Two parts:
 
     GloveR  the right hand, wrapped round a pistol grip
     GloveL  the left hand, cupping the gun from below (forend / pump grip)
@@ -41,6 +42,14 @@ FINGER_SEG = 12
 # They point back toward the player so the sleeves leave the screen.
 FOREARM_R = Vector((-0.10, 0.695, -0.709)).normalized()
 FOREARM_L = Vector((0.42, 0.06, -0.90)).normalized()
+# Past the elbow the sleeves turn back toward the player (and the left one out
+# to the player's side), `SLEEVE_REACH` long: the arms come from below the
+# camera, however far out the gun is held.
+ELBOW_R = Vector((-0.05, 0.80, -0.60)).normalized()
+ELBOW_L = Vector((0.40, 0.58, -0.71)).normalized()
+SLEEVE_REACH = 0.62
+# The sleeves are dark, matte cloth (the targets' near-black violet sleeves).
+SLEEVE = "hud_panel"
 
 
 def sausage(points, radius, color="glove_white", seg=FINGER_SEG, round_end=True,
@@ -80,17 +89,26 @@ def blob(center, half, color="glove_white", exponent=2.5, rotation=(0.0, 0.0, 0.
     return guns.finish(bm, color, matrix=guns.place(center, rotation))
 
 
-def cuff_and_sleeve(wrist, forearm, objs, seg=12):
-    """The flared, rolled glove cuff at the wrist and a dark sleeve up the forearm."""
-    profile = [(0.000, 0.025), (0.014, 0.032), (0.031, 0.043), (0.046, 0.051),
-               (0.058, 0.051), (0.064, 0.043), (0.055, 0.034), (0.022, 0.026)]
+def cuff_and_sleeve(wrist, forearm, elbow, objs, seg=12, scale=1.0):
+    """The rolled glove cuff at the wrist and a dark sleeve that leaves along
+    the forearm, then bends at the elbow back toward the player, so it runs off
+    screen from however far out the gun is held (T01-T05)."""
+    profile = [(t * scale, r * scale) for t, r in
+               ((0.000, 0.026), (0.018, 0.034), (0.040, 0.046), (0.053, 0.045),
+                (0.058, 0.036), (0.030, 0.028))]
     objs.append(guns.lathe(wrist, forearm, profile, "glove_white", seg))
-    u, v = guns.axis_frame(forearm)
-    start = Vector(wrist) + forearm * 0.040
-    end = Vector(wrist) + forearm * 0.32
+    wrist = Vector(wrist)
+    start = wrist + forearm * 0.040
+    bend = wrist + forearm * 0.13
+    end = bend + elbow * SLEEVE_REACH
     # Open-ended: one end is inside the cuff, the other far off screen.
-    objs.append(guns.loft([(start, u, v, 0.032, 0.032, 2.0), (end, u, v, 0.037, 0.037, 2.0)],
-                          "gun_iron", seg=10, cap=False))
+    frames = []
+    for c, d, r in ((start, forearm, 0.032 * scale),
+                    (bend, (forearm + elbow).normalized(), 0.036 * scale),
+                    (end, elbow, 0.052 * scale)):
+        u, v = guns.axis_frame(d)
+        frames.append((c, u, v, r, r, 2.0))
+    objs.append(guns.loft(frames, SLEEVE, seg=10, cap=False))
 
 
 def right_glove():
@@ -98,19 +116,19 @@ def right_glove():
     a, b = GRIP_R_HALF
     objs = []
     # Three fingers wrapped round the front of the grip, knuckles on the right.
-    for z, r in ((0.029, 0.0168), (-0.005, 0.0166), (-0.038, 0.0156)):
+    for z, r in ((0.033, 0.0212), (-0.006, 0.0210), (-0.044, 0.0196)):
         ra, rb = a + r + 0.002, b + r + 0.002
         path = [(-ra * math.cos(math.radians(p)), -rb * math.sin(math.radians(p)), z)
                 for p in (-30.0, 25.0, 80.0, 135.0, 185.0)]
         objs.append(sausage(path, r))
     # Thumb: over the web behind the grip, then forward along the gun's left side.
     objs.append(sausage([(-0.028, 0.028, 0.046), (-0.006, 0.048, 0.058), (0.024, 0.040, 0.062),
-                         (0.038, 0.014, 0.060), (0.040, -0.012, 0.057)], 0.0178))
+                         (0.038, 0.014, 0.060), (0.040, -0.012, 0.057)], 0.0220))
     # Palm on the right side and the heel behind it, running into the wrist.
-    objs.append(blob((-0.035, 0.013, 0.000), (0.021, 0.040, 0.058)))
-    wrist = Vector((-0.026, 0.052, -0.044))
-    objs.append(blob((-0.028, 0.038, -0.030), (0.023, 0.026, 0.034), u=8, v=5))
-    cuff_and_sleeve(wrist, FOREARM_R, objs)
+    objs.append(blob((-0.040, 0.013, 0.000), (0.027, 0.046, 0.064)))
+    wrist = Vector((-0.026, 0.054, -0.046))
+    objs.append(blob((-0.029, 0.039, -0.031), (0.026, 0.029, 0.036), u=8, v=5))
+    cuff_and_sleeve(wrist, FOREARM_R, ELBOW_R, objs)
     return objs
 
 
@@ -120,20 +138,20 @@ def left_glove():
     objs = []
     # Three fingers from knuckles at the bottom (far side), curling round the
     # bottom and up the near side (+X, toward the player's camera).
-    for y, r in ((-0.035, 0.0168), (-0.001, 0.0166), (0.032, 0.0156)):
+    for y, r in ((-0.045, 0.0238), (0.000, 0.0236), (0.044, 0.0220)):
         ra, rb = a + r + 0.002, b + r + 0.002
         path = [(ra * math.sin(math.radians(p)), y, -rb * math.cos(math.radians(p)))
                 for p in (-42.0, 5.0, 50.0, 95.0, 128.0)]
         objs.append(sausage(path, r))
     # Thumb forward along the far side.
     objs.append(sausage([(-0.052, 0.026, -0.030), (-0.060, 0.002, -0.010), (-0.061, -0.028, -0.002),
-                         (-0.059, -0.054, 0.000)], 0.0178))
+                         (-0.059, -0.054, 0.000)], 0.0236))
     # Palm cupping the bottom (far side), heel down toward the wrist.
-    objs.append(blob((-0.040, 0.000, -0.056), (0.022, 0.056, 0.034),
+    objs.append(blob((-0.047, 0.000, -0.061), (0.030, 0.068, 0.042),
                      rotation=(0.0, math.radians(-35.0), 0.0)))
-    wrist = Vector((-0.024, 0.014, -0.090))
-    objs.append(blob((-0.030, 0.012, -0.074), (0.026, 0.030, 0.030), u=8, v=5))
-    cuff_and_sleeve(wrist, FOREARM_L, objs)
+    wrist = Vector((-0.028, 0.014, -0.104))
+    objs.append(blob((-0.034, 0.012, -0.084), (0.032, 0.036, 0.036), u=8, v=5))
+    cuff_and_sleeve(wrist, FOREARM_L, ELBOW_L, objs, scale=1.12)
     return objs
 
 

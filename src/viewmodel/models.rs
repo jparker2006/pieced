@@ -47,11 +47,28 @@ pub struct GunSpec {
     pub hip_euler: Vec3,
     /// Distance from the eye to the rear sight in the ADS pose.
     pub ads_distance: f32,
+    /// How many times farther out the gun is held at the hip than when its
+    /// motion was tuned ([`MOTION_DEPTH`]). The sway, bob, kick, sprint,
+    /// slide, reload and switch offsets are scaled by it at the hip, so they
+    /// move the gun just as far on screen as before (and the muzzle flash as
+    /// big): the gun moved, its feel did not.
+    pub reach: f32,
 }
 
+/// The crystal socket's depth (m ahead of the eye) at which each gun's
+/// motion offsets were tuned and felt good (S1 round 2's hip poses): the
+/// rifle's, then the pump's. See [`GunSpec::reach`].
+pub const MOTION_DEPTH: [f32; 2] = [0.57, 0.52];
+
 impl GunSpec {
-    /// Reads the attach points from a gun's sidecar and places it at `hip`.
-    pub fn from_sidecar(side: &Sidecar, hip: HipPose, ads_distance: f32) -> Self {
+    /// Reads the attach points from a gun's sidecar and places it at `hip`;
+    /// its motion was tuned with the socket `motion_depth` ahead of the eye.
+    pub fn from_sidecar(
+        side: &Sidecar,
+        hip: HipPose,
+        ads_distance: f32,
+        motion_depth: f32,
+    ) -> Self {
         let point = |name: &str| {
             side.attach(name)
                 .unwrap_or_else(|| panic!("{}: no attach point {name}", side.name))
@@ -69,6 +86,7 @@ impl GunSpec {
             hip: hip.anchor - rotation * socket,
             hip_euler: hip.euler,
             ads_distance,
+            reach: -hip.anchor.z / motion_depth,
         }
     }
 }
@@ -82,31 +100,33 @@ pub fn sidecar(name: &str) -> Sidecar {
     Sidecar::parse(model.sidecar).unwrap_or_else(|e| panic!("{name}.json: {e}"))
 }
 
-/// The rifle at the hip: low and right, turned so its left side and the glass
-/// chamber face you, the stock leaving the bottom-right corner (T01, T05).
-/// Amendment B brought it up and in toward the centre a little, where T05–T08
-/// paint it, so its ornate chamber reads.
+/// The rifle at the hip (S1 round 3): tucked into the lower-right corner as
+/// T01, T03, T05, T10 and T11 paint it, the stock leaving the frame's corner,
+/// the glove low on the right and the barrel running up and left so the muzzle
+/// sits just below and right of the crosshair, the vista clear. Held a little
+/// nearer than before, but lower, further right and pointing almost straight
+/// ahead (perspective angles it toward the crosshair), and upright.
 pub const RIFLE_HIP: HipPose = HipPose {
-    anchor: Vec3::new(0.255, -0.145, -0.57),
-    euler: Vec3::new(0.11, 0.33, -0.08),
+    anchor: Vec3::new(0.257, -0.167, -0.52),
+    euler: Vec3::new(0.16, 0.06, -0.05),
 };
-/// The pump at the hip: closer, the ringed glass chamber by the hand and the
-/// bell flaring toward the centre, turned a little broadside so the bell's
-/// flare and the chamber show (T04), and high enough that the chamber stays
-/// in view through the big kick.
+/// The pump at the hip (T04): low right, a little farther out than the rifle
+/// and turned left so its bell faces up and left and reads as a horn from the
+/// side, the violet chamber by the corner. T04 catches it mid-kick, which
+/// lifts it up and right onto the target's framing.
 pub const PUMP_HIP: HipPose = HipPose {
-    anchor: Vec3::new(0.34, -0.12, -0.52),
-    euler: Vec3::new(0.10, 0.42, -0.12),
+    anchor: Vec3::new(0.296, -0.213, -0.62),
+    euler: Vec3::new(0.14, 0.42, -0.1),
 };
 
-/// The rifle's gallery-only "inspect" pose (target T02): about 30° further
-/// turned toward the camera than at the hip, tipped up and brought in, so it
-/// crosses the frame from the bottom-right corner to the muzzle left of centre
-/// and the glass chamber and crystal read big. Only the gallery shows it
+/// The rifle's gallery-only "inspect" pose (target T02): turned well toward the
+/// camera and rolled upright, crossing the frame from the bottom-right corner
+/// to the muzzle up and left of centre, big, with its whole left side (rune
+/// window, chamber, crystal) facing you. Only the gallery shows it
 /// (`super::ViewmodelInspect`); play never does.
 pub const RIFLE_INSPECT: HipPose = HipPose {
-    anchor: Vec3::new(0.10, -0.075, -0.52),
-    euler: Vec3::new(0.32, 0.84, -0.06),
+    anchor: Vec3::new(0.098, -0.085, -0.48),
+    euler: Vec3::new(0.26, 0.84, 0.24),
 };
 
 impl HipPose {
@@ -118,9 +138,9 @@ impl HipPose {
 }
 
 pub static RIFLE: LazyLock<GunSpec> =
-    LazyLock::new(|| GunSpec::from_sidecar(&sidecar("rifle"), RIFLE_HIP, 0.30));
+    LazyLock::new(|| GunSpec::from_sidecar(&sidecar("rifle"), RIFLE_HIP, 0.30, MOTION_DEPTH[0]));
 pub static PUMP: LazyLock<GunSpec> =
-    LazyLock::new(|| GunSpec::from_sidecar(&sidecar("pump"), PUMP_HIP, 0.28));
+    LazyLock::new(|| GunSpec::from_sidecar(&sidecar("pump"), PUMP_HIP, 0.28, MOTION_DEPTH[1]));
 
 /// The blueprint tablet's hip pose (no model, no ADS, no muzzle).
 pub const BLUEPRINT: GunSpec = GunSpec {
@@ -133,6 +153,7 @@ pub const BLUEPRINT: GunSpec = GunSpec {
     hip: Vec3::new(0.165, -0.15, -0.40),
     hip_euler: Vec3::new(0.62, -0.32, 0.10),
     ads_distance: 0.3,
+    reach: 1.0,
 };
 
 pub fn gun_spec(kind: WeaponKind) -> &'static GunSpec {
