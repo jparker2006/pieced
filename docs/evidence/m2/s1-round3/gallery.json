@@ -1,0 +1,294 @@
+{
+  "captured": 12,
+  "missed": [],
+  "views": [
+    {
+      "file": "T01-spawn-vista.png",
+      "grey": "T01-spawn-vista-grey.png",
+      "headshots": 0,
+      "hits": 0,
+      "id": "T01",
+      "kills": 0,
+      "knight_feet": [
+        -20.28614044189453,
+        0.009999990463256836,
+        -5.496294975280762
+      ],
+      "knight_screen": [
+        0.06719279289245605,
+        0.07929665595293045
+      ],
+      "missed": false,
+      "moment_frame": 72,
+      "name": "T01-spawn-vista",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 0,
+      "title": "Spawn vista"
+    },
+    {
+      "file": "T02-rifle-idle.png",
+      "grey": "T02-rifle-idle-grey.png",
+      "headshots": 0,
+      "hits": 0,
+      "id": "T02",
+      "kills": 0,
+      "knight_feet": [
+        2.5999999046325684,
+        0.009999990463256836,
+        13.5
+      ],
+      "knight_screen": null,
+      "missed": false,
+      "moment_frame": 72,
+      "name": "T02-rifle-idle",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 0,
+      "title": "Rifle idle, gun tilted toward the viewer"
+    },
+    {
+      "file": "T03-rifle-bolt.png",
+      "grey": "T03-rifle-bolt-grey.png",
+      "headshots": 0,
+      "hits": 1,
+      "id": "T03",
+      "kills": 0,
+      "knight_feet": [
+        0.8667172193527222,
+        0.009999990463256836,
+        -18.888429641723633
+      ],
+      "knight_screen": [
+        -0.5228481888771057,
+        -0.041445162147283554
+      ],
+      "missed": false,
+      "moment_frame": 75,
+      "name": "T03-rifle-bolt",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 1,
+      "title": "Rifle bolt in flight; the knight running at about 8 m"
+    },
+    {
+      "file": "T04-pump-fan.png",
+      "grey": "T04-pump-fan-grey.png",
+      "headshots": 0,
+      "hits": 1,
+      "id": "T04",
+      "kills": 0,
+      "knight_feet": [
+        19.713329315185547,
+        0.00999993085861206,
+        17.47079849243164
+      ],
+      "knight_screen": [
+        -0.5124103426933289,
+        -0.105653777718544
+      ],
+      "missed": false,
+      "moment_frame": 74,
+      "name": "T04-pump-fan",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 1,
+      "title": "Pump spark fan; the knight at about 4 m"
+    },
+    {
+      "file": "T05-knight-hit.png",
+      "grey": "T05-knight-hit-grey.png",
+      "headshots": 0,
+      "hits": 1,
+      "id": "T05",
+      "kills": 0,
+      "knight_feet": [
+        -20.13717269897461,
+        0.010000050067901611,
+        -18.199451446533203
+      ],
+      "knight_screen": [
+        -0.24647879600524902,
+        -0.014582822099328041
+      ],
+      "missed": false,
+      "moment_frame": 75,
+      "name": "T05-knight-hit",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 1,
+      "title": "Knight body hit at about 3.6 m: wide eyes, damage number"
+    },
+    {
+      "file": "T06-headshot.png",
+      "grey": "T06-headshot-grey.png",
+      "headshots": 1,
+      "hits": 1,
+      "id": "T06",
+      "kills": 0,
+      "knight_feet": [
+        -2.516569137573242,
+        0.009999275207519531,
+        8.657504081726074
+      ],
+      "knight_screen": [
+        -0.048001863062381744,
+        -0.17789557576179504
+      ],
+      "missed": false,
+      "moment_frame": 83,
+      "name": "T06-headshot",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 1,
+      "title": "Headshot at about 5 m: gold flash, hat popping off, gold number"
+    },
+    {
+      "file": "T07-shield-break.png",
+      "grey": "T07-shield-break-grey.png",
+      "headshots": 0,
+      "hits": 1,
+      "id": "T07",
+      "kills": 0,
+      "knight_feet": [
+        -1.0643973350524902,
+        0.010000050067901611,
+        5.5983357429504395
+      ],
+      "knight_screen": [
+        -0.24654620885849,
+        0.06482463330030441
+      ],
+      "missed": false,
+      "moment_frame": 81,
+      "name": "T07-shield-break",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 1,
+      "shots": 1,
+      "title": "Shield break at about 4.5 m, stars"
+    },
+    {
+      "file": "T08-elimination.png",
+      "grey": "T08-elimination-grey.png",
+      "headshots": 0,
+      "hits": 1,
+      "id": "T08",
+      "kills": 1,
+      "knight_feet": [
+        1.100000023841858,
+        0.009997963905334473,
+        11.799999237060547
+      ],
+      "knight_screen": [
+        -0.39532414078712463,
+        0.10733261704444885
+      ],
+      "missed": false,
+      "moment_frame": 100,
+      "name": "T08-elimination",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 1,
+      "title": "Elimination poof at about 5 m, hat spinning on the grass"
+    },
+    {
+      "file": "T09-fort.png",
+      "grey": "T09-fort-grey.png",
+      "headshots": 0,
+      "hits": 0,
+      "id": "T09",
+      "kills": 0,
+      "knight_feet": [
+        5.36635160446167,
+        0.010000050067901611,
+        18.690406799316406
+      ],
+      "knight_screen": [
+        6.417850017547607,
+        -0.2735457122325897
+      ],
+      "missed": false,
+      "moment_frame": 72,
+      "name": "T09-fort",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 0,
+      "title": "A 1×1 fort (3 brick walls, a ramp inside, a floor on top) with a blue ghost wall beside it; wall slot selected"
+    },
+    {
+      "file": "T10-station-up.png",
+      "grey": "T10-station-up-grey.png",
+      "headshots": 0,
+      "hits": 0,
+      "id": "T10",
+      "kills": 0,
+      "knight_feet": [
+        -1.499999761581421,
+        0.009999990463256836,
+        20.062177658081055
+      ],
+      "knight_screen": null,
+      "missed": false,
+      "moment_frame": 72,
+      "name": "T10-station-up",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 0,
+      "title": "Looking up at the station"
+    },
+    {
+      "file": "T11-island-edge.png",
+      "grey": "T11-island-edge-grey.png",
+      "headshots": 0,
+      "hits": 0,
+      "id": "T11",
+      "kills": 0,
+      "knight_feet": [
+        19.700000762939453,
+        0.009999990463256836,
+        6.062178134918213
+      ],
+      "knight_screen": null,
+      "missed": false,
+      "moment_frame": 72,
+      "name": "T11-island-edge",
+      "paused": false,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 0,
+      "title": "The island edge and barrier"
+    },
+    {
+      "file": "T12-pause-menu.png",
+      "grey": "T12-pause-menu-grey.png",
+      "headshots": 0,
+      "hits": 0,
+      "id": "T12",
+      "kills": 0,
+      "knight_feet": [
+        2.0,
+        0.009997427463531494,
+        21.0
+      ],
+      "knight_screen": null,
+      "missed": false,
+      "moment_frame": 72,
+      "name": "T12-pause-menu",
+      "paused": true,
+      "rejected": [],
+      "shield_breaks": 0,
+      "shots": 0,
+      "title": "The pause menu"
+    }
+  ]
+}

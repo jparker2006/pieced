@@ -8,7 +8,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
 
 | Gate | Status | Evidence |
 |---|---|---|
-| S1 Target board (every view ≥ 4 from Jake) | FAIL (round 2) | Round 1 (`f5c36e7`): mean 2.5, 11 of 12 below 4. Round 2 (`caee4ca`, after Amendment B): mean 3.4, 7 of 12 below 4 (T01–T05, T10, T11 at 3). Round 3 polish in progress; see the log |
+| S1 Target board (every view ≥ 4 from Jake) | **PASS** (round 3, `bb9c33a`) | Jake's round 3 scores 2026-09-27: every view ≥ 4, mean 4.67 (eight 5s, four 4s). Scored shots in `docs/evidence/m2/s1-round3/`. Rounds 1 (mean 2.5) and 2 (mean 3.4) are in the log |
 | S2 Performance (battery, Low Power Mode, full look) | PENDING | — |
 | S3 Launch < 5 s ×3 | PASS (native, `f5c36e7`) | `evidence/m2-20260926-231552-launch{1,2,3}`: 2564, 1208, 1396 ms; every other run 1145–2224 ms. Release build, AC, Low Power Mode on. Re-run on the final commit |
 | S4 Motion | PASS (`f5c36e7`) | `tests/far.rs` plus native `evidence/m2-20260926-231552-sky`: 5 frames 5 s apart, 33.6/34.4/33.4/34.9% of sky pixels changed. Re-run on the final commit |
@@ -311,3 +311,11 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **Known gap:** T11's cliff face is one wide slab with horizontal strata, where the target paints vertical rock columns.
 
   **All three round 3 slices are merged.** Next: the round 3 board for Jake.
+- 2026-09-27: **S1 scoring, round 3** (Jake, on offscreen renders of the 12 gallery views at `bb9c33a`, next to the targets), quoted:
+  > "Round 3 scores: T01: 5; T02: 5; T03: 5; T04: 5; T05: 4; T06: 5; T07: 5; T08: 5; T09: 5; T10: 4; T11: 4; T12: 4"
+
+  **S1 PASS.** Every view is at least 4, with a mean of 4.67 (2.5 → 3.4 → 4.67 over three rounds). All seven round 2 3s rose to 4 or 5, and the five round 2 passes held or rose. The shots Jake scored (960 px JPEGs) and the capture metadata are committed in `docs/evidence/m2/s1-round3/`; the targets stay uncommitted.
+
+  **Performance still to be measured:** round 3 raised the far layer to 53.4k triangles, merged scenery to 122.2k, and each gun to about 7k. S2 on battery must be measured on this look.
+
+  **Still open:** S2 (the battery run with Low Power Mode on), S8 (10 minutes with sound on), and re-running S3–S10 on the final commit. `pieced-play` is built from `bb9c33a`.
