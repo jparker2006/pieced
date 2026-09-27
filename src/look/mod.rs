@@ -84,8 +84,9 @@
 //!   [`with_outline_normals`]`(mesh)` before `meshes.add(..)` (glTF meshes can
 //!   have them generated the same way, or exported as `_OUTLINE_NORMAL`).
 //! - Width: [`DEFAULT_WIDTH_PX`] (3 px since D47) at [`REFERENCE_HEIGHT_PX`],
-//!   constant on screen, fading out between [`FADE_START`] and [`FADE_END`] m
-//!   ([`outline_width_px`]).
+//!   constant on screen up to [`TAPER_START`] m, tapering to [`TAPER_KEEP`] ×
+//!   by [`FADE_START`] (so small mid-distance things don't bloat), fading out
+//!   between [`FADE_START`] and [`FADE_END`] m ([`outline_width_px`]).
 //! - Backend: [`OutlineBackend`] (`Hull` by default, `Mod` = bevy_mod_outline,
 //!   `Off`), from the quality preset or `--knobs outline=mod|hull|off`.
 //!
@@ -148,8 +149,8 @@ pub use halo::{
 pub use model_look::{ModelDressed, ModelLook, ModelMaterials};
 pub use outline::{
     ATTRIBUTE_OUTLINE_NORMAL, DEFAULT_WIDTH_PX, FADE_END, FADE_START, InheritedOutline,
-    InkMaterial, NoOutline, Outline, OutlineHull, OutlineHullLink, REFERENCE_HEIGHT_PX, ink_color,
-    outline_width_px, smooth_outline_normals, with_outline_normals,
+    InkMaterial, NoOutline, Outline, OutlineHull, OutlineHullLink, REFERENCE_HEIGHT_PX, TAPER_KEEP,
+    TAPER_START, ink_color, outline_width_px, smooth_outline_normals, with_outline_normals,
 };
 pub use settings::{
     LookSettings, ModOutlineAvailable, OutlineBackend, PresetLook, look_fxaa, msaa_for,

@@ -28,9 +28,10 @@ use bevy::{
 pub const TOON_SHADER_PATH: &str = "embedded://pieced/shaders/toon.wgsl";
 
 /// The camera-fixed highlight light, in view space (x right, y up, z toward
-/// the viewer): above, behind and a little right of the eye. `toon.wgsl` builds
+/// the viewer): high above, a little behind and right of the eye, so gleams
+/// sit on the upper-front faces of cylinders and edges, as painted. `toon.wgsl` builds
 /// it from the view's axes; keep them in step.
-pub const VIEW_HIGHLIGHT: Vec3 = Vec3::new(0.35, 0.75, 0.55);
+pub const VIEW_HIGHLIGHT: Vec3 = Vec3::new(0.3, 0.9, 0.3);
 
 /// The direction the highlight's light comes from, for a camera whose right,
 /// up and back axes are the columns of `camera` (world space).
@@ -130,11 +131,11 @@ impl Default for ToonLighting {
             band_threshold: -0.05,
             lit_threshold: 0.38,
             band_softness: 0.06,
-            band_gradient: 0.15,
+            band_gradient: 0.12,
             highlight_color: Color::srgb(1.0, 0.98, 0.9),
             highlight_view_bias: 0.6,
             highlight_softness: 0.1,
-            ao_strength: 0.75,
+            ao_strength: 0.85,
             ao_tint: Color::linear_rgb(0.3, 0.24, 0.42),
             surfaces: SurfaceTable::default(),
         }

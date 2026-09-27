@@ -54,22 +54,23 @@ class AoSettings:
     part can also opt out with the custom property `obj["pieced_ao"] = False`."""
 
 
-# Radii are about a tenth of each kind's size: big enough to shade crevices
-# and contacts, small enough that open faces stay bright.
+# Radii are a tenth to a quarter of each kind's size: big enough to shade
+# crevices and the painted darkening where things meet the ground, small
+# enough that open faces stay bright.
 KIND_AO = {
     "gun": AoSettings(radius=0.05),
     "gloves": AoSettings(radius=0.035),
     "knight": AoSettings(radius=0.22, ground=True, open_parts=("Eye",)),
-    "wall": AoSettings(radius=0.45, ground=True),
-    "wall_tiles": AoSettings(radius=0.45, ground=True),
-    "floor": AoSettings(radius=0.35),
-    "floor_tiles": AoSettings(radius=0.35),
-    "ramp": AoSettings(radius=0.4, ground=True),
-    "ramp_tiles": AoSettings(radius=0.4, ground=True),
-    "cone": AoSettings(radius=0.4),
-    "tree": AoSettings(radius=0.7, ground=True),
-    "rock": AoSettings(radius=0.35, ground=True),
-    "stump": AoSettings(radius=0.25, ground=True),
+    "wall": AoSettings(radius=0.8, ground=True),
+    "wall_tiles": AoSettings(radius=0.8, ground=True),
+    "floor": AoSettings(radius=0.5),
+    "floor_tiles": AoSettings(radius=0.5),
+    "ramp": AoSettings(radius=0.6, ground=True),
+    "ramp_tiles": AoSettings(radius=0.6, ground=True),
+    "cone": AoSettings(radius=0.6),
+    "tree": AoSettings(radius=0.9, ground=True),
+    "rock": AoSettings(radius=0.45, ground=True),
+    "stump": AoSettings(radius=0.35, ground=True),
     "station": AoSettings(radius=6.0, rays=32),
     "far_island": AoSettings(radius=3.0, rays=32),
     "ship": AoSettings(radius=1.5, rays=32),

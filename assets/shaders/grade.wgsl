@@ -12,7 +12,7 @@
 
 #define_import_path pieced::grade
 
-const GRADE_VIBRANCE: f32 = 0.3;
+const GRADE_VIBRANCE: f32 = 0.22;
 const GRADE_CONTRAST: f32 = 1.1;
 const GRADE_PIVOT: f32 = 0.45;
 const GRADE_COOL: vec3<f32> = vec3<f32>(-0.008, 0.0, 0.018);

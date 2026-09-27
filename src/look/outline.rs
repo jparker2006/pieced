@@ -23,8 +23,9 @@
 //! Width is [`DEFAULT_WIDTH_PX`] at [`REFERENCE_HEIGHT_PX`] and scales with the
 //! render target's height, so it stays constant on screen at any render scale.
 //! On the hull, each vertex extrudes by width × its outline normal's miter, so
-//! hard low-poly edges draw as thick as smooth curves. It fades to zero between
-//! [`FADE_START`] and [`FADE_END`] meters (per vertex in the hull shader; per
+//! hard low-poly edges draw as thick as smooth curves. Past [`TAPER_START`] it
+//! tapers to [`TAPER_KEEP`] of its width at [`FADE_START`], then fades to zero
+//! between [`FADE_START`] and [`FADE_END`] meters (per vertex in the hull shader; per
 //! entity for `Mod`), and hull draws beyond the fade are culled on the CPU with
 //! an abrupt [`VisibilityRange`].
 
@@ -60,6 +61,12 @@ pub const DEFAULT_WIDTH_PX: f32 = 3.0;
 /// Height of the reference render target: the Battery preset's 1.4 MP cap on
 /// the 15" Air's default 1710×1107 window (1470×956).
 pub const REFERENCE_HEIGHT_PX: f32 = 956.0;
+/// Past this distance (m) outlines taper gently...
+pub const TAPER_START: f32 = 8.0;
+/// ...to this fraction of their width at [`FADE_START`], so the thick near
+/// ink doesn't bloat small things in the middle distance (stumps, the knight
+/// across the arena).
+pub const TAPER_KEEP: f32 = 0.65;
 /// Outlines start fading here (meters from the camera)...
 pub const FADE_START: f32 = 25.0;
 /// ...and are gone here.
@@ -105,9 +112,13 @@ impl Outline {
 /// reference resolution) seen from `distance` meters on a target
 /// `target_height_px` tall. Mirrors `ink.wgsl`.
 pub fn outline_width_px(width_px: f32, distance: f32, target_height_px: f32) -> f32 {
-    let t = ((distance - FADE_START) / (FADE_END - FADE_START)).clamp(0.0, 1.0);
-    let fade = 1.0 - t * t * (3.0 - 2.0 * t);
-    width_px * (target_height_px / REFERENCE_HEIGHT_PX) * fade
+    let smooth = |e0: f32, e1: f32| {
+        let t = ((distance - e0) / (e1 - e0)).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    };
+    let taper = 1.0 - (1.0 - TAPER_KEEP) * smooth(TAPER_START, FADE_START);
+    let fade = 1.0 - smooth(FADE_START, FADE_END);
+    width_px * (target_height_px / REFERENCE_HEIGHT_PX) * taper * fade
 }
 
 /// How much of the color's saturation the ink keeps.
@@ -289,6 +300,8 @@ pub struct InkUniform {
     params: Vec4,
     /// x: saturation kept, y: darkness, z: max luminance.
     derive: Vec4,
+    /// x: taper start m, y: width kept at the fade start.
+    taper: Vec4,
 }
 
 impl From<&InkMaterial> for InkUniform {
@@ -298,6 +311,7 @@ impl From<&InkMaterial> for InkUniform {
             color: Vec4::new(c.red, c.green, c.blue, if m.fixed { 1.0 } else { 0.0 }),
             params: Vec4::new(m.width_px, FADE_START, FADE_END, REFERENCE_HEIGHT_PX),
             derive: Vec4::new(INK_SATURATION, INK_DARKNESS, INK_MAX_LUMINANCE, 0.0),
+            taper: Vec4::new(TAPER_START, TAPER_KEEP, 0.0, 0.0),
         }
     }
 }
@@ -814,17 +828,23 @@ mod tests {
     }
 
     #[test]
-    fn width_is_constant_near_and_fades_between_25_and_40_m() {
+    fn width_is_about_3_px_near_tapers_and_fades_between_25_and_40_m() {
         let w = |d: f32| outline_width_px(DEFAULT_WIDTH_PX, d, REFERENCE_HEIGHT_PX);
+        // Thick confident ink up close (D47: 2× the M1 1.5 px).
+        assert_eq!(DEFAULT_WIDTH_PX, 3.0);
         assert_eq!(w(0.5), DEFAULT_WIDTH_PX);
-        assert_eq!(w(10.0), DEFAULT_WIDTH_PX);
-        assert_eq!(w(FADE_START), DEFAULT_WIDTH_PX);
-        assert!((w(32.5) - DEFAULT_WIDTH_PX * 0.5).abs() < 1e-5);
+        assert_eq!(w(TAPER_START), DEFAULT_WIDTH_PX);
+        assert!(w(10.0) > DEFAULT_WIDTH_PX * 0.95);
+        // It tapers through the middle distance so small things don't bloat...
+        assert!(w(18.0) < w(10.0) && w(18.0) > w(FADE_START));
+        assert!((w(FADE_START) - DEFAULT_WIDTH_PX * TAPER_KEEP).abs() < 1e-5);
+        // ...then fades out over the same distances as before.
+        assert!((w(32.5) - DEFAULT_WIDTH_PX * TAPER_KEEP * 0.5).abs() < 1e-5);
         assert!(w(30.0) > w(35.0));
         assert_eq!(w(FADE_END), 0.0);
         assert_eq!(w(80.0), 0.0);
         // Constant on screen: twice the pixels on a target twice as tall.
-        let hi = outline_width_px(DEFAULT_WIDTH_PX, 10.0, REFERENCE_HEIGHT_PX * 2.0);
+        let hi = outline_width_px(DEFAULT_WIDTH_PX, 5.0, REFERENCE_HEIGHT_PX * 2.0);
         assert!((hi - 2.0 * DEFAULT_WIDTH_PX).abs() < 1e-5);
         // Hulls are culled only after they have faded out.
         assert!(hull_range().is_visible_at_all(FADE_END - 0.1));

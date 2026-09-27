@@ -11,7 +11,7 @@ use bevy::prelude::*;
 /// Saturation lift, scaled by how muted the colour is (1 - spread), so
 /// already-vivid palette colours barely move and never clip, and faded out in
 /// the darks (shadows stay rich, not neon).
-pub const GRADE_VIBRANCE: f32 = 0.3;
+pub const GRADE_VIBRANCE: f32 = 0.22;
 /// Contrast around [`GRADE_PIVOT`], in gamma-2 space.
 pub const GRADE_CONTRAST: f32 = 1.1;
 pub const GRADE_PIVOT: f32 = 0.45;

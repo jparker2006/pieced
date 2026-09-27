@@ -115,10 +115,10 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
     // The cartoon highlight: a crisp blob where N·H^shininess passes 0.5, plus
     // a broad sheen; metals tint it toward their own hue. Lit side only.
     // Its light blends from the key toward one fixed to the camera (above,
-    // behind, a little right: VIEW_HIGHLIGHT in toon.rs), so gleams sit on
+    // a little behind and right: VIEW_HIGHLIGHT in toon.rs), so gleams sit on
     // top-front edges from any view.
-    let rig = normalize(view.world_from_view[0].xyz * 0.35 + view.world_from_view[1].xyz * 0.75
-        + view.world_from_view[2].xyz * 0.55);
+    let rig = normalize(view.world_from_view[0].xyz * 0.3 + view.world_from_view[1].xyz * 0.9
+        + view.world_from_view[2].xyz * 0.3);
     let h = normalize(normalize(mix(key, rig, toon.bands.z)) + v);
     let ndh = max(dot(n, h), 0.0);
     let sp = pow(ndh, max(surface.y, 1.0));
