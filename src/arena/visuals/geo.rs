@@ -256,10 +256,7 @@ pub fn smooth_blob(
 ) {
     let (unit, faces) = icosphere(subdivisions);
     let verts: Vec<Vec3> = unit.iter().copied().map(&mut shape).collect();
-    let normals: Vec<Vec3> = unit
-        .iter()
-        .map(|&u| normal(u).normalize_or(u))
-        .collect();
+    let normals: Vec<Vec3> = unit.iter().map(|&u| normal(u).normalize_or(u)).collect();
     let colors: Vec<Rgba> = unit.iter().map(|&u| color(u)).collect();
     for [a, b, c] in faces {
         if (verts[b] - verts[a])

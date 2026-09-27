@@ -274,10 +274,9 @@ impl Island {
 
     /// Triangles drawn on the Battery preset (models aside).
     pub fn triangles(&self) -> usize {
-        let knoll = self
-            .knoll
-            .as_ref()
-            .map_or(0, |k| k.top.tri_count() + k.rock.tri_count() + k.grass.tri_count());
+        let knoll = self.knoll.as_ref().map_or(0, |k| {
+            k.top.tri_count() + k.rock.tri_count() + k.grass.tri_count()
+        });
         knoll
             + [
                 &self.ground,
@@ -286,9 +285,9 @@ impl Island {
                 &self.prop_bushes,
                 &self.edge_bushes,
             ]
-                .iter()
-                .map(|g| g.tri_count())
-                .sum::<usize>()
+            .iter()
+            .map(|g| g.tri_count())
+            .sum::<usize>()
             + [&self.tufts, &self.flowers, &self.bushes, &self.clouds]
                 .iter()
                 .flat_map(|v| v.iter())
@@ -390,13 +389,13 @@ const SKIRT: [(f32, f32, f32, u8); 16] = [
     (-0.36, 0.4, 1.0, 0),
     (-0.52, 0.3, 1.0, 1),
     (-0.66, -0.06, 1.0, 2),
-    (-1.5, 0.1, 1.0, 3),
-    (-2.5, -0.02, 1.0, 3),
-    (-2.8, 0.34, 1.0, 3),
-    (-4.4, 0.12, 1.0, 3),
-    (-4.7, 0.42, 1.0, 3),
-    (-6.8, 0.06, 0.99, 3),
-    (-7.2, 0.3, 0.99, 3),
+    (-1.2, -0.12, 1.0, 3),
+    (-1.32, 0.16, 1.0, 3),
+    (-2.2, 0.06, 1.0, 3),
+    (-2.32, 0.36, 1.0, 3),
+    (-3.6, 0.22, 1.0, 3),
+    (-3.75, 0.5, 0.99, 3),
+    (-5.8, 0.3, 0.99, 3),
     (-10.5, -0.4, 0.97, 3),
     (-15.0, 0.0, 0.86, 4),
     (-26.0, 0.0, 0.56, 4),
@@ -481,16 +480,20 @@ fn skirt(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
             let band = SKIRT[k].3.max(SKIRT[k + 1].3);
             // Strata: each stratum a shade of its own, ledge tops (the quads
             // stepping out as they go down) lit, cracks dark.
-            let stratum = [1.0, 0.8, 1.06, 0.74, 0.96, 0.82, 1.02, 0.76][k % 8];
+            // Strata alternate light and dark, face by face (a face and the
+            // ledge under it share an index), crossed by the rock's vertical
+            // slabs, each its own shade (T11).
+            let stratum = [0.96, 0.8, 0.92, 0.78, 0.9, 0.76][(k / 2) % 6];
+            let slab = 0.88 + 0.2 * noise2(i as f32 * 0.45, 1.7, 63);
             let ledge = SKIRT[k + 1].1 > SKIRT[k].1 + 0.15;
             let color = match band {
                 0 if k == 0 => mix(grass, lit_grass, 0.5),
                 0 => grass,
                 1 => shade(grass, 0.82),
                 2 => tucked,
-                3 if crack(i) || crack(j) => shade(dirt, 0.62),
-                3 if ledge => shade(dirt, 1.22),
-                3 => shade(dirt, stratum),
+                3 if crack(i) || crack(j) => shade(dirt, 0.6),
+                3 if ledge => shade(dirt, 1.2 * slab),
+                3 => shade(dirt, stratum * slab),
                 _ => under,
             };
             let v = |kk: usize, ii: usize| (grid[kk][ii], normals[kk][ii].normalize_or(Vec3::Y));
@@ -945,10 +948,7 @@ fn bush_of(geo: &mut Geo, at: Vec3, size: f32, ring: usize, rng: &mut Rng) {
         let a = spin + TAU * k as f32 / ring as f32 + rng.range(-0.3, 0.3);
         let r = size * rng.range(0.5, 0.62) * small;
         let out = size * rng.range(0.55, 0.68);
-        puffs.push((
-            at + Vec3::new(a.cos() * out, r * 0.62, a.sin() * out),
-            r,
-        ));
+        puffs.push((at + Vec3::new(a.cos() * out, r * 0.62, a.sin() * out), r));
     }
     if ring >= 6 {
         for k in 0..4 {
@@ -962,9 +962,10 @@ fn bush_of(geo: &mut Geo, at: Vec3, size: f32, ring: usize, rng: &mut Rng) {
         }
     }
     let buried = |p: Vec3, own: usize| {
-        puffs.iter().enumerate().any(|(j, &(c, r))| {
-            j != own && ((p - c) / (squash * r * 0.94)).length_squared() < 1.0
-        })
+        puffs
+            .iter()
+            .enumerate()
+            .any(|(j, &(c, r))| j != own && ((p - c) / (squash * r * 0.94)).length_squared() < 1.0)
     };
     for (k, &(c, r)) in puffs.iter().enumerate() {
         let mut shape = rng.fork(k as u64 + 31);
@@ -995,8 +996,10 @@ fn bush_of(geo: &mut Geo, at: Vec3, size: f32, ring: usize, rng: &mut Rng) {
             if corners.iter().all(|&p| buried(p, k)) {
                 continue;
             }
-            geo.positions.extend_from_slice(&one.positions[t * 3..t * 3 + 3]);
-            geo.normals.extend_from_slice(&one.normals[t * 3..t * 3 + 3]);
+            geo.positions
+                .extend_from_slice(&one.positions[t * 3..t * 3 + 3]);
+            geo.normals
+                .extend_from_slice(&one.normals[t * 3..t * 3 + 3]);
             geo.colors.extend_from_slice(&one.colors[t * 3..t * 3 + 3]);
         }
     }
@@ -1162,14 +1165,13 @@ fn edge_cover(flowers: &mut [Geo], tufts: &mut [Geo], rng: &mut Rng) -> Geo {
     ];
     for &(x, z, radius, count) in &EDGE_COVER {
         let centre = Vec2::new(x, z);
-        let inside = |p: Vec2| {
-            p.x.abs() < ARENA_HALF - 0.3 && p.y.abs() < ARENA_HALF - 0.3
-        };
+        let inside = |p: Vec2| p.x.abs() < ARENA_HALF - 0.3 && p.y.abs() < ARENA_HALF - 0.3;
         for k in 0..count {
             let a = TAU * k as f32 / count as f32 + rng.range(-0.5, 0.5);
             let p = centre + Vec2::new(a.cos(), a.sin()) * radius * rng.range(0.2, 0.75);
             let size = largest * rng.range(0.72, 1.0);
-            if inside(p) {
+            let by_edge = ARENA_HALF - p.x.abs().max(p.y.abs()) <= EDGE_COVER_BAND - 1.0;
+            if inside(p) && by_edge {
                 bush_of(&mut bushes, Vec3::new(p.x, 0.0, p.y), size, 6, rng);
             }
         }
@@ -1263,7 +1265,11 @@ fn station_view_knoll(outline: &[EdgeSample], rng: &mut Rng) -> Option<Knoll> {
                 if nrm.length_squared() < 1e-8 {
                     continue;
                 }
-                let tri = if nrm.y < 0.0 { [tri[0], tri[2], tri[1]] } else { tri };
+                let tri = if nrm.y < 0.0 {
+                    [tri[0], tri[2], tri[1]]
+                } else {
+                    tri
+                };
                 let nrm = (tri[1] - tri[0]).cross(tri[2] - tri[0]).normalize();
                 knoll.top.tri_raw(tri, [nrm; 3], [grass; 3]);
             }
@@ -1273,7 +1279,14 @@ fn station_view_knoll(outline: &[EdgeSample], rng: &mut Rng) -> Option<Knoll> {
     let rim: Vec<Vec3> = (0..sides).map(|sd| point(rings, sd)).collect();
     let mid = base + ahead * centre.1;
     let dirt = lin(cartoon::CLIFF_DIRT);
-    let profile = [(0.0, 0.0, 0), (-0.5, 0.35, 1), (-0.8, -0.05, 2), (-3.5, 0.3, 3), (-7.0, -0.2, 3), (-16.0, -9.0, 4)];
+    let profile = [
+        (0.0, 0.0, 0),
+        (-0.5, 0.35, 1),
+        (-0.8, -0.05, 2),
+        (-3.5, 0.3, 3),
+        (-7.0, -0.2, 3),
+        (-16.0, -9.0, 4),
+    ];
     let ring_at = |k: usize| -> Vec<Vec3> {
         let (dy, out, _) = profile[k];
         rim.iter()
@@ -1297,7 +1310,9 @@ fn station_view_knoll(outline: &[EdgeSample], rng: &mut Rng) -> Option<Knoll> {
         };
         for sd in 0..sides {
             let n = (sd + 1) % sides;
-            knoll.rock.quad(top[sd], bottom[sd], bottom[n], top[n], color);
+            knoll
+                .rock
+                .quad(top[sd], bottom[sd], bottom[n], top[n], color);
         }
     }
     // What stands on it: a big tree at the left of the shot and a smaller one
@@ -1431,6 +1446,10 @@ fn cloud(geo: &mut Geo, centre: Vec3, radius: f32, puffs: usize, segments: usize
     }
 }
 
+/// How far (m) below the station's platform its cloud bank floats: under the
+/// rock, so the rock and its waterfalls read above the clouds.
+const STATION_CLOUD_DROP: f32 = 110.0;
+
 /// Sky sectors the clouds are split into (for culling).
 const CLOUD_SECTORS: usize = 8;
 
@@ -1467,8 +1486,9 @@ fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
         put(&mut geo, s.edge() + s.normal * out + Vec3::Y * y, r, 5, rng);
     }
     let far = crate::far::FarLayout::default();
-    // A bank round the middle of the station's rock (it hangs about 175 m
-    // under its platform), on the side facing the arena (T01, T10).
+    // A bank under the station's rock, on the side facing the arena (T01,
+    // T10): anchored to its platform, so the rock and its waterfalls stay
+    // clear above it.
     let station = far.station.position;
     let toward = (-station.with_y(0.0)).normalize_or(Vec3::Z);
     let side = toward.cross(Vec3::Y);
@@ -1477,7 +1497,7 @@ fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
         let c = station.with_y(0.0)
             + side * across
             + toward * rng.range(120.0, 170.0)
-            + Vec3::Y * rng.range(35.0, 85.0);
+            + Vec3::Y * (station.y - STATION_CLOUD_DROP + rng.range(-20.0, 15.0));
         put(&mut geo, c, rng.range(45.0, 65.0), 5, rng);
     }
     // Round the far islands' undersides.
@@ -1806,12 +1826,18 @@ mod tests {
         assert!(island.edge_bushes.tri_count() > 1000);
         let layout = crate::arena::ArenaLayout::default();
         for v in island.edge_bushes.vertices() {
-            assert!(v.y <= EDGE_BUSH_MAX_HEIGHT + 1e-3, "an edge bush too tall at {v}");
+            assert!(
+                v.y <= EDGE_BUSH_MAX_HEIGHT + 1e-3,
+                "an edge bush too tall at {v}"
+            );
             assert!(edge_distance(v.x, v.z) <= 0.0, "inside the arena at {v}");
             let to_edge = ARENA_HALF - v.x.abs().max(v.z.abs());
             assert!(to_edge <= EDGE_COVER_BAND, "an edge bush mid-field at {v}");
             for spawn in [layout.player_spawn, layout.dummy_spawn] {
-                assert!(v.xz().distance(spawn.xz()) > 3.0, "a bush on a spawn at {v}");
+                assert!(
+                    v.xz().distance(spawn.xz()) > 3.0,
+                    "a bush on a spawn at {v}"
+                );
             }
             for prop in crate::arena::ARENA_PROPS {
                 assert!(prop.footprint_distance(v.xz()) > 0.0, "a bush in {prop:?}");
@@ -1880,8 +1906,8 @@ mod tests {
             ("T03", (-1.6, -0.7), (0.1, 1.2)),
             ("T04", (0.8, 1.6), (0.0, 1.2)),
             ("T05", (-1.6, -0.8), (0.0, 1.2)),
-            ("T10", (-1.6, -0.8), (-1.0, 0.2)),
-            ("T10", (0.8, 1.6), (-1.0, 0.2)),
+            ("T10", (-1.6, -0.8), (-1.0, 0.7)),
+            ("T10", (0.8, 1.6), (-1.0, 0.7)),
             ("T11", (-1.6, -0.6), (0.0, 1.2)),
         ];
         for (id, (x0, x1), (y0, y1)) in wanted {
@@ -1890,7 +1916,10 @@ mod tests {
                 crate::scenario::gallery::screen_point(&camera, fov, c)
                     .is_some_and(|s| (x0..x1).contains(&s.x) && (y0..y1).contains(&s.y))
             });
-            assert!(framed, "{id}: no tree frames the shot at x {x0}..{x1}, y {y0}..{y1}");
+            assert!(
+                framed,
+                "{id}: no tree frames the shot at x {x0}..{x1}, y {y0}..{y1}"
+            );
         }
         // Low bushes at the foot of the shot, bottom left (T01, T05, T11).
         for id in ["T01", "T05", "T11"] {
@@ -1906,7 +1935,10 @@ mod tests {
     #[test]
     fn the_knoll_carries_its_trees_under_the_station_view() {
         let island = generated();
-        let knoll = island.knoll.as_ref().expect("the station view has its knoll");
+        let knoll = island
+            .knoll
+            .as_ref()
+            .expect("the station view has its knoll");
         assert!(knoll.decor.iter().filter(|d| is_tree(d.model)).count() >= 3);
         let (lo, hi) = knoll.top.bounds().unwrap();
         for d in &knoll.decor {
