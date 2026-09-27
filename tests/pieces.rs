@@ -170,6 +170,11 @@ fn piece_models_fit_the_build_grid_in_every_crack_stage() {
 #[test]
 fn pieces_get_their_shared_model_crack_and_pop() {
     let mut app = loaded();
+    // From here on, frames are exactly 1/60 s: the pop is timed, and a slow real
+    // frame (a loaded machine) would otherwise finish it before the first check.
+    app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+        Duration::from_secs_f64(1.0 / 60.0),
+    ));
     // Boot waited for the models, and the warm-up took over from there.
     assert!(
         !app.world()
@@ -225,8 +230,10 @@ fn pieces_get_their_shared_model_crack_and_pop() {
     assert_eq!(material, assets.material, "every piece shares one material");
     assert!(outlined);
     assert_eq!(transform.translation, model_offset(PieceKind::Wall));
+    // One 60 Hz frame after landing the piece is still visibly squashed (the
+    // squash is deepest at t = 0 and springs back within POP_SECONDS).
     assert!(
-        transform.scale.y < 0.8,
+        transform.scale.y < 0.95 && transform.scale.x > 1.02,
         "a new piece lands squashed: {}",
         transform.scale
     );
@@ -247,10 +254,10 @@ fn pieces_get_their_shared_model_crack_and_pop() {
         assert_eq!(mesh, *assets.mesh(PieceKind::Wall, stage));
         assert_eq!(material, assets.material);
     }
-    // The pop settles to full size after 0.12 s.
-    std::thread::sleep(Duration::from_secs_f32(POP_SECONDS + 0.05));
-    app.update();
-    app.update();
+    // The pop settles to full size after 0.12 s (eight 60 Hz frames; step ten).
+    for _ in 0..10 {
+        app.update();
+    }
     let (_, _, transform, _) = visual(&mut app, placed);
     assert_eq!(transform.scale, Vec3::ONE);
     assert_eq!(pop_scale(POP_SECONDS), Vec3::ONE);
