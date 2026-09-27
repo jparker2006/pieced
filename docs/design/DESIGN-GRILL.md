@@ -66,6 +66,21 @@ The M1 `/goal` was cleared by Jake on 2026-09-25.
 
 The spec (`docs/M2-SPEC.md`) and goal brief (`docs/M2-GOAL.md`) are final.
 
+## Round 6: play feedback, 2026-09-26 (after Jake's first play session)
+
+Jake: "it plays really fun … it looked really good." His answers to Q30–Q38:
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D32 | **Ramp rush is broken; fix all of it (Q30).** | Sprinting with the ramp selected and build held must ramp you up endlessly. Today "ramp started placing behind me." No dead ends, right heights, no slowdown. |
+| D33 | **Fortnite building, fully (Q31: "all of those").** | Wall + ramp combos, reliable building while turning and jumping (90s), Fortnite-like reach, **editing**, and the **cone/roof** piece: all now in scope. Rules come from research on real Fortnite building (`docs/research/fortnite-building.md`). |
+| D34 | **Guns stay (Q32).** | "The guns made a lot of sense." No weapon changes. Bloom is researched only to confirm we're close. |
+| D35 | **Controls (Q33).** | ADS moves to a key (Shift proposed), with auto-sprint on so Shift is free. The trackpad is only for looking, aiming and clicking. Details to confirm: see Round 6 follow-ups. |
+| D36 | **Movement stays (Q34).** | Sprinting and jumping are "really good." Slide untested. |
+| D37 | **The look is good; make it more beautiful later (Q35).** | "Looked really good and clean … could look a little bit more beautiful." A beauty pass comes after mechanics (D39). |
+| D38 | **Bots are their own milestone (Q36).** | The knight fighting back needs real gameplay decisions, so it's out of scope now (Milestone 3). |
+| D39 | **Scope and order (Q37, Q38).** | Mechanics fixes go into **this** milestone. Order: **mechanics → design → playability.** |
+
 ## Handoff: where to pick up after compaction
 
 - **Next:** Jake launches the Milestone 2 `/goal` with the launcher line in `docs/M2-GOAL.md`.
