@@ -12,7 +12,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
 | S2 Performance (battery, Low Power Mode, full look) | PENDING | — |
 | S3 Launch < 5 s ×3 | PASS (native, `f5c36e7`) | `evidence/m2-20260926-231552-launch{1,2,3}`: 2564, 1208, 1396 ms; every other run 1145–2224 ms. Release build, AC, Low Power Mode on. Re-run on the final commit |
 | S4 Motion | PASS (`f5c36e7`) | `tests/far.rs` plus native `evidence/m2-20260926-231552-sky`: 5 frames 5 s apart, 33.6/34.4/33.4/34.9% of sky pixels changed. Re-run on the final commit |
-| S5 Knight hitbox fit | PASS (on `12550d4`; re-run on the final commit) | `tests/knight.rs`. Worst part outside its hitbox: Helmet +4.6 cm (limit 5). Front fill ≤ 9.2 cm (limit 10) |
+| S5 Knight hitbox fit | PASS (on the B3 merge; re-run on the final commit) | `tests/knight.rs` (20 tests), with the cosmetic hat excluded per Amendment B. Head: helmet +4.6 cm, eyes +0.6. Body: boots +4.1, gauntlets +3.1, torso +2.2, cape +1.6; the robe is inside by 1.4 cm (limit 5). Fill: front 8.1 / 8.0 cm (limit 10), side 18.0 (limit 21) |
 | S6 Feedback timing | PASS (`f5c36e7`) | `tests/spells.rs` plus native `evidence/m2-20260926-231552-fx`: 13/13 hits with impact, hitmarker and damage number on the hit frame; 18/18 bolts on their hit point within 2 frames (worst 2). Re-run on the final commit |
 | S7 No regressions (G1, G3, G6, tests, clippy, fmt) | PARTIAL | `cargo test --locked` 331 passed, 0 failed; clippy `-D warnings` and `fmt --check` clean on `12550d4`. Native G1, G3 and G6 pending (go window) |
 | S8 Jake's feel verdict | PARTIAL | Positive on look and feel (2026-09-26, quoted in the log). Sessions were about 3 minutes, muted; sound unheard |
@@ -244,3 +244,12 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - the **Battery preset now uses MSAA off plus one FXAA pass** (the Phase 0 and go-window-1 spike source); Plugged-in keeps MSAA 4×.
 
   Before/after renders were in the B1 worktree. The environment, knight and guns/spells slices are still in progress.
+- 2026-09-27: **beauty B3 (knight) merged**, with 397 tests passing:
+  - a tall floppy cosmetic wizard hat with a star and a flopping tip;
+  - a purple coat and robe with gold trim, and a bigger cape;
+  - bigger oval eyes and a grille;
+  - open gloves;
+  - visual-only hit reactions (arms fling, boot kick, lean back, hop, slide, bigger for headshots and shield breaks);
+  - a bouncy lean on the run and a goofy idle.
+
+  S5 was re-verified with the hat excluded.
