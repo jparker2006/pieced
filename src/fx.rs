@@ -15,6 +15,7 @@
 //! flight and shake stand still while the gallery holds a moment
 //! ([`GalleryFreeze`](crate::shared::GalleryFreeze)).
 
+pub mod chamber;
 pub mod hat;
 pub mod material;
 pub mod shapes;
@@ -61,7 +62,7 @@ impl Default for FeedbackTuning {
             hitstop_frames: 2,
             viewmodel_sway: true,
             max_debris: 160,
-            max_particles: 400,
+            max_particles: 600,
             viewmodel_fov_deg: 58.0,
         }
     }

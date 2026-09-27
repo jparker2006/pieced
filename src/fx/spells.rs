@@ -1,25 +1,37 @@
 //! Spells (docs/M2-SPEC.md → Spells and effects; targets T03–T08): every shot
 //! looks like magic, and every hit lands on the frame it registers.
 //!
-//! - **Rifle:** a blue star burst at the muzzle (the viewmodel's
-//!   [`MuzzleFlash`], restyled here) and a blue starburst bolt, a sparkle head
-//!   with a glowing ribbon and a sparkle trail, from the muzzle to the hit.
-//!   Flight counts rendered frames: the head is half-way on the frame the shot
-//!   lands and on the hit point the next ([`bolt_progress`]).
-//! - **Pump:** a violet-and-gold fan flash at the bell and ten sparks along the
-//!   real pellet paths, each ending in a small violet-gold burst.
-//! - **Impacts,** on the frame of the hit: body (white-blue starburst), head
-//!   (gold flash), shield hits (a cyan hex shimmer on the knight), shield
-//!   breaks (cyan glass panes and shards, and stars circling his helmet for
-//!   [`DIZZY_TIME`]), pieces (brick chips off walls, splinters off floors and
-//!   ramps), misses (a fizzle puff where the bolt lands or ends).
+//! Amendment B (D50) made every spell 2–3× bigger and more saturated than the
+//! first pass, as the targets paint them:
+//!
+//! - **Rifle:** a big spiky blue star burst at the muzzle (the viewmodel's
+//!   [`MuzzleFlash`], restyled here) and a blue starburst bolt: a jagged
+//!   starburst head under a white sparkle, a glowing ribbon and a trail of
+//!   [`RIFLE_TRAIL_SPARKLES`] sparkles and stars, from the muzzle to the hit.
+//!   Flight counts rendered frames: the head is part-way on the frame the shot
+//!   lands and on the hit point within two ([`bolt_progress`]).
+//! - **Pump:** a wide violet-and-gold fan flash at the bell, a fan of
+//!   [`PUMP_FAN_SPARKS`] sparks with [`PUMP_FAN_SPARKLES`] sparkles among them,
+//!   and ten sparks along the real pellet paths, each ending in a violet-gold
+//!   burst with a white star and sparks.
+//! - **Impacts,** on the frame of the hit: body (a solid cyan star under
+//!   layered white-blue starbursts, [`BODY_SPARKS`] sparks and sparkles), head
+//!   (the gold flash, rays, [`HEAD_SPARKS`] sparks, stars and sparkles),
+//!   shield hits (a cyan hex shimmer on the knight), shield breaks (a wide
+//!   burst of cyan glass panes and a storm of chips, sparkles, and stars
+//!   circling his helmet for [`DIZZY_TIME`]), pieces (brick chips off walls,
+//!   splinters off floors and ramps), misses (a fizzle puff where the bolt
+//!   lands or ends).
+//! - **Crystal chambers:** the crackling energy in each gun's chamber is
+//!   [`super::chamber`]'s (it shares these assets).
 //! - **Eliminations:** a big puffy cartoon poof with stars and sparkles, and
 //!   his hat drops, spins and settles on the grass until he respawns
 //!   ([`super::hat`]).
 //!
 //! **Pooling.** Everything draws from fixed pools of hidden entities made at
 //! startup: glow shapes (sized by the particle cap, `FeedbackTuning::
-//! max_particles`, so `--knobs particles=N` applies), solid shapes (half that),
+//! max_particles`, 600 by default, so `--knobs particles=N` applies), solid
+//! shapes (half that),
 //! [`BOLT_POOL`] bolts, [`HALO_POOL`] halos and the hats. No mesh, material or
 //! image is ever made after startup; per frame this only moves transforms and
 //! writes `MeshTag`s. When a pool is full the oldest effect is recycled.
@@ -35,6 +47,7 @@
 //! and arrival frame. The `fx_check` scenario writes it out (gate S6).
 
 use super::{
+    chamber::{self, ARC_SHAPES},
     hat::{self, HatPool},
     material::{SPELL_SHADER_EMBEDDED, SpellMaterial, glow_tag},
     shapes::{self, *},
@@ -84,24 +97,33 @@ pub const DIZZY_TIME: f32 = 1.0;
 pub const TIMING_LOG: usize = 512;
 /// The rifle bolt's head: at least this big (m), and this wide an angle (rad)
 /// wherever it is, so it reads as T03's big glowing starburst.
-pub const RIFLE_HEAD_SIZE: f32 = 0.1;
-pub const RIFLE_HEAD_ANGLE: f32 = 0.15;
+pub const RIFLE_HEAD_SIZE: f32 = 0.2;
+pub const RIFLE_HEAD_ANGLE: f32 = 0.24;
 /// The head's and the ribbon's glow (the spell material's intensity).
-const RIFLE_HEAD_GLOW: f32 = 2.4;
-const RIFLE_RIBBON_GLOW: f32 = 2.0;
+const RIFLE_HEAD_GLOW: f32 = 1.4;
+const RIFLE_RIBBON_GLOW: f32 = 2.2;
 /// Sparkles strewn along a rifle bolt's path (from the glow pool).
-pub const RIFLE_TRAIL_SPARKLES: usize = 12;
+pub const RIFLE_TRAIL_SPARKLES: usize = 30;
 /// The rifle's burst where a shot leaves the gun, per metre from the eye.
-const RIFLE_MUZZLE_BURST: f32 = 0.3;
+const RIFLE_MUZZLE_BURST: f32 = 0.55;
+/// Sparks in the pump's fan out of the bell (T04), and sparkles among them.
+pub const PUMP_FAN_SPARKS: usize = 56;
+pub const PUMP_FAN_SPARKLES: usize = 20;
+/// Sparks flung out of a body hit (T05) and a headshot (T06).
+pub const BODY_SPARKS: usize = 22;
+pub const HEAD_SPARKS: usize = 26;
 /// The headshot's solid gold flash (T06): its size (m; at least this wide an
 /// angle, rad, so it reads far off without hiding him) and life (s). It holds
 /// full size while the hat pops (about 0.2 s) and then shrinks away.
-pub const HEAD_FLASH_SIZE: f32 = 0.8;
-pub const HEAD_FLASH_ANGLE: f32 = 0.05;
+pub const HEAD_FLASH_SIZE: f32 = 1.05;
+pub const HEAD_FLASH_ANGLE: f32 = 0.065;
 pub const HEAD_FLASH_LIFE: f32 = 0.42;
 /// Solid gold flash colours (sRGB): the starburst and its pale core.
 const FLASH_GOLD: Color = Color::srgb(1.0, 0.76, 0.14);
 const FLASH_CORE: Color = Color::srgb(1.0, 0.95, 0.6);
+/// The body hit's solid star (sRGB): saturated cyan-blue under the glow, so it
+/// reads blue on the bright sky too, where additive blue washes out (T05).
+const FLASH_BLUE: Color = Color::srgb(0.22, 0.7, 1.0);
 
 // ---------------------------------------------------------------------------
 // Public markers and evidence
@@ -253,11 +275,31 @@ pub struct SpellAssets {
     brick_chip: Handle<Mesh>,
     splinter: Handle<Mesh>,
     gold_star: Handle<Mesh>,
+    /// The rifle bolt's head: a jagged blue starburst under a white sparkle.
+    bolt_head: Handle<Mesh>,
+    /// The body hit's solid cyan star (under the glowing layers).
+    pub flash_blue: Handle<ToonMaterial>,
+    /// Crystal-chamber lightning ([`chamber`]): blue arcs, violet arcs, and a
+    /// sparkle mote of each colour.
+    arcs: [[Handle<Mesh>; ARC_SHAPES]; 2],
+    motes: [Handle<Mesh>; 2],
+}
+
+impl SpellAssets {
+    /// One of a gun's chamber lightning arc shapes.
+    pub fn arc(&self, kind: WeaponKind, shape: usize) -> Handle<Mesh> {
+        let k = usize::from(kind == WeaponKind::Pump);
+        self.arcs[k][shape % ARC_SHAPES].clone()
+    }
+
+    /// A gun's chamber sparkle mote.
+    pub fn mote(&self, kind: WeaponKind) -> Handle<Mesh> {
+        self.motes[usize::from(kind == WeaponKind::Pump)].clone()
+    }
 }
 
 /// Halo colours (sRGB).
 const HALO_BLUE: Color = Color::srgb(0.45, 0.8, 1.0);
-const HALO_WHITE_BLUE: Color = Color::srgb(0.75, 0.9, 1.0);
 const HALO_GOLD: Color = Color::srgb(1.0, 0.8, 0.35);
 const HALO_VIOLET: Color = Color::srgb(0.78, 0.4, 1.0);
 const HALO_CYAN: Color = Color::srgb(0.45, 0.88, 1.0);
@@ -290,13 +332,13 @@ fn make_assets(
         sparkle_gold: add(sparkle(GOLD, GOLD_CORE)),
         sparkle_violet: add(sparkle(VIOLET, VIOLET_CORE)),
         burst_blue: [
-            add(starburst(11, 0x1, BOLT_CORE, &[BOLT_BLUE, BOLT_CORE], 0.16)),
-            add(starburst(9, 0x2, BOLT_CORE, &[BOLT_BLUE, BOLT_DEEP], 0.15)),
+            add(starburst(14, 0x1, BOLT_BLUE, &[BOLT_BLUE, BOLT_DEEP, BOLT_CORE], 0.11)),
+            add(starburst(11, 0x2, BOLT_BLUE, &[BOLT_DEEP, BOLT_BLUE], 0.12)),
         ],
-        burst_gold: add(starburst(12, 0x3, GOLD_CORE, &[GOLD, GOLD_DEEP], 0.17)),
-        rays_gold: add(starburst(8, 0x4, GOLD_CORE, &[GOLD_DEEP, GOLD], 0.035)),
-        burst_pellet: add(starburst(10, 0x5, VIOLET, &[VIOLET, GOLD], 0.15)),
-        burst_cyan: add(starburst(10, 0x6, GLASS_EDGE, &[GLASS, GLASS_EDGE], 0.14)),
+        burst_gold: add(starburst(14, 0x3, GOLD, &[GOLD, GOLD_DEEP], 0.13)),
+        rays_gold: add(starburst(10, 0x4, GOLD_CORE, &[GOLD_DEEP, GOLD], 0.035)),
+        burst_pellet: add(starburst(12, 0x5, VIOLET, &[VIOLET, GOLD, VIOLET_DEEP], 0.12)),
+        burst_cyan: add(starburst(14, 0x6, GLASS, &[GLASS, GLASS_EDGE], 0.11)),
         streak_blue: add(streak(Color::WHITE, BOLT_CORE, BOLT_BLUE)),
         streak_gold: add(streak(GOLD_CORE, GOLD, GOLD_DEEP)),
         streak_violet: add(streak(VIOLET_CORE, VIOLET, VIOLET_DEEP)),
@@ -320,6 +362,16 @@ fn make_assets(
         brick_chip: add(brick_chip()),
         splinter: add(wood_splinter()),
         gold_star: add(gold_star()),
+        bolt_head: add(bolt_head()),
+        flash_blue: toon.add(flat_glow(FLASH_BLUE)),
+        arcs: [
+            std::array::from_fn(|k| add(lightning_arc(0xA0 + k as u64, BOLT_CORE, BOLT_BLUE))),
+            std::array::from_fn(|k| add(lightning_arc(0xB0 + k as u64, VIOLET_CORE, VIOLET))),
+        ],
+        motes: [
+            add(sparkle_cross(BOLT_BLUE, BOLT_CORE)),
+            add(sparkle_cross(VIOLET, VIOLET_CORE)),
+        ],
     }
 }
 
@@ -595,6 +647,7 @@ fn add_systems(app: &mut App) {
             ),
         )
         .add_systems(Last, record_hud_feedback);
+    chamber::add_systems(app);
 }
 
 fn setup_spells(
@@ -717,8 +770,8 @@ fn dress_muzzle_flashes(
     let Some(assets) = assets else { return };
     for (entity, flash) in &flashes {
         let (mesh, halo) = match flash.0 {
-            WeaponKind::Rifle => (assets.rifle_flash.clone(), Halo::new(HALO_BLUE, 0.2, 2.2)),
-            WeaponKind::Pump => (assets.pump_flash.clone(), Halo::new(HALO_VIOLET, 0.24, 2.6)),
+            WeaponKind::Rifle => (assets.rifle_flash.clone(), Halo::new(HALO_BLUE, 0.3, 2.2)),
+            WeaponKind::Pump => (assets.pump_flash.clone(), Halo::new(HALO_VIOLET, 0.36, 2.6)),
         };
         commands
             .entity(entity)
@@ -727,7 +780,7 @@ fn dress_muzzle_flashes(
                 SpellFlash,
                 Mesh3d(mesh),
                 MeshMaterial3d(assets.material.clone()),
-                glow_tag(Color::WHITE, 1.5),
+                glow_tag(Color::WHITE, 1.15),
                 halo,
             ));
     }
@@ -849,14 +902,14 @@ impl Emitter<'_> {
             let d = self.rng.cone(dir, spread);
             let mut s = Spark::new(pos, &meshes[i % meshes.len()]);
             s.p.vel = d * self.rng.range(speed.0, speed.1);
-            s.p.drag = 5.0;
+            s.p.drag = 4.5;
             s.p.gravity = 4.0;
-            s.p.life = self.rng.range(0.13, 0.24);
-            s.p.size = Vec3::new(width, 1.0, length);
+            s.p.life = self.rng.range(0.16, 0.3);
+            s.p.size = Vec3::new(width, 1.0, length) * self.rng.range(0.75, 1.3);
             s.p.stretch = 0.03;
             s.p.shrink_start = 0.35;
             s.face = Face::Streak;
-            s.intensity = 1.6;
+            s.intensity = 1.8;
             s.fade_start = 0.4;
             s.pull = 0.15;
             self.glow(s);
@@ -941,16 +994,22 @@ impl Emitter<'_> {
                 RIFLE_MUZZLE_BURST,
                 HALO_BLUE,
             ),
-            WeaponKind::Pump => (self.assets.burst_pellet.clone(), 0.3, 0.3, HALO_VIOLET),
+            WeaponKind::Pump => (self.assets.burst_pellet.clone(), 0.3, 0.62, HALO_VIOLET),
         };
         let at = muzzle + dir.normalize_or(Vec3::NEG_Z) * ahead;
         let d = self.dist(at).max(0.3);
         let (glow, halo) = match weapon {
-            WeaponKind::Rifle => (1.8, 0.24),
-            WeaponKind::Pump => (1.3, 0.13),
+            WeaponKind::Rifle => (1.2, 0.3),
+            WeaponKind::Pump => (1.2, 0.26),
         };
-        self.pop(at, mesh, size * d, 0.1, glow, 0.0, 6.0);
-        self.flash(at, color, halo * d, 1.2, 0.08, 0.0);
+        self.pop(at, mesh, size * d, 0.12, glow, 0.0, 6.0);
+        // A crisp white sparkle over the burst's middle.
+        let core = match weapon {
+            WeaponKind::Rifle => self.assets.sparkle_white.clone(),
+            WeaponKind::Pump => self.assets.sparkle_violet.clone(),
+        };
+        self.pop(at, core, size * d * 0.4, 0.09, 1.4, 0.0, -3.0);
+        self.flash(at, color, halo * d, 0.9, 0.1, 0.0);
     }
 
     /// Depth of `p` along the view.
@@ -973,6 +1032,7 @@ impl Emitter<'_> {
         let meshes = [
             self.assets.sparkle_white.clone(),
             self.assets.sparkle_blue.clone(),
+            self.assets.sparkle_blue.clone(),
         ];
         for i in 0..RIFLE_TRAIL_SPARKLES {
             // Spread evenly across the screen, not down the (foreshortened)
@@ -983,15 +1043,19 @@ impl Emitter<'_> {
             let around = Quat::from_axis_angle(dir, self.rng.range(0.0, std::f32::consts::TAU));
             let at = start + path * u;
             let d = self.dist(at);
-            let jitter = around * side * self.rng.range(0.4, 1.4) * apparent_size(0.03, d, 0.016);
+            let spread = apparent_size(0.04, d, 0.02).min(0.22);
+            let jitter = around * side * self.rng.range(0.3, 1.4) * spread;
             let roll = self.roll();
-            let mut s = Spark::new(at + jitter, &meshes[i % 2]);
-            s.p.vel = around * side * 0.25 * d.min(4.0);
+            let mut s = Spark::new(at + jitter, &meshes[i % 3]);
+            s.p.vel = around * side * 0.3 * d.min(4.0);
             s.p.drag = 3.0;
-            s.p.life = self.rng.range(0.16, 0.32);
-            s.p.size = Vec3::splat(apparent_size(0.03, d, 0.03) * self.rng.range(0.7, 1.4));
+            s.p.life = self.rng.range(0.24, 0.48);
+            // Every fifth one is a big star (T03's trail of stars).
+            let big = if i % 5 == 2 { 2.2 } else { 1.0 };
+            s.p.size =
+                Vec3::splat(apparent_size(0.05, d, 0.042) * self.rng.range(0.7, 1.35) * big);
             s.p.birth_scale = 0.3;
-            s.p.shrink_start = 0.45;
+            s.p.shrink_start = 0.5;
             s.face = Face::Billboard {
                 roll,
                 roll_speed: self.rng.range(-5.0, 5.0),
@@ -1005,53 +1069,115 @@ impl Emitter<'_> {
             } else {
                 1.5 / 60.0
             };
+            s.intensity = 1.9;
+            self.glow(s);
+        }
+    }
+
+    /// The pump's big fan of violet and gold sparks out of the bell (T04):
+    /// dozens of teardrops along and around the pellets' directions, from the
+    /// bell out past the knight, with sparkles twinkling among them (the
+    /// viewmodel draws the flash itself).
+    fn pump_fan(&mut self, start: Vec3, dirs: &[Vec3]) {
+        if dirs.is_empty() {
+            return;
+        }
+        let meshes = [
+            self.assets.streak_violet.clone(),
+            self.assets.streak_gold.clone(),
+            self.assets.streak_violet.clone(),
+        ];
+        let aim = dirs
+            .iter()
+            .copied()
+            .sum::<Vec3>()
+            .normalize_or(Vec3::NEG_Z);
+        for i in 0..PUMP_FAN_SPARKS {
+            // Most follow a pellet; some fill the cone between them.
+            let base = if i % 4 == 3 { aim } else { dirs[i % dirs.len()] };
+            let d = self.rng.cone(base, if i % 4 == 3 { 0.22 } else { 0.12 });
+            let out = self.rng.range(0.1, 3.2);
+            let mut s = Spark::new(start + d * out, &meshes[i % 3]);
+            s.p.vel = d * self.rng.range(9.0, 20.0);
+            s.p.drag = 6.0;
+            s.p.life = self.rng.range(0.16, 0.3);
+            let w = 0.045 + 0.03 * out;
+            s.p.size = Vec3::new(w, 1.0, w * 6.0);
+            s.p.stretch = 0.02;
+            s.p.shrink_start = 0.4;
+            s.face = Face::Streak;
+            s.intensity = 1.9;
+            s.fade_start = 0.35;
+            self.glow(s);
+        }
+        let twinkles = [
+            self.assets.sparkle_violet.clone(),
+            self.assets.sparkle_gold.clone(),
+            self.assets.sparkle_white.clone(),
+        ];
+        for i in 0..PUMP_FAN_SPARKLES {
+            let d = self.rng.cone(aim, 0.3);
+            let out = self.rng.range(0.3, 3.5);
+            let roll = self.roll();
+            let mut s = Spark::new(start + d * out, &twinkles[i % 3]);
+            s.p.vel = d * self.rng.range(1.0, 3.0) + Vec3::Y * 0.3;
+            s.p.drag = 2.5;
+            s.p.life = self.rng.range(0.2, 0.42);
+            s.p.size = Vec3::splat((0.05 + 0.035 * out) * self.rng.range(0.7, 1.3));
+            s.p.birth_scale = 0.2;
+            s.p.shrink_start = 0.5;
+            s.face = Face::Billboard {
+                roll,
+                roll_speed: self.rng.range(-5.0, 5.0),
+            };
+            s.twinkle = self.rng.range(7.0, 12.0);
             s.intensity = 1.8;
             self.glow(s);
         }
     }
 
-    /// The pump's burst of short violet and gold sparks out of the bell, along
-    /// the pellets' directions (the viewmodel draws the flash itself).
-    fn pump_fan(&mut self, start: Vec3, dirs: &[Vec3]) {
-        let meshes = [
-            self.assets.streak_violet.clone(),
-            self.assets.streak_gold.clone(),
-        ];
-        for (i, dir) in dirs.iter().cycle().take(18).enumerate() {
-            let d = self.rng.cone(*dir, 0.1);
-            let out = self.rng.range(0.15, 1.9);
-            let mut s = Spark::new(start + d * out, &meshes[i % 2]);
-            s.p.vel = d * self.rng.range(8.0, 16.0);
-            s.p.drag = 7.0;
-            s.p.life = self.rng.range(0.12, 0.2);
-            let w = 0.03 + 0.022 * out;
-            s.p.size = Vec3::new(w, 1.0, w * 5.0);
-            s.p.stretch = 0.02;
-            s.p.shrink_start = 0.35;
-            s.face = Face::Streak;
-            s.intensity = 1.7;
-            s.fade_start = 0.3;
-            self.glow(s);
-        }
-    }
-
-    /// A small violet-gold burst where a pump pellet lands.
+    /// A violet-gold burst where a pump pellet lands, a white star over it
+    /// (T04's stars on the knight), sparks and sparkles flung off.
     fn pellet_impact(&mut self, point: Vec3, normal: Vec3) {
         let d = self.dist(point);
+        let n = normal.normalize_or(Vec3::Y);
+        let out = (n + (self.eye - point).normalize_or_zero()).normalize_or(Vec3::Y);
         let mesh = self.assets.burst_pellet.clone();
         self.pop(
             point,
             mesh,
-            apparent_size(0.22, d, 0.018),
-            0.13,
-            1.1,
+            apparent_size(0.45, d, 0.036),
+            0.16,
+            1.3,
             0.2,
             3.0,
         );
-        let gold = [self.assets.sparkle_gold.clone()];
-        let n = normal.normalize_or(Vec3::Y);
+        let star = if self.rng.f() < 0.6 {
+            self.assets.sparkle_white.clone()
+        } else {
+            self.assets.sparkle_gold.clone()
+        };
+        self.pop(
+            point,
+            star,
+            apparent_size(0.36, d, 0.03),
+            0.18,
+            1.7,
+            0.22,
+            -2.0,
+        );
+        let sparks = [
+            self.assets.streak_violet.clone(),
+            self.assets.streak_gold.clone(),
+        ];
+        let w = apparent_size(0.03, d, 0.0026);
+        self.sparks(point, out, 1.0, 3, (3.5, 7.0), &sparks, w, w * 5.0);
+        let twinkles = [
+            self.assets.sparkle_gold.clone(),
+            self.assets.sparkle_violet.clone(),
+        ];
         let at = point + n * 0.05;
-        self.sparkles(at, 0.12, 1, apparent_size(0.07, d, 0.008), &gold);
+        self.sparkles(at, 0.2, 2, apparent_size(0.08, d, 0.009), &twinkles);
     }
 
     /// A fizzle where a bolt that hit nothing alive lands (`landed`) or ends.
@@ -1158,36 +1284,76 @@ impl Emitter<'_> {
         let d = self.dist(point);
         let out = (normal.normalize_or(Vec3::Y) + (self.eye - point).normalize_or_zero())
             .normalize_or(Vec3::Y);
+        // A solid cyan star under the glow keeps the burst saturated blue
+        // whatever is behind it (T05).
+        let roll = self.roll();
+        let mut solid = Spark::new(point, &self.assets.pow);
+        solid.material = Some(self.assets.flash_blue.clone());
+        solid.p.size = Vec3::splat(apparent_size(0.6, d, 0.05));
+        solid.p.life = 0.15;
+        solid.p.birth_scale = 0.4;
+        solid.p.shrink_start = 0.35;
+        solid.face = Face::Billboard {
+            roll,
+            roll_speed: 4.0,
+        };
+        solid.pull = 0.28;
+        let mut shown = self.solid(solid);
         let k = self.rng.pick(2);
         let burst = self.assets.burst_blue[k].clone();
-        let mut shown = self.pop(
+        shown |= self.pop(
             point,
             burst,
-            apparent_size(0.55, d, 0.045),
-            0.16,
-            1.25,
+            apparent_size(1.25, d, 0.1),
+            0.2,
+            1.0,
             0.3,
             5.0,
+        );
+        let under = self.assets.burst_blue[1 - k].clone();
+        shown |= self.pop(
+            point,
+            under,
+            apparent_size(0.9, d, 0.075),
+            0.17,
+            0.85,
+            0.31,
+            -4.0,
         );
         let core = self.assets.sparkle_white.clone();
         shown |= self.pop(
             point,
             core,
-            apparent_size(0.28, d, 0.024),
-            0.1,
+            apparent_size(0.45, d, 0.038),
+            0.14,
             1.3,
             0.32,
             0.0,
         );
-        let meshes = [self.assets.streak_blue.clone()];
-        let w = apparent_size(0.03, d, 0.0025);
-        self.sparks(point, out, 0.9, 7, (4.0, 8.0), &meshes, w, w * 5.0);
+        let meshes = [
+            self.assets.streak_blue.clone(),
+            self.assets.streak_blue.clone(),
+            self.assets.streak_gold.clone(),
+        ];
+        let w = apparent_size(0.05, d, 0.0042);
+        self.sparks(point, out, 1.0, BODY_SPARKS, (5.0, 11.0), &meshes, w, w * 6.0);
+        let twinkles = [
+            self.assets.sparkle_blue.clone(),
+            self.assets.sparkle_white.clone(),
+        ];
+        self.sparkles(
+            point + out * 0.1,
+            apparent_size(0.45, d, 0.04),
+            8,
+            apparent_size(0.1, d, 0.009),
+            &twinkles,
+        );
         self.flash(
             point,
-            HALO_WHITE_BLUE,
-            apparent_size(0.7, d, 0.06),
-            1.2,
-            0.14,
+            HALO_BLUE,
+            apparent_size(0.9, d, 0.075),
+            0.8,
+            0.16,
             0.3,
         );
         shown
@@ -1224,16 +1390,31 @@ impl Emitter<'_> {
         }
         // Glows go in front of the solid flash so it never hides them.
         let rays = self.assets.rays_gold.clone();
-        shown |= self.pop_held(point, rays, size * 2.3, 0.32, 1.7, 0.36, -2.0, 0.55);
+        shown |= self.pop_held(point, rays, size * 2.6, 0.32, 1.7, 0.36, -2.0, 0.55);
         let burst = self.assets.burst_gold.clone();
         shown |= self.pop_held(point, burst, size * 0.85, 0.3, 1.5, 0.38, 3.0, 0.5);
         let core = self.assets.sparkle_white.clone();
         shown |= self.pop_held(point, core, size * 0.55, 0.26, 2.4, 0.4, 0.0, 0.5);
-        let meshes = [self.assets.streak_gold.clone()];
-        let w = apparent_size(0.045, d, 0.004);
-        self.sparks(point, out, 1.0, 12, (4.5, 9.5), &meshes, w, w * 6.0);
-        for i in 0..4 {
-            let a = std::f32::consts::TAU * (i as f32 + self.rng.range(-0.25, 0.25)) / 4.0;
+        let meshes = [
+            self.assets.streak_gold.clone(),
+            self.assets.streak_gold.clone(),
+            self.assets.streak_blue.clone(),
+        ];
+        let w = apparent_size(0.055, d, 0.0048);
+        self.sparks(point, out, 1.0, HEAD_SPARKS, (5.0, 11.0), &meshes, w, w * 6.0);
+        let twinkles = [
+            self.assets.sparkle_gold.clone(),
+            self.assets.sparkle_white.clone(),
+        ];
+        self.sparkles(
+            point + out * 0.1,
+            size * 0.55,
+            8,
+            apparent_size(0.1, d, 0.009),
+            &twinkles,
+        );
+        for i in 0..7 {
+            let a = std::f32::consts::TAU * (i as f32 + self.rng.range(-0.25, 0.25)) / 7.0;
             let side = Vec3::new(a.cos(), 0.0, a.sin());
             let mut s = Spark::new(point, &self.assets.gold_star);
             s.material = Some(self.assets.star.clone());
@@ -1287,46 +1468,48 @@ impl Emitter<'_> {
     /// and stars circle his helmet (T07).
     fn shield_break(&mut self, target: Entity, center: Vec3) {
         let d = self.dist(center);
-        for i in 0..8 {
-            let a = std::f32::consts::TAU * (i as f32 + self.rng.range(-0.3, 0.3)) / 8.0;
-            let out = Vec3::new(a.cos(), self.rng.range(-0.15, 0.35), a.sin()).normalize();
-            let at = center + out * 0.42 + Vec3::Y * self.rng.range(-0.5, 0.5);
+        // Big curved panes of the broken shell, flung out wide (T07).
+        for i in 0..14 {
+            let a = std::f32::consts::TAU * (i as f32 + self.rng.range(-0.3, 0.3)) / 14.0;
+            let out = Vec3::new(a.cos(), self.rng.range(-0.2, 0.4), a.sin()).normalize();
+            let at = center + out * 0.45 + Vec3::Y * self.rng.range(-0.6, 0.6);
             let mut s = Spark::new(at, &self.assets.panes[i % 3].clone());
-            s.p.vel = out * self.rng.range(1.4, 2.6) + Vec3::Y * 0.9;
+            s.p.vel = out * self.rng.range(2.4, 4.4) + Vec3::Y * 1.1;
             s.p.rot = Transform::IDENTITY.looking_to(-out, Vec3::Y).rotation
                 * Quat::from_rotation_z(self.rng.range(-0.6, 0.6));
             s.p.spin = self.rng.dir() * self.rng.range(3.0, 8.0);
             s.p.gravity = 5.0;
-            s.p.drag = 1.2;
-            s.p.size = Vec3::splat(self.rng.range(0.42, 0.6));
-            s.p.life = self.rng.range(0.55, 0.8);
+            s.p.drag = 1.4;
+            s.p.size = Vec3::splat(self.rng.range(0.45, 0.78));
+            s.p.life = self.rng.range(0.65, 0.95);
             s.p.shrink_start = 0.6;
             s.face = Face::Free;
-            s.intensity = 1.7;
+            s.intensity = 1.8;
             s.fade_start = 0.7;
             self.glow(s);
         }
-        for i in 0..16 {
+        // A storm of glass chips.
+        for i in 0..40 {
             let out = (self.rng.dir() + Vec3::Y * 0.3).normalize();
             let mut s = Spark::new(center + out * 0.3, &self.assets.chips[i % 2].clone());
-            s.p.vel = out * self.rng.range(3.5, 6.5) + Vec3::Y * 1.5;
+            s.p.vel = out * self.rng.range(3.5, 8.5) + Vec3::Y * 1.5;
             s.p.rot = Quat::from_scaled_axis(self.rng.dir() * 3.0);
             s.p.spin = self.rng.dir() * self.rng.range(10.0, 25.0);
             s.p.gravity = 9.0;
             s.p.drag = 1.0;
-            s.p.size = Vec3::splat(self.rng.range(0.07, 0.13));
-            s.p.life = self.rng.range(0.4, 0.65);
+            s.p.size = Vec3::splat(self.rng.range(0.08, 0.17));
+            s.p.life = self.rng.range(0.45, 0.8);
             s.p.shrink_start = 0.55;
             s.face = Face::Free;
-            s.intensity = 1.4;
+            s.intensity = 1.5;
             self.glow(s);
         }
         let mut ring = Spark::new(center, &self.assets.ring_cyan);
-        ring.p.size = Vec3::splat(0.9);
-        ring.p.grow = 2.2;
-        ring.p.life = 0.26;
+        ring.p.size = Vec3::splat(1.3);
+        ring.p.grow = 2.6;
+        ring.p.life = 0.3;
         ring.p.shrink_start = 1.0;
-        ring.intensity = 0.9;
+        ring.intensity = 1.1;
         ring.fade_start = 0.1;
         ring.pull = 0.2;
         self.glow(ring);
@@ -1334,13 +1517,18 @@ impl Emitter<'_> {
         self.pop(
             center,
             burst,
-            apparent_size(0.8, d, 0.065),
-            0.14,
-            1.2,
+            apparent_size(1.5, d, 0.12),
+            0.18,
+            1.3,
             0.35,
             3.0,
         );
-        self.flash(center, HALO_CYAN, apparent_size(1.2, d, 0.1), 1.4, 0.2, 0.3);
+        let twinkles = [
+            self.assets.sparkle_white.clone(),
+            self.assets.sparkle_blue.clone(),
+        ];
+        self.sparkles(center, 1.0, 12, 0.12, &twinkles);
+        self.flash(center, HALO_CYAN, apparent_size(2.0, d, 0.16), 1.5, 0.24, 0.3);
         self.dizzy_stars(target);
     }
 
@@ -1419,8 +1607,8 @@ impl Emitter<'_> {
             s.face = Face::Free;
             self.solid(s);
         }
-        for i in 0..5 {
-            let a = std::f32::consts::TAU * (i as f32 + 0.5) / 5.0 + self.rng.range(-0.3, 0.3);
+        for i in 0..7 {
+            let a = std::f32::consts::TAU * (i as f32 + 0.5) / 7.0 + self.rng.range(-0.3, 0.3);
             let out = Vec3::new(a.cos(), 0.0, a.sin()) + toward * 0.4;
             let mut s = Spark::new(center + Vec3::Y * 0.3, &self.assets.gold_star);
             s.material = Some(self.assets.star.clone());
@@ -1442,7 +1630,7 @@ impl Emitter<'_> {
             self.assets.sparkle_violet.clone(),
             self.assets.sparkle_gold.clone(),
         ];
-        self.sparkles(center, 1.1, 10, 0.2, &meshes);
+        self.sparkles(center, 1.2, 18, 0.2, &meshes);
         self.flash(center, HALO_POOF, 2.6, 1.8, 0.25, 0.4);
     }
 }
@@ -2013,7 +2201,7 @@ fn simulate_spells(
         let len = path.length().max(1e-4);
         let dir = path / len;
         let (head_mesh, ribbon_mesh, halo_color) = match bolt.style {
-            BoltStyle::Rifle => (&assets.sparkle_blue, &assets.ribbon_blue, HALO_BLUE),
+            BoltStyle::Rifle => (&assets.bolt_head, &assets.ribbon_blue, HALO_BLUE),
             BoltStyle::Pellet { gold: false } => {
                 (&assets.streak_violet, &assets.ribbon_violet, HALO_VIOLET)
             }
@@ -2055,11 +2243,11 @@ fn simulate_spells(
                         }
                     }
                     BoltStyle::Pellet { .. } => {
-                        let w = apparent_size(0.07, d_head, 0.005);
+                        let w = apparent_size(0.1, d_head, 0.007);
                         Transform {
                             translation: head,
                             rotation: axial_billboard(-dir, view.toward_camera(head)),
-                            scale: Vec3::new(w, 1.0, w * 11.0),
+                            scale: Vec3::new(w, 1.0, w * 12.0),
                         }
                     }
                 };
@@ -2070,9 +2258,10 @@ fn simulate_spells(
                 };
                 set_tag(&mut tag, Color::WHITE, glow, &mut last);
                 if let Some(mut halo) = halo {
+                    // A softer halo than the star, so its jagged shape reads.
                     let (size, intensity) = match bolt.style {
-                        BoltStyle::Rifle => (1.9, 2.2),
-                        BoltStyle::Pellet { .. } => (4.0, 0.9),
+                        BoltStyle::Rifle => (0.95, 1.0),
+                        BoltStyle::Pellet { .. } => (4.0, 1.0),
                     };
                     let want = Halo::new(halo_color, size, intensity);
                     if *halo != want {
@@ -2113,8 +2302,8 @@ fn simulate_spells(
                     mesh.0 = ribbon_mesh.clone();
                 }
                 let (base, glow) = match bolt.style {
-                    BoltStyle::Rifle => (0.15, RIFLE_RIBBON_GLOW),
-                    BoltStyle::Pellet { .. } => (0.035, 1.5),
+                    BoltStyle::Rifle => (0.24, RIFLE_RIBBON_GLOW),
+                    BoltStyle::Pellet { .. } => (0.05, 1.6),
                 };
                 let width = apparent_size(base * 0.15, d_head, base * 0.06) * (1.0 - 0.7 * t);
                 let mid = tail + dir * (span * 0.5);

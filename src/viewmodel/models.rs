@@ -84,15 +84,19 @@ pub fn sidecar(name: &str) -> Sidecar {
 
 /// The rifle at the hip: low and right, turned so its left side and the glass
 /// chamber face you, the stock leaving the bottom-right corner (T01, T05).
+/// Amendment B brought it up and in toward the centre a little, where T05–T08
+/// paint it, so its ornate chamber reads.
 pub const RIFLE_HIP: HipPose = HipPose {
-    anchor: Vec3::new(0.285, -0.175, -0.56),
-    euler: Vec3::new(0.11, 0.30, -0.08),
+    anchor: Vec3::new(0.255, -0.145, -0.57),
+    euler: Vec3::new(0.11, 0.33, -0.08),
 };
-/// The pump at the hip: closer, the ringed crystal by the hand and the bell
-/// flaring toward the centre (T04).
+/// The pump at the hip: closer, the ringed glass chamber by the hand and the
+/// bell flaring toward the centre, turned a little broadside so the bell's
+/// flare and the chamber show (T04), and high enough that the chamber stays
+/// in view through the big kick.
 pub const PUMP_HIP: HipPose = HipPose {
-    anchor: Vec3::new(0.29, -0.165, -0.44),
-    euler: Vec3::new(0.10, 0.30, -0.10),
+    anchor: Vec3::new(0.33, -0.115, -0.52),
+    euler: Vec3::new(0.10, 0.36, -0.12),
 };
 
 /// The rifle's gallery-only "inspect" pose (target T02): about 30° further

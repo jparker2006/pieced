@@ -3,18 +3,18 @@
   "kind": "gun",
   "source": "art/blender/assets/guns.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 5036,
+  "triangles": 5656,
   "triangle_budget": 6000,
   "bounds": {
     "min": [
-      -0.0612,
+      -0.0623,
       0.0,
-      -0.618
+      -0.626
     ],
     "max": [
-      0.0612,
+      0.0623,
       0.4172,
-      0.468
+      0.471
     ]
   },
   "parts": {
@@ -22,22 +22,24 @@
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.0612,
-          0.0158,
+          -0.0615,
+          0.0135,
           -0.552
         ],
         "max": [
-          0.0612,
+          0.0615,
           0.4172,
           0.142
         ]
       },
-      "triangles": 3556,
+      "triangles": 3568,
       "colors": [
-        "barrier_cyan",
-        "brass",
-        "crystal_blue",
+        "gun_brass",
+        "gun_brass_dark",
+        "gun_brass_light",
         "gun_iron",
+        "gun_wood_dark",
+        "gun_wood_light",
         "stock"
       ]
     },
@@ -47,34 +49,35 @@
         "min": [
           -0.055,
           0.22,
-          -0.115
+          -0.114
         ],
         "max": [
           0.055,
           0.33,
-          0.103
+          0.104
         ]
       },
-      "triangles": 48,
+      "triangles": 144,
       "colors": [
-        "glass_cyan"
+        "barrier_cyan",
+        "gun_glass_blue"
       ]
     },
     "Crystal": {
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.0327,
-          0.2422,
-          -0.0405
+          -0.0354,
+          0.2395,
+          -0.0431
         ],
         "max": [
-          0.0327,
-          0.3078,
-          0.0305
+          0.0354,
+          0.3105,
+          0.0331
         ]
       },
-      "triangles": 20,
+      "triangles": 140,
       "colors": [
         "barrier_cyan",
         "crystal_blue"
@@ -84,20 +87,21 @@
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.029,
+          -0.0313,
           0.0,
           -0.1526
         ],
         "max": [
-          0.029,
+          0.0313,
           0.1706,
           -0.0561
         ]
       },
-      "triangles": 332,
+      "triangles": 200,
       "colors": [
-        "brass",
-        "crystal_blue",
+        "gun_brass",
+        "gun_brass_dark",
+        "gun_brass_light",
         "gun_iron"
       ]
     },
@@ -105,40 +109,66 @@
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.0465,
-          0.2285,
-          -0.618
+          -0.052,
+          0.223,
+          -0.626
         ],
         "max": [
-          0.0465,
-          0.3215,
+          0.052,
+          0.327,
           -0.548
         ]
       },
-      "triangles": 496,
+      "triangles": 528,
       "colors": [
-        "brass",
-        "crystal_blue",
+        "gun_brass",
+        "gun_brass_dark",
+        "gun_brass_light",
         "gun_iron"
+      ]
+    },
+    "Runes": {
+      "parent": "rifle",
+      "bounds": {
+        "min": [
+          -0.0623,
+          0.036,
+          -0.5765
+        ],
+        "max": [
+          0.0623,
+          0.3243,
+          0.1248
+        ]
+      },
+      "triangles": 472,
+      "colors": [
+        "barrier_cyan",
+        "crystal_blue"
       ]
     },
     "Stock": {
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.042,
-          0.139,
+          -0.0481,
+          0.1372,
           0.118
         ],
         "max": [
-          0.042,
-          0.3284,
-          0.468
+          0.0481,
+          0.3295,
+          0.471
         ]
       },
-      "triangles": 584,
+      "triangles": 604,
       "colors": [
+        "gun_brass",
+        "gun_brass_dark",
+        "gun_brass_light",
         "gun_iron",
+        "gun_wood_dark",
+        "gun_wood_light",
         "stock"
       ]
     }
@@ -191,7 +221,7 @@
       "position": [
         0.0,
         0.275,
-        -0.618
+        -0.626
       ],
       "rotation": [
         0.0,
