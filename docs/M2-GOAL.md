@@ -108,6 +108,7 @@ The goal is complete only when gates **S1–S9** are all **PASS**, each with rec
 | **S7 No regressions** | Milestone 1's G1, G3 (median ≤ 33 ms) and G6 pass on the final commit. `cargo test --locked` has 0 failures, and `cargo clippy --locked --all-targets -- -D warnings` and `cargo fmt --check` are clean | Command output and scenario summaries in the report |
 | **S8 Feel verdict** | Jake plays at least 10 minutes and says the guns, spells and sounds feel sick, **or** names what's off. Fix it, re-verify the affected gates and ask again | Jake's words, quoted from chat |
 | **S9 Original and reproducible** | `scripts/build-art.sh` regenerates every model headless without errors, and the game loads them. The asset audit test passes. The only third-party file is the open-license font and its license | Script output plus the test in the report |
+| **S10 Fortnite building** (Amendment A) | Every S10 check in `docs/M2-SPEC.md` passes headless on the final commit | `tests/` output recorded in the report |
 
 ## Stop and ask Jake when
 

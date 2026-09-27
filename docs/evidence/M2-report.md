@@ -16,6 +16,7 @@ Every number here names its run folder, the commit, and the power and Low Power 
 | S6 Feedback timing | PARTIAL | `tests/spells.rs`: impact, hitmarker and damage number on the hit tick; bolt ≤ 2 frames, with the real `HudPlugin`. Native `fx_check` `scenario.s6` pending (go window) |
 | S7 No regressions (G1, G3, G6, tests, clippy, fmt) | PARTIAL | `cargo test --locked` 331 passed, 0 failed; clippy `-D warnings` and `fmt --check` clean on `12550d4`. Native G1, G3 and G6 pending (go window) |
 | S8 Jake's feel verdict | PENDING | — |
+| S10 Fortnite building and controls (Amendment A) | PENDING | ramp rush, controls, editing and cone in progress |
 | S9 Original and reproducible | PASS (on `12550d4`; re-run on the final commit) | `scripts/build-art.sh --check`: every model and UI image rebuilt headless, byte-identical. `tests/assets.rs` audit passes. `tests/models.rs` loads every glb headless. The only third-party files are Lilita One and its OFL license |
 
 ## Phase 0: performance baseline (Milestone 1 art)

@@ -89,6 +89,15 @@ Jake: "it plays really fun … it looked really good." His answers to Q30–Q38:
 | D41 | **Always sprint (Q40).** | "If I'm holding W, I'm sprinting," like Fortnite. Sprint speed whenever moving; no sprint key. Slide is C while moving. |
 | D42 | **No two-finger clicks (Q41).** | The trackpad only looks, aims and clicks (fire or place). |
 
+**Round 6, part 2, 2026-09-26** (Jake: "rec for all"; based on `docs/research/fortnite-building.md`):
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D43 | **Key layout (Q42).** | WASD (always sprint on W), trackpad to look, click to fire, place or select edit tiles, **hold Shift to aim**, Space jump, C crouch/slide, 1/2 guns, **Q/E/F/V wall/ramp/floor/cone**, **G edit**, **R reload or reset edit**, Esc pause. No Ctrl (Ctrl + click is right-click on macOS). |
+| D44 | **Fortnite-style editing (Q43).** | G on a piece enters edit mode; click or drag tiles to select; **release confirms**; R resets. No edit delay. The edited piece keeps its HP fraction. Grids: wall 3×3, floor 2×2, ramp 2×2 path, cone 2×2 corners. |
+| D45 | **Instant full piece HP (Q44).** | No Fortnite-style HP build-up, which protects "a wall soaks ≥ 1 s of rifle fire". |
+| D46 | **Fortnite reach (Q45).** | Build in the 3×3 tiles around you (diagonals included, tunable to 2), from one level down to one level up. This makes double ramps and 90s possible. |
+
 ## Handoff: where to pick up after compaction
 
 - **Next:** Jake launches the Milestone 2 `/goal` with the launcher line in `docs/M2-GOAL.md`.
