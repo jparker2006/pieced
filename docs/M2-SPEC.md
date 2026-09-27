@@ -228,7 +228,7 @@ Done means all four hold:
 
   | Asset | Triangles |
   |---|---|
-  | Gun viewmodel (each) | ≤ 6k |
+  | Gun viewmodel (each) | ≤ 8k (raised from 6k in S1 round 3) |
   | Gloves | ≤ 2k |
   | Knight | ≤ 8k |
   | Wall | ≤ 600 |

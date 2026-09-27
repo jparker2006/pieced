@@ -294,3 +294,10 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **T10:** the camera is 250 m from the station, looking up 24°.
   - **Budget:** far layer 25.4k → 53.4k triangles, opaque batches 15 → 14, halos 25 → 47. A new `tests/far.rs` budget test enforces ≤ 75k triangles, ≤ 16 batches and ≤ 50 halos.
   - **Open item:** the scenery cloud bank (ground slice) now hides the station's rock and the bottom of T10; the ground builder is re-anchoring it under the station.
+- 2026-09-27: **round 3, viewmodel slice merged** (`e14a6bc`), with 407 tests passing and `build-art --check` clean:
+  - **Framing:** the rifle sits lower, nearer and further right, with the muzzle just under the crosshair; the T02 inspect pose is a big diagonal from the lower right. The viewmodel FOV is unchanged.
+  - **Feel kept:** recoil, sway, bob, reload, swap and fire timings are unchanged; motion offsets and the muzzle flash are scaled by the new hold depth so they move as far on screen as before. ADS sights still line up, bolts still leave the muzzle, and S6 timing tests pass.
+  - **Rifle:** round, smooth-shaded barrel, collars and chamber; a warm red-brown stock and fore-grip; a small rear sight in place of the square block; clearer glass over a deep inner chamber so the crystal reads.
+  - **Pump:** a long trumpet bell that reads as a horn from the side, a ribbed wooden grip, and the violet chamber in view.
+  - **Gloves:** bigger and puffier, with dark sleeves.
+  - **Budget:** rifle 6,776, pump 6,984, gloves 1,904 triangles. The gun budget is raised from 6k to 8k in the spec, `registry.py` and `tests/models.rs`.
