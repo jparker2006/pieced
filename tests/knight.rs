@@ -832,13 +832,52 @@ fn headshots_bounce_the_hat() {
         .iter()
         .map(|p| p.hat_offset.y)
         .fold(0.0, f32::max);
-    assert!(peak > 0.08, "hat pops {peak:.3} m");
+    // Well clear of the helmet (T06 paints it about a helmet's height up).
+    assert!(peak > 0.35, "hat pops {peak:.3} m");
     assert!(
         poses[frames(1.0)..].iter().all(|p| p.hat_offset.y < 1e-3),
         "and lands"
     );
     assert!(poses.iter().all(|p| p.hat_visible));
     assert_eq!(poses[0].eyes, EyeState::Wide);
+}
+
+#[test]
+fn a_headshot_knocks_the_hat_up_away_from_the_hit_and_it_drops_back_on() {
+    // A shot into the right side of his helmet as the shooter sees it (his
+    // left) pushes toward his right (+X).
+    let mut anim = KnightAnim::new(5);
+    run(&mut anim, still(), 1.0);
+    let rest = run(&mut anim, still(), 0.05).pop().unwrap();
+    anim.event(KnightEvent::Hit {
+        push: Vec3::new(0.5, 0.0, 0.87),
+        headshot: true,
+    });
+    let poses = run(&mut anim, still(), 1.5);
+    let top = poses[..frames(0.3)]
+        .iter()
+        .copied()
+        .max_by(|a, b| a.hat_offset.y.total_cmp(&b.hat_offset.y))
+        .unwrap();
+    assert!(top.hat_offset.y > 0.35, "up {:.3} m", top.hat_offset.y);
+    assert!(
+        top.hat_offset.x > 0.1,
+        "off to his right: {}",
+        top.hat_offset
+    );
+    // Cocked over toward the side it flies to, and tipped toward the shooter
+    // (he faces -Z).
+    let up = top.hat * Vec3::Y;
+    assert!(up.x > 0.25, "cocked over: {up}");
+    assert!(up.z < -0.2, "crown tipped toward the shooter: {up}");
+    assert!(top.hat_scale > 1.25, "swells: {}", top.hat_scale);
+    // Back on his helmet, sitting as it did before (give or take the idle
+    // wobble).
+    let last = poses.last().unwrap();
+    assert!(last.hat_offset.length() < 1e-3, "{}", last.hat_offset);
+    assert!((last.hat_scale - 1.0).abs() < 1e-3, "its own size again");
+    let sat = (last.hat * Vec3::Y).angle_between(rest.hat * Vec3::Y);
+    assert!(sat < 0.15, "sits as before: {sat:.3} rad");
 }
 
 #[test]

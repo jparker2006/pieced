@@ -21,7 +21,8 @@
 //! first planned (T05 "at 10 m" is drawn about 4 m away at the game's 70° FOV),
 //! and from a low eye, with his chest near the horizon. Polish round 1 moved him
 //! in (T03 8 m, T04 4 m, T05 5 m, T06 6 m, T07 4.5 m, T08 5 m) and crouches the
-//! player in those views; the distances are one-line changes in the table.
+//! player in those views; round 2 brought T06 to 5.2 m. The distances are
+//! one-line changes in the table.
 
 use super::{
     Director, DirectorStatus, ScenarioClock, capture, player_entity, teleport, with_intent,
@@ -340,10 +341,10 @@ pub fn views() -> Vec<GalleryView> {
     // T05: the knight 5 m out on open ground, a wall close on the right.
     let t05_feet = Vec3::new(4.0, 0.0, 19.0);
     let t05_knight = out(t05_feet, 6.0, 5.0);
-    // T06: the knight dead ahead at 6 m, a ramp against a wall on the left, the
-    // station upper left.
+    // T06: the knight dead ahead at 5.2 m, a ramp against a wall on the left,
+    // the station upper left.
     let t06_feet = Vec3::new(-6.5, 0.0, 12.0);
-    let t06_knight = out(t06_feet, 50.0, 6.0);
+    let t06_knight = out(t06_feet, 50.0, 5.2);
     // T07: the knight 4.5 m out in front of a ramp, a wall very close on the left.
     let t07_feet = Vec3::new(-2.0, 0.0, 10.0);
     let t07_knight = out(t07_feet, 12.0, 4.5);
@@ -415,9 +416,10 @@ pub fn views() -> Vec<GalleryView> {
             inspect: false,
             knight: Some(KnightSpot {
                 feet: t03_knight,
-                // Left and toward us, clear of the rock beside his path.
+                // Left and toward us, three-quarters to the camera so his
+                // face shows (T03), clear of the rock beside his path.
                 motion: KnightMotion::Run {
-                    azimuth: -70.0,
+                    azimuth: -104.0,
                     lead: 6.3,
                 },
                 hp: 100.0,
@@ -504,14 +506,24 @@ pub fn views() -> Vec<GalleryView> {
         GalleryView {
             id: "T06",
             name: "T06-headshot",
-            title: "Headshot at about 6 m: hat bouncing, gold number",
+            title: "Headshot at about 5 m: gold flash, hat popping off, gold number",
             feet: t06_feet,
             crouch: true,
+            // The top of the helmet, off to one side: the flash sits there
+            // and the hat is knocked up and away to the other side. The
+            // target's mirror image (flash left, hat up and right), because
+            // the HUD fans this view's damage number out to the left, where
+            // the target's hat would be.
             aim: Aim::Knight {
-                up: 1.62,
-                right: 0.0,
+                up: 1.72,
+                right: -0.12,
             },
-            framing: Framing::Eye,
+            // The flash just left of the crosshair (the target paints it a
+            // little off the crosshair too), which keeps him clear of the
+            // gun's muzzle.
+            framing: Framing::Offset {
+                screen: Vec2::new(-0.08, 0.02),
+            },
             tool: RIFLE,
             inspect: false,
             knight: Some(KnightSpot {
@@ -519,8 +531,8 @@ pub fn views() -> Vec<GalleryView> {
                 motion: KnightMotion::Idle,
                 hp: 100.0,
                 shield: 0.0,
-                // The crosshair on his helmet puts his chest just below it.
-                screen: Vec2::new(0.0, -0.15),
+                // Just left of the crosshair, his chest well below it.
+                screen: Vec2::new(-0.05, -0.17),
             }),
             // A ramp rising left against a wall on the left, a wall end close
             // on the right.
@@ -530,8 +542,8 @@ pub fn views() -> Vec<GalleryView> {
                 wall(4, 9, 0, East),
             ],
             script: fire.clone(),
-            // The hat near the top of its bounce.
-            moment: Moment::AfterShot(9),
+            // The hat near the top of its pop, the gold flash still full size.
+            moment: Moment::AfterShot(11),
             expect: Expect::Headshot,
         },
         GalleryView {
@@ -649,19 +661,22 @@ pub fn views() -> Vec<GalleryView> {
             id: "T11",
             name: "T11-island-edge",
             title: "The island edge and barrier",
-            // Beside the east barrier, looking north-east along the edge and
-            // out over the void: the land and a wall with a ramp on the left.
-            feet: Vec3::new(22.5, 0.0, 14.0),
+            // Beside the east barrier where the grass ends at a lip just past
+            // it (`scenery::LIP_Z`), looking north-east along the edge and out
+            // over the void: the lip and the curving barrier run to the
+            // rounded cliff where the island steps back out, a wall with a
+            // ramp rising to it on the left, the far view on the right.
+            feet: Vec3::new(22.9, 0.0, 4.0),
             crouch: false,
             aim: Aim::Look {
-                yaw: deg(-35.0),
-                pitch: deg(-9.0),
+                yaw: deg(-42.0),
+                pitch: deg(-12.0),
             },
             framing: Framing::Eye,
             tool: RIFLE,
             inspect: false,
             knight: None,
-            pieces: vec![wall(11, 7, 0, North), ramp(11, 7, 0, West)],
+            pieces: vec![wall(11, 3, 0, South), ramp(11, 4, 0, West)],
             script: vec![],
             moment: Moment::Settled(SETTLE),
             expect: Expect::Still,

@@ -16,16 +16,26 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 pub const EDGE_CLEARANCE: f32 = 0.35;
 /// Tallest grass, flower or pebble allowed on the playable floor (m).
 pub const FLOOR_CLUTTER_MAX_HEIGHT: f32 = 0.26;
-/// The island's edge is never closer than this to the arena (m).
-pub const MIN_MARGIN: f32 = 2.4;
+/// The island's edge is never closer than this to the arena (m): the lip in
+/// the middle of the close edge ([`LIP_Z`]), where the grass ends just past
+/// the barrier.
+pub const MIN_MARGIN: f32 = 0.9;
+/// The close edge's margin (m) either side of the lip.
+pub const CLOSE_MARGIN: f32 = 2.7;
 /// The typical width of the island's margin beyond the arena (m).
 pub const BASE_MARGIN: f32 = 9.0;
 /// Spacing of the island top's grid (m); the outline samples the arena's
 /// sides at the same spacing so the two meshes share their seam vertices.
 pub const GROUND_STEP: f32 = 2.0;
 /// Where the island's edge comes closest to the arena: the east side between
-/// these z (the island-edge view, T11, looks along it).
+/// these z, [`CLOSE_MARGIN`] past the barrier.
 pub const CLOSE_EDGE_Z: (f32, f32) = (-4.0, 12.0);
+/// The middle of the close edge narrows further, between these z, to a lip
+/// [`MIN_MARGIN`] past the barrier: the grass stops at the cliff right behind
+/// the curtain. The island-edge view (T11) looks along it, at the rounded
+/// cliffs where the island steps back out at its north end. Only the edge
+/// samples inside the close edge move, so the margin's models stay put.
+pub const LIP_Z: (f32, f32) = (0.0, 8.0);
 
 /// The Milestone 1 sun (west-southwest, late afternoon). The Milestone 2 key
 /// light is `look::ToonLighting`; this stays for the Milestone 1 gallery's
@@ -58,11 +68,14 @@ pub fn margin_at(base: Vec2, dir: Vec2) -> f32 {
         2.3 * (3.0 * a + 0.7).sin() + 1.4 * (5.0 * a + 2.1).sin() + 0.7 * (11.0 * a + 4.0).sin();
     let mut m = BASE_MARGIN + lobes;
     // The close edge: a stretch of the east side where the cliff drops right
-    // behind the barrier.
+    // behind the barrier, narrowing to a lip in its middle.
     if dir.x > 0.5 {
         let (z0, z1) = CLOSE_EDGE_Z;
         let t = smoothstep(z0 - 6.0, z0, base.y) * (1.0 - smoothstep(z1, z1 + 6.0, base.y));
-        m += (MIN_MARGIN + 0.3 - m) * t;
+        m += (CLOSE_MARGIN - m) * t;
+        let (l0, l1) = LIP_Z;
+        let u = smoothstep(l0 - 4.0, l0, base.y) * (1.0 - smoothstep(l1, l1 + 4.0, base.y));
+        m += (MIN_MARGIN - m) * u;
     }
     m.max(MIN_MARGIN)
 }
@@ -773,14 +786,14 @@ mod tests {
             assert!(s.margin >= MIN_MARGIN - 1e-4);
             assert!(edge_distance(s.edge().x, s.edge().z) >= MIN_MARGIN - 0.05);
         }
-        // The close edge on the east side comes within about 3 m; elsewhere
-        // the margin is wide enough for trees.
+        // The close edge on the east side comes within about a metre;
+        // elsewhere the margin is wide enough for trees.
         let east = outline
             .iter()
             .filter(|s| s.normal.x > 0.99 && (0.0..8.0).contains(&s.base.z))
             .map(|s| s.margin)
             .fold(0.0, f32::max);
-        assert!(east < 3.2, "close edge margin {east}");
+        assert!(east < 1.2, "close edge margin {east}");
         let widest = outline.iter().map(|s| s.margin).fold(0.0, f32::max);
         assert!(widest > 10.0, "widest margin {widest}");
         // The skirt's top ring is the ground's rim.
@@ -801,8 +814,9 @@ mod tests {
         assert!(hi.y <= 1e-4, "no cliff pokes above the island top");
         assert!(lo.y < -30.0, "the island hangs deep into space");
         for v in island.skirt.vertices() {
+            // Its lumps may tuck back under the rim, never into the arena.
             assert!(
-                edge_distance(v.x, v.z) > MIN_MARGIN - 0.6 || v.y < -8.0,
+                edge_distance(v.x, v.z) > 0.1 || v.y < -8.0,
                 "cliff inside the playable area at {v}"
             );
         }

@@ -13,7 +13,9 @@
 //! - a hit wobble spring (he rocks away from the hit) and a nod;
 //! - a respawn pop-in: scale springs up from zero and overshoots, with a warm
 //!   sparkle ([`RespawnSparkle`]) flaring at his chest;
-//! - the hat bounces up off his helmet on headshots;
+//! - on a headshot the hat pops well clear of his helmet, knocked away from
+//!   the hit, cocked over, tipped toward the shooter and swelling, then drops
+//!   back onto his head (T06);
 //! - eyes: open, blinking every 2–5 s at random, wide for 0.3 s after a hit, X
 //!   when eliminated. Each state is a mesh; the pose picks which one shows.
 //!
@@ -76,10 +78,26 @@ pub const WOBBLE_KICK: f32 = 2.4;
 /// Respawn pop-in spring (scale from 0 to 1, overshooting).
 pub const POP_K: f32 = 240.0;
 pub const POP_C: f32 = 13.0;
-/// Headshot hat bounce: launch speed (m/s), gravity (m/s²), restitution.
-pub const HAT_POP: f32 = 3.4;
-pub const HAT_GRAVITY: f32 = 24.0;
+/// Headshot hat pop (T06): launch speed (m/s), gravity (m/s²), restitution. It
+/// peaks about 0.44 m clear of the helmet 0.2 s after the hit, then drops back
+/// onto his head with a small bounce.
+pub const HAT_POP: f32 = 4.4;
+pub const HAT_GRAVITY: f32 = 22.0;
 pub const HAT_BOUNCE: f32 = 0.35;
+/// While popped the hat drifts sideways, away from the side the shot hit
+/// (m per m of lift), and cocks over the same way (rad per m of lift, capped),
+/// so it reads as knocked off rather than just lifted.
+pub const HAT_DRIFT: f32 = 0.45;
+pub const HAT_TILT: f32 = 1.3;
+pub const HAT_TILT_MAX: f32 = 0.55;
+/// It also tips its crown toward whoever shot it (rad per m of lift, capped),
+/// so from a low eye it shows its crown and star rather than its brim's
+/// underside.
+pub const HAT_TIP: f32 = 1.2;
+pub const HAT_TIP_MAX: f32 = 0.5;
+/// And it swells as it flies, cartoon-style (extra scale per m of lift),
+/// back to its own size by the time it lands on his helmet.
+pub const HAT_SWELL: f32 = 0.8;
 /// Eyes: blink every 2–5 s for this long; wide this long after a hit.
 pub const BLINK_EVERY: (f32, f32) = (2.0, 5.0);
 pub const BLINK_TIME: f32 = 0.13;
@@ -172,6 +190,8 @@ pub struct KnightPose {
     pub cape: Quat,
     pub hat_offset: Vec3,
     pub hat: Quat,
+    /// Hat scale about its pivot (1 on his head).
+    pub hat_scale: f32,
     pub hat_visible: bool,
     pub eyes: EyeState,
     /// False once an elimination's KO beat is over, until respawn.
@@ -190,6 +210,7 @@ impl KnightPose {
         cape: Quat::IDENTITY,
         hat_offset: Vec3::ZERO,
         hat: Quat::IDENTITY,
+        hat_scale: 1.0,
         hat_visible: true,
         eyes: EyeState::Open,
         visible: true,
@@ -248,6 +269,8 @@ pub struct KnightAnim {
     hat_height: f32,
     hat_speed: f32,
     hat_spin: Spring<f32>,
+    /// Which way (±1 along his X) the last headshot knocked the hat.
+    hat_side: f32,
     /// Respawn pop-in scale, while it settles.
     pop: Option<Spring<f32>>,
     blink_in: f32,
@@ -276,6 +299,7 @@ impl KnightAnim {
             hat_height: 0.0,
             hat_speed: 0.0,
             hat_spin: Spring::default(),
+            hat_side: 1.0,
             pop: None,
             blink_in,
             blink_left: 0.0,
@@ -323,8 +347,18 @@ impl KnightAnim {
                 self.blink_left = 0.0;
                 if headshot {
                     self.hat_speed = self.hat_speed.max(0.0) + HAT_POP;
-                    let spin = if self.rng.chance(0.5) { 1.0 } else { -1.0 };
-                    self.hat_spin.v += spin * 7.0;
+                    let coin = if self.rng.chance(0.5) { 1.0 } else { -1.0 };
+                    // Knocked away from the side the shot struck (the push
+                    // carries it; a dead-centre hit picks a side at random),
+                    // and always spun the same way for that side, so it
+                    // turns side-on as it flies and reads as a hat, not a
+                    // brim.
+                    self.hat_side = if push.x.abs() > 0.08 {
+                        push.x.signum()
+                    } else {
+                        coin
+                    };
+                    self.hat_spin.v -= self.hat_side * 7.0;
                 }
             }
         }
@@ -470,11 +504,15 @@ impl KnightAnim {
         let cape = Quat::from_rotation_x(-(trail * back + flutter + 0.25 * air))
             * Quat::from_rotation_z(0.6 * trail * sideways);
 
-        // Hat: wobbles with the bob, bounces on headshots.
-        let hat_offset = Vec3::Y * self.hat_height;
-        let hat = Quat::from_rotation_z(0.06 * idle * idle_wave + self.hat_spin.x * 0.12)
+        // Hat: wobbles with the bob; a headshot knocks it up, off to one side
+        // and cocked over, and it drops straight back onto his helmet.
+        let lift = self.hat_height;
+        let side = self.hat_side;
+        let hat_offset = Vec3::new(side * HAT_DRIFT * lift, lift, 0.0);
+        let cock = side * (HAT_TILT * lift).min(HAT_TILT_MAX);
+        let hat = Quat::from_rotation_z(0.06 * idle * idle_wave + self.hat_spin.x * 0.12 - cock)
             * Quat::from_rotation_y(self.hat_spin.x)
-            * Quat::from_rotation_x(-0.6 * self.hat_height.min(0.15));
+            * Quat::from_rotation_x(-(HAT_TIP * lift).min(HAT_TIP_MAX));
 
         // Whole body: squash and stretch, the hit wobble, the respawn pop.
         let sq = self.squash.x.clamp(-0.4, 0.4);
@@ -508,6 +546,7 @@ impl KnightAnim {
             cape,
             hat_offset,
             hat,
+            hat_scale: 1.0 + HAT_SWELL * lift,
             hat_visible: !self.downed,
             eyes,
             visible: !(self.downed && self.ko_time >= KO_TIME),
@@ -683,6 +722,9 @@ pub fn write_pose<F1: QueryFilter, F2: QueryFilter>(
     set(head, Vec3::ZERO, pose.head);
     set(cape, Vec3::ZERO, pose.cape);
     set(hat_pivot, pose.hat_offset, pose.hat);
+    if let Ok(mut t) = transforms.get_mut(hat_pivot.0) {
+        t.scale = hat_pivot.1.scale * pose.hat_scale;
+    }
     let show = |v: bool| {
         if v {
             Visibility::Inherited
