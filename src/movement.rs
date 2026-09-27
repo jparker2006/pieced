@@ -3,7 +3,8 @@
 //! Every [`Character`] (player, dummy, later bots) is moved here from its own
 //! [`PlayerIntent`], once per fixed 60 Hz tick, inside [`SimSet::Movement`]:
 //!
-//! 1. depenetrate (a piece placed into a character pushes it out);
+//! 1. depenetrate (a piece placed into a character pushes it out, and a ramp
+//!    built over it lifts it onto its slope);
 //! 2. slide / crouch / jump state from intent edges (jump buffer, coyote time);
 //! 3. ground acceleration and friction, or reduced air control;
 //! 4. avian's move-and-slide with a feet-anchored capsule, plus a step-up pass;
@@ -197,6 +198,16 @@ const EDGE_SUPPORT: f32 = 0.5;
 const KILL_HEIGHT: f32 = -5.0;
 /// Landings slower than this (settling at spawn, tiny drops) make no cue.
 const MIN_LAND_CUE_SPEED: f32 = 1.0;
+/// Highest a character buried under a new ramp is lifted onto it (a ramp's
+/// full rise plus a little).
+const MAX_LIFT: f32 = 3.3;
+/// How far off a contact point the face check starts its ray.
+const FACE_PROBE: f32 = 0.05;
+/// Surfaces whose normal is at least this upright count as flat (floors).
+const FLAT_NORMAL_Y: f32 = 0.99;
+/// Only pieces at least this wide both ways (ramps, not walls) lift a
+/// character buried in them.
+const MIN_LIFT_BREADTH: f32 = 1.0;
 
 /// Standing and crouched capsules, rebuilt only when their tuning changes.
 #[derive(Default)]
@@ -241,6 +252,8 @@ struct Ground {
 struct Mover<'a, 'w, 's> {
     mas: &'a MoveAndSlide<'w, 's>,
     filter: SpatialQueryFilter,
+    /// Building pieces only: the colliders that can appear on top of a character.
+    pieces: SpatialQueryFilter,
     config: MoveAndSlideConfig,
     depenetration: DepenetrationConfig,
     skin: f32,
@@ -261,6 +274,71 @@ impl Mover<'_, '_, '_> {
             &self.depenetration,
             &self.filter,
         )
+    }
+
+    /// A ramp built on the cell a character stands in buries its feet under
+    /// the slope. Like Fortnite, lift it onto the slope (if there's headroom up
+    /// there) rather than shoving it out sideways. Thin pieces (a wall built
+    /// against it) and flat ones (a floor slab at its feet) are left to
+    /// depenetration. Returns the lifted center and the ground there.
+    fn lift_onto_ramp(&self, shape: &Collider, center: Vec3, half: f32) -> Option<(Vec3, Ground)> {
+        let query = &self.mas.spatial_query;
+        let buried = query.shape_intersections(shape, center, Quat::IDENTITY, &self.pieces);
+        if buried.is_empty() {
+            return None;
+        }
+        // The surface of what we overlap, straight above the feet: a slope.
+        let feet = center - Vec3::Y * half;
+        let above = query.cast_ray_predicate(
+            feet + Vec3::Y * MAX_LIFT,
+            Dir3::NEG_Y,
+            MAX_LIFT,
+            true,
+            &self.pieces,
+            &|entity| buried.contains(&entity),
+        )?;
+        let sloped = self.walkable(above.normal) && above.normal.y < FLAT_NORMAL_Y;
+        let broad =
+            self.mas
+                .colliders
+                .get(above.entity)
+                .is_ok_and(|(collider, position, rotation, _)| {
+                    let aabb = collider.aabb(position.0, *rotation);
+                    let size = aabb.max - aabb.min;
+                    size.x.min(size.z) >= MIN_LIFT_BREADTH
+                });
+        if !sloped || !broad || above.distance >= MAX_LIFT - self.skin {
+            return None;
+        }
+        let top = center + Vec3::Y * MAX_LIFT;
+        if !query
+            .shape_intersections(shape, top, Quat::IDENTITY, &self.filter)
+            .is_empty()
+        {
+            return None;
+        }
+        let ground = self.ground(shape, top, half, MAX_LIFT)?;
+        let lifted = top - Vec3::Y * ground.drop;
+        (lifted.y > center.y + self.skin).then_some((lifted, ground))
+    }
+
+    /// Whether a contact at `point` with normal `normal` is on a face with that
+    /// normal (landing on a slope) rather than an edge (grazing a ledge).
+    fn on_face(&self, point: Vec3, normal: Vec3) -> bool {
+        let Ok(down) = Dir3::new(-normal) else {
+            return false;
+        };
+        self.mas
+            .spatial_query
+            .cast_ray_predicate(
+                point + normal * FACE_PROBE,
+                down,
+                2.0 * FACE_PROBE,
+                true,
+                &self.filter,
+                &|entity| self.mas.colliders.contains(entity),
+            )
+            .is_some_and(|hit| hit.normal.dot(normal) > 0.999)
     }
 
     /// Distance the shape can safely move along `movement` (keeping skin width)
@@ -349,7 +427,12 @@ impl Mover<'_, '_, '_> {
             |hit| {
                 let n = hit.normal.as_vec3();
                 let v = *hit.velocity;
-                if on_ground && n.y >= walkable_cos && v.dot(n) < 0.0 {
+                // Landing from the air on a ramp's slope keeps its run speed too
+                // (but not grazing a ledge's edge, which would fling it upward).
+                let follows_slope = n.y >= walkable_cos
+                    && v.dot(n) < 0.0
+                    && (on_ground || self.on_face(hit.point, n));
+                if follows_slope {
                     // Running onto a ramp (or off one onto flat ground): follow
                     // the new slope at full horizontal speed instead of losing
                     // the part of the velocity that pointed into it.
@@ -492,6 +575,7 @@ fn move_characters(
     let mover = Mover {
         mas: &mas,
         filter: SpatialQueryFilter::from_mask([Layer::World, Layer::Piece]),
+        pieces: SpatialQueryFilter::from_mask(Layer::Piece),
         config: MoveAndSlideConfig {
             penetration_rejection_threshold: MAX_DEPENETRATION,
             ..default()
@@ -518,8 +602,17 @@ fn move_characters(
             motor.velocity = Vec3::ZERO;
         }
 
-        // 1. Push out of anything that overlaps us (e.g. a piece placed on top of us).
+        // 1. Get lifted onto a ramp built over us, and pushed out of anything
+        //    else that overlaps us (e.g. a wall built against us).
         let half = t.capsule_height(motor.crouched) / 2.0;
+        if let Some((center, ground)) =
+            mover.lift_onto_ramp(capsules.get(motor.crouched), feet + Vec3::Y * half, half)
+        {
+            feet = center - Vec3::Y * half;
+            motor.grounded = true;
+            motor.ground_normal = ground.normal;
+            motor.velocity.y = 0.0;
+        }
         feet += mover.depenetrate(capsules.get(motor.crouched), feet + Vec3::Y * half);
 
         // 2. Timers and latched presses.
@@ -712,8 +805,11 @@ fn move_characters(
             } else {
                 LANDING_PROBE
             };
-            let rising = !on_ground && next_velocity.y > RISING_SPEED;
-            if !rising && let Some(ground) = mover.ground(shape, new_center, half, probe) {
+            // Rising means moving away from the ground: running up a ramp while
+            // airborne (after landing on it) still lands.
+            if let Some(ground) = mover.ground(shape, new_center, half, probe)
+                && (on_ground || next_velocity.dot(ground.normal) <= RISING_SPEED)
+            {
                 new_center.y -= ground.drop;
                 grounded = true;
                 ground_normal = ground.normal;

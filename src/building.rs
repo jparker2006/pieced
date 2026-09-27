@@ -16,12 +16,13 @@ pub mod visuals;
 
 pub use grid::{EdgeAxis, EdgeKey, MapEntry, PieceMap, PieceSlot, SlotKey, ramp_surface_height};
 pub use targeting::{
-    BuildCandidate, LEVEL_SNAP, Placement, build_target, capsule_overlaps_box, check_placement,
-    feet_level, target_slot,
+    BuildCandidate, Gait, LEVEL_SNAP, Placement, RUSH_TOLERANCE_DEG, build_target,
+    capsule_overlaps_box, check_placement, feet_level, target_slot,
 };
 pub use visuals::BuildingVisualsPlugin;
 
 use crate::{
+    movement::Motor,
     shared::{
         ActiveTool, Character, DamageDealt, DamageTarget, EyeHeight, Facing, GameCue, GridCell,
         Layer, LookAngles, PieceChange, PieceChanged, PieceHit, PieceKind, PlayerIntent, SimSet,
@@ -52,7 +53,8 @@ pub struct BuildTuning {
     /// Piece key selects *and* places in one press.
     pub builder_pro: bool,
     /// Radius of the body a new wall must not overlap (m). Covers the movement
-    /// capsule and the hitboxes.
+    /// capsule and the hitboxes. The builder is exempt: a wall built against
+    /// yourself pushes you back into your cell.
     pub trap_radius: f32,
     /// Height of the body a new wall must not overlap (m), from the feet.
     pub trap_height: f32,
@@ -98,12 +100,6 @@ impl BuildTuning {
         } else {
             0
         }
-    }
-
-    /// Closest a wall's grid line may be to the builder's feet before targeting
-    /// moves on to the next line.
-    pub fn min_wall_distance(&self) -> f32 {
-        self.trap_radius + self.wall_thickness / 2.0 + 0.01
     }
 
     /// Whole fixed ticks between turbo placements (at least 1).
@@ -262,6 +258,10 @@ fn spawn_piece(
     entity
 }
 
+/// Forward move input above which a builder counts as advancing (ramp rushing).
+/// Movement runs earlier in the tick, so its [`Motor`] is this tick's.
+const ADVANCING_AXIS: f32 = 0.1;
+
 fn update_targets_and_place(
     tick: Res<SimTick>,
     tuning: Res<Tuning>,
@@ -275,20 +275,23 @@ fn update_targets_and_place(
             &LookAngles,
             &ActiveTool,
             &PlayerIntent,
+            Option<&Motor>,
             &mut BuildTarget,
             &mut BuildTimer,
         ),
         With<Character>,
     >,
-    characters: Query<&Transform, With<Character>>,
+    characters: Query<(Entity, &Transform), With<Character>>,
     mut changed: MessageWriter<PieceChanged>,
     mut cues: MessageWriter<GameCue>,
 ) {
     let tick = tick.0;
     let tuning = &tuning.building;
     map.prune_locks(tick);
-    let feet: Vec<Vec3> = characters.iter().map(|t| t.translation).collect();
-    for (entity, transform, eye, look, tool, intent, mut target, mut timer) in &mut builders {
+    let everyone: Vec<(Entity, Vec3)> =
+        characters.iter().map(|(e, t)| (e, t.translation)).collect();
+    for (entity, transform, eye, look, tool, intent, motor, mut target, mut timer) in &mut builders
+    {
         let ActiveTool::Build(kind) = *tool else {
             if target.candidate.is_some() {
                 target.candidate = None;
@@ -296,14 +299,30 @@ fn update_targets_and_place(
             continue;
         };
         let (eye_pos, dir) = eye_ray(transform, eye, look);
+        // A wall may be built against its builder (movement pushes them back into
+        // their cell), never against anyone else.
+        let others: Vec<Vec3> = everyone
+            .iter()
+            .filter(|(e, _)| *e != entity)
+            .map(|(_, feet)| *feet)
+            .collect();
+        // Holding forward: ramps follow the rush (see `targeting`).
+        let gait = if intent.move_axis.y <= ADVANCING_AXIS {
+            Gait::Standing
+        } else if motor.is_some_and(|m| !m.grounded && m.velocity.y < 0.0) {
+            Gait::Falling
+        } else {
+            Gait::Advancing
+        };
         let candidate = build_target(
             eye_pos,
             *dir,
             transform.translation,
             kind,
+            gait,
             &map,
             tick,
-            &feet,
+            &others,
             tuning,
         );
         target.candidate = Some(candidate);

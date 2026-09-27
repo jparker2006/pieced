@@ -117,7 +117,8 @@ fn dummy_faces_the_player() {
     let mut sim = Sim::new();
     let d = dummy(&mut sim);
     let player = sim.player();
-    place(&mut sim, d, Vec3::new(-10.0, 0.0, -10.0));
+    // Open ground (the arena cover's ramp in cell (3, 3) would lift it).
+    place(&mut sim, d, Vec3::new(-6.0, 0.0, -10.0));
     sim.tick();
     let look = *sim.get::<LookAngles>(d);
     let to_player = (sim.feet(player) - sim.feet(d)).normalize();

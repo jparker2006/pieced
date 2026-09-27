@@ -167,7 +167,10 @@ impl PieceSlot {
     /// Collider in the piece's local space (see [`PieceSlot::transform`]).
     pub fn collider(&self, tuning: &BuildTuning) -> Collider {
         match self.kind {
-            PieceKind::Wall => Collider::cuboid(CELL_SIZE, LEVEL_HEIGHT, tuning.wall_thickness),
+            PieceKind::Wall => Collider::convex_hull(wall_hull_points(tuning.wall_thickness))
+                .unwrap_or_else(|| {
+                    Collider::cuboid(CELL_SIZE, LEVEL_HEIGHT, tuning.wall_thickness)
+                }),
             PieceKind::Floor => Collider::cuboid(CELL_SIZE, tuning.floor_thickness, CELL_SIZE),
             PieceKind::Ramp => Collider::convex_hull(ramp_hull_points())
                 .unwrap_or_else(|| Collider::cuboid(CELL_SIZE, LEVEL_HEIGHT / 2.0, CELL_SIZE)),
@@ -193,6 +196,25 @@ impl PieceSlot {
         };
         (t.translation - half, t.translation + half)
     }
+}
+
+/// The wall slab in local space, centred on the origin (its edge line runs
+/// along X). Its top is a shallow ridge on the edge line, bevelled at the ramps'
+/// slope, so a ramp rising to the wall's top edge runs straight on over it (a
+/// flat top would stick up a 7.5 cm lip across the top of the ramp, where you
+/// step over onto the next one).
+pub fn wall_hull_points(thickness: f32) -> Vec<Vec3> {
+    let (w, h, t) = (CELL_SIZE / 2.0, LEVEL_HEIGHT / 2.0, thickness / 2.0);
+    let shoulder = h - t * LEVEL_HEIGHT / CELL_SIZE;
+    let mut points = Vec::with_capacity(10);
+    for x in [-w, w] {
+        for z in [-t, t] {
+            points.push(Vec3::new(x, -h, z));
+            points.push(Vec3::new(x, shoulder, z));
+        }
+        points.push(Vec3::new(x, h, 0.0));
+    }
+    points
 }
 
 /// The ramp wedge in local space: base center at the origin, rising toward -Z.

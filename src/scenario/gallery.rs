@@ -606,9 +606,10 @@ pub fn views() -> Vec<GalleryView> {
             id: "T09",
             name: "T09-fort",
             title: "A 1×1 fort (3 brick walls, a ramp inside, a floor on top) with a blue ghost wall beside it; wall slot selected",
-            // Just short of a grid line, so the ghost goes on the next one: the
-            // fort's front line, beside it.
-            feet: Vec3::new(5.0, 0.0, 12.3),
+            // Just past a grid line, so the ghost goes on the far edge of the
+            // cell: the fort's front line, beside it. (Walls go on your own
+            // cell's edge, however close you stand to it.)
+            feet: Vec3::new(5.0, 0.0, 11.7),
             crouch: false,
             aim: Aim::Look {
                 yaw: deg(3.0),
