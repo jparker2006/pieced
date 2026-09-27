@@ -20,6 +20,7 @@ use pieced::{
             CHAMBER_ARCS, CHAMBER_MOTES, ChamberEnergy, ChamberState, EnergyRole, arc_chance,
             arc_intensity, strike,
         },
+        hat::HAT_THROW,
         hat::HatProp,
         material::SpellMaterial,
         sim::FxRng,
@@ -874,6 +875,20 @@ fn the_hat_drops_on_elimination_settles_within_two_seconds_and_goes_on_respawn()
     let settled_at = settled_at.expect("settled");
     assert!(settled_at <= 120, "settled after {settled_at} frames");
     assert!(spun > 3.0, "it spun ({spun} rad)");
+    // It lies on the grass in front of the poof, toward the player, where
+    // the cloud doesn't hide it (T08).
+    let (_, rest, _) = game
+        .hats()
+        .into_iter()
+        .find(|(h, ..)| h.victim == Some(dummy))
+        .unwrap();
+    let toward = (game.feet(game.player) - feet).with_y(0.0).normalize();
+    let ahead = (rest.translation - feet).with_y(0.0).dot(toward);
+    assert!(ahead >= HAT_THROW, "{ahead:.2} m in front of his feet");
+    assert!(
+        rest.translation.y - feet.y < 0.1,
+        "under 10 cm off the grass"
+    );
 
     // It stays until he's back, then goes.
     game.frames(60);
