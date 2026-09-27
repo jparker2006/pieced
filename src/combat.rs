@@ -497,10 +497,8 @@ fn weapon_step(
             lo.pump_buffer = None;
         }
 
-        let mut want_ads = ads.0;
-        if intent.ads_toggle_pressed {
-            want_ads = !want_ads;
-        }
+        // ADS follows the aim hold (D40); the checks below can refuse it.
+        let mut want_ads = intent.ads_held;
 
         if let ActiveTool::Weapon(kind) = *tool {
             let gt = ct.gun(kind);
@@ -610,11 +608,13 @@ fn weapon_step(
             }
         }
 
-        // ADS: off in build mode, while sprinting and while the rifle reloads.
-        let sprinting = intent.sprint && intent.move_axis != Vec2::ZERO;
+        // ADS: refused in build mode and while the rifle reloads. It is recomputed
+        // from the hold every tick, so it comes back once those end while aim is
+        // still held. Sprinting no longer blocks it: holding aim stops the sprint
+        // instead (movement, D41).
         let rifle_reloading =
             *tool == ActiveTool::Weapon(WeaponKind::Rifle) && lo.rifle.is_reloading();
-        if tool.is_build() || sprinting || rifle_reloading {
+        if tool.is_build() || rifle_reloading {
             want_ads = false;
         }
         if want_ads != ads.0 {
