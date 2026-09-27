@@ -486,12 +486,15 @@ fn skirt(outline: &[EdgeSample], rng: &mut Rng) -> Geo {
             let stratum = [0.96, 0.8, 0.92, 0.78, 0.9, 0.76][(k / 2) % 6];
             let slab = 0.88 + 0.2 * noise2(i as f32 * 0.45, 1.7, 63);
             let ledge = SKIRT[k + 1].1 > SKIRT[k].1 + 0.15;
+            // A crack is a narrow column; a wide one (where the rim steps out,
+            // T11) keeps its strata.
+            let narrow = grid[0][i].distance(grid[0][j]) < 2.6;
             let color = match band {
                 0 if k == 0 => mix(grass, lit_grass, 0.5),
                 0 => grass,
                 1 => shade(grass, 0.82),
                 2 => tucked,
-                3 if crack(i) || crack(j) => shade(dirt, 0.6),
+                3 if narrow && (crack(i) || crack(j)) => shade(dirt, 0.6),
                 3 if ledge => shade(dirt, 1.2 * slab),
                 3 => shade(dirt, stratum * slab),
                 _ => under,
