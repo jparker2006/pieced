@@ -27,8 +27,8 @@ pub use grid::{
     CONE_HEIGHT, EdgeAxis, EdgeKey, MapEntry, PieceMap, PieceSlot, SlotKey, ramp_surface_height,
 };
 pub use targeting::{
-    BuildCandidate, Gait, LEVEL_SNAP, Placement, RUSH_TOLERANCE_DEG, build_target,
-    capsule_overlaps_box, check_placement, feet_level, target_slot,
+    BuildCandidate, FORWARD_BIAS, Gait, LEVEL_SNAP, Placement, RUSH_TOLERANCE_DEG, STEEP_LOOK_DEG,
+    build_target, capsule_overlaps_box, check_placement, feet_level, target_slot,
 };
 pub use visuals::BuildingVisualsPlugin;
 
@@ -72,6 +72,10 @@ pub struct BuildTuning {
     pub trap_height: f32,
     /// How far the crosshair looks for a piece to report in [`AimedPiece`] (m).
     pub aim_range: f32,
+    /// Floors, ramps and cones can go in the tiles this far around yours,
+    /// diagonals included (1 is Fortnite's 3×3; 2 reaches further), wherever
+    /// the aim lands.
+    pub reach_tiles: i32,
     /// How far along the crosshair a piece can be edited or reset from (m):
     /// the far edge of the next tile, from anywhere in your own.
     pub edit_reach: f32,
@@ -94,6 +98,7 @@ impl Default for BuildTuning {
             trap_radius: 0.36,
             trap_height: 1.85,
             aim_range: 30.0,
+            reach_tiles: 1,
             edit_reach: 7.5,
         }
     }

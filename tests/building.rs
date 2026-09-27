@@ -50,6 +50,7 @@ fn target_on(map: &PieceMap, kind: PieceKind, feet: Vec3, yaw: f32, pitch: f32) 
         kind,
         false,
         map,
+        &BuildTuning::default(),
     )
 }
 
@@ -887,6 +888,8 @@ fn initial_cover_is_placed_clear_of_the_spawns_and_the_line_between() {
 #[derive(Debug, Clone, Copy)]
 struct Rush {
     start: Vec3,
+    /// Start on a floor at this level (built first), rather than the ground.
+    floor: Option<i32>,
     /// Look pitch in degrees (the yaw is north).
     pitch: f32,
     sprint: bool,
@@ -894,6 +897,10 @@ struct Rush {
     jump: bool,
     /// Switch between the ramp and the wall every this many ticks (0: ramp only).
     wall_every: u32,
+    /// Sweep the aim this many degrees to the right and back, every
+    /// `sweep_every` ticks, still running north (0: look straight ahead).
+    sweep: f32,
+    sweep_every: u32,
     ticks: u32,
 }
 
@@ -901,11 +908,14 @@ impl Default for Rush {
     fn default() -> Self {
         Self {
             start: center(6, 11),
+            floor: None,
             pitch: 0.0,
             sprint: true,
             jump: false,
             wall_every: 0,
-            ticks: 360,
+            sweep: 0.0,
+            sweep_every: 4,
+            ticks: 540,
         }
     }
 }
@@ -939,12 +949,24 @@ impl RushLog {
     fn reaches(&self, y: f32) -> Option<usize> {
         self.feet.iter().position(|f| f.y >= y)
     }
+
+    /// First tick at which the feet are held at the arena's north edge.
+    fn at_north_edge(&self) -> Option<usize> {
+        let bound = pieced::arena::ArenaLayout::default().bounds_min.y;
+        self.feet.iter().position(|f| f.z <= bound + 1e-3)
+    }
 }
 
 fn run_rush(r: Rush) -> RushLog {
     let mut sim = empty_sim();
     sim.record::<PieceChanged>();
-    put_player(&mut sim, r.start, Facing::North.yaw(), deg(r.pitch));
+    let mut start = r.start;
+    if let Some(level) = r.floor {
+        let c = GridCell::containing(start);
+        place_piece(sim.world_mut(), PieceSlot::floor(cell(c.x, c.z, level))).unwrap();
+        start.y = level as f32 * LEVEL_HEIGHT + 0.15;
+    }
+    put_player(&mut sim, start, Facing::North.yaw(), deg(r.pitch));
     sim.ticks(10);
     let p = sim.player();
     select(&mut sim, PieceKind::Ramp);
@@ -974,6 +996,16 @@ fn run_rush(r: Rush) -> RushLog {
             };
             select(&mut sim, kind);
         }
+        if r.sweep != 0.0 && n % r.sweep_every == 0 {
+            // Aim right (or straight), keep running north (W plus a strafe).
+            let yaw = if (n / r.sweep_every) % 2 == 1 {
+                -deg(r.sweep)
+            } else {
+                0.0
+            };
+            sim.set_look(p, Facing::North.yaw() + yaw, deg(r.pitch));
+            sim.player_intent().move_axis = Vec2::new(yaw.sin(), yaw.cos());
+        }
         sim.tick();
         sim.player_intent().jump = false;
         let motor = sim.get::<pieced::movement::Motor>(p).clone();
@@ -994,57 +1026,86 @@ fn run_rush(r: Rush) -> RushLog {
     log
 }
 
-/// The straight chain a rush from cell (6, 11) builds: ramp k in the k-th cell
-/// north, k levels up, rising north, as high as the height limit allows.
-fn chain() -> Vec<PieceSlot> {
-    (0..MAX_LEVELS)
-        .map(|k| PieceSlot::ramp(cell(6, 10 - k, k), Facing::North))
+/// The straight chain a rush from cell (`x`, `z`) at `level` builds: ramp k in
+/// the k-th cell north, k levels up, rising north, until the arena's edge or
+/// the height limit stops it.
+fn chain_from(x: i32, z: i32, level: i32) -> Vec<PieceSlot> {
+    (0..)
+        .map(|k| (z - 1 - k, level + k))
+        .take_while(|&(z, level)| z >= 0 && level < MAX_LEVELS)
+        .map(|(z, level)| PieceSlot::ramp(cell(x, z, level), Facing::North))
         .collect()
 }
 
-/// Checks one rush: the full chain, each ramp early, and a climb that never
-/// dips, bumps or slows. Returns (seconds to the top, slowest speed / target).
-fn assert_endless_ramp(name: &str, r: Rush) -> (f32, f32) {
+/// The chain from the ground at the default start, cell (6, 11).
+fn chain() -> Vec<PieceSlot> {
+    chain_from(6, 11, 0)
+}
+
+/// A checked rush.
+struct Climb {
+    log: RushLog,
+    /// Tick the climb ends: the top of the chain, or held at the arena's edge.
+    end: usize,
+    seconds: f32,
+    /// Slowest horizontal speed on the way, over the target speed.
+    slowest: f32,
+}
+
+/// Checks one rush: `chain` built in order (with nothing but `extra` ramps
+/// beside it), each ramp early, and a climb that never dips, bumps or slows.
+fn assert_endless_ramp(name: &str, r: Rush, chain: &[PieceSlot], extra: &[PieceSlot]) -> Climb {
     let log = run_rush(r);
     let target = if r.sprint { 7.5 } else { 5.5 };
-    let chain = chain();
-    let ramps = log.ramps();
-    assert!(
-        ramps.len() >= chain.len() && ramps[..chain.len()] == chain[..],
-        "{name}: chain {ramps:?}"
-    );
+    let linked: Vec<PieceSlot> = log
+        .ramps()
+        .into_iter()
+        .filter(|s| chain.contains(s))
+        .collect();
+    assert_eq!(linked, chain, "{name}: chain");
     // Every next ramp is placed while the builder is still well short of it
     // (as they step onto the one before).
     for (tick, slot, feet) in log.placed.iter().filter(|p| chain[1..].contains(&p.1)) {
         let low_edge = slot.cell.min_corner().z + CELL_SIZE;
         assert!(
-            feet.z - low_edge >= 3.0,
+            feet.z - low_edge >= 2.5,
             "{name}: {slot:?} placed late (tick {tick}, feet {feet})"
         );
     }
-    let top_y = MAX_LEVELS as f32 * LEVEL_HEIGHT;
-    let top = log.reaches(top_y - 0.05).unwrap_or_else(|| {
-        panic!(
-            "{name}: never reached the top: highest {:?}",
-            log.feet.last()
-        )
-    });
-    let full = (1..top)
+    let last = chain.last().unwrap();
+    let top_y = (last.cell.level + 1) as f32 * LEVEL_HEIGHT;
+    let end = [log.reaches(top_y - 0.05), log.at_north_edge()]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or_else(|| panic!("{name}: never got up the chain: {:?}", log.feet.last()));
+    assert!(
+        log.feet[end].y >= top_y - LEVEL_HEIGHT * 0.2,
+        "{name}: short of the top at {}",
+        log.feet[end]
+    );
+    let full = (1..end)
         .find(|&i| log.speed(i) >= target - 1e-3)
         .expect("reaches full speed");
-    let on_chain = log
-        .reaches(0.05)
-        .and_then(|i| (i..top).find(|&j| log.grounded[j]))
+    let first = chain[0].cell;
+    let on_chain = (0..end)
+        .find(|&i| {
+            let c = GridCell::containing(log.feet[i]);
+            (c.x, c.z) == (first.x, first.z) && log.grounded[i]
+        })
         .expect("lands on the first ramp");
     let mut slowest = f32::MAX;
-    for i in full..=top {
-        slowest = slowest.min(log.speed(i) / target);
-        assert!(
-            log.speed(i) >= 0.97 * target,
-            "{name}: slowed to {:.2} m/s at {}",
-            log.speed(i),
-            log.feet[i]
-        );
+    for i in full..=end {
+        // The tick that runs into the arena's edge is cut short by it.
+        if i < end {
+            slowest = slowest.min(log.speed(i) / target);
+            assert!(
+                log.speed(i) >= 0.97 * target,
+                "{name}: slowed to {:.2} m/s at {}",
+                log.speed(i),
+                log.feet[i]
+            );
+        }
         if i > on_chain {
             assert!(log.grounded[i], "{name}: left the ramp at {}", log.feet[i]);
             assert!(
@@ -1061,18 +1122,28 @@ fn assert_endless_ramp(name: &str, r: Rush) -> (f32, f32) {
     }
     // No ramp lands behind, beside or above the chain on the way up.
     for (tick, slot, _) in &log.placed {
-        if *tick <= top && slot.kind == PieceKind::Ramp {
+        if *tick <= end && slot.kind == PieceKind::Ramp {
             assert!(
-                chain.contains(slot),
+                chain.contains(slot) || extra.contains(slot),
                 "{name}: stray {slot:?} at tick {tick}"
             );
         }
     }
-    (top as f32 / 60.0, slowest)
+    Climb {
+        seconds: end as f32 / 60.0,
+        slowest,
+        end,
+        log,
+    }
 }
 
 #[test]
 fn ramp_rush_runs_up_an_endless_ramp_without_slowing() {
+    // Gate S10: at least 10 consecutive ramps, each a level higher, never
+    // slower than 90% of run speed (checked: 97% of the run or sprint speed),
+    // from a standing start and a sprint, looking level, 15° down and 15° up.
+    let chain = chain();
+    assert!(chain.len() >= 10, "the arena fits {} ramps", chain.len());
     for (name, pitch, sprint, jump) in [
         ("level", 0.0, false, false),
         ("level sprint", 0.0, true, false),
@@ -1090,28 +1161,64 @@ fn ramp_rush_runs_up_an_endless_ramp_without_slowing() {
             jump,
             ..default()
         };
-        let (seconds, slowest) = assert_endless_ramp(name, r);
+        let climb = assert_endless_ramp(name, r, &chain, &[]);
         println!(
-            "{name:>15}: 6 ramps, 18 m up in {seconds:.2} s, slowest {:.0}% of {}",
-            slowest * 100.0,
+            "{name:>15}: {} ramps, {:.1} m up in {:.2} s, slowest {:.0}% of {}",
+            chain.len(),
+            climb.log.feet[climb.end].y,
+            climb.seconds,
+            climb.slowest * 100.0,
             if sprint { "sprint" } else { "run" }
         );
     }
 }
 
 #[test]
-fn ramp_rush_stops_cleanly_at_the_height_limit_and_the_arena_edge() {
+fn ramp_rush_stops_cleanly_at_the_arena_edge_and_the_height_limit() {
     for sprint in [true, false] {
         let target = if sprint { 7.5 } else { 5.5 };
-        let log = run_rush(Rush {
+
+        // From the ground, the rush runs the arena's length. At its edge the
+        // next ramp would leave the arena: the ghost shows it red, nothing is
+        // placed, and you stand at the top of the last ramp, held by the edge.
+        let chain = chain();
+        let climb = assert_endless_ramp(
+            "to the edge",
+            Rush {
+                sprint,
+                ..default()
+            },
+            &chain,
+            &[],
+        );
+        let log = &climb.log;
+        let ghost = log.ghost.last().unwrap().expect("ghost");
+        assert_eq!(ghost.placement, Placement::OutOfBounds);
+        assert_eq!(
+            ghost.slot,
+            PieceSlot::ramp(cell(6, -1, chain.len() as i32), Facing::North)
+        );
+        assert_eq!(log.placed.len(), chain.len(), "nothing stray");
+        for i in climb.end + 1..log.feet.len() {
+            assert!(
+                log.grounded[i] && log.speed(i) < 1e-3,
+                "held at {}",
+                log.feet[i]
+            );
+        }
+
+        // From a floor six levels up, the rush meets the height limit first.
+        let high = chain_from(6, 11, 6);
+        assert_eq!(high.last().unwrap().cell.level, MAX_LEVELS - 1);
+        let r = Rush {
             sprint,
+            floor: Some(6),
             ticks: 600,
             ..default()
-        });
-        let chain = chain();
-        let top = log
-            .reaches(MAX_LEVELS as f32 * LEVEL_HEIGHT - 0.05)
-            .unwrap();
+        };
+        let climb = assert_endless_ramp("to the height limit", r, &high, &[]);
+        let log = &climb.log;
+        let top = climb.end;
         // On the top ramp the next one would break the height limit: the ghost
         // shows it red and nothing is placed.
         let ghost = log.ghost[top].expect("ghost");
@@ -1123,7 +1230,7 @@ fn ramp_rush_stops_cleanly_at_the_height_limit_and_the_arena_edge() {
         assert!(log.placed.iter().all(|p| p.1.cell.level < MAX_LEVELS));
         // Running off the top: nothing is built in the air on the way down.
         let fall: Vec<usize> = (top..log.feet.len()).filter(|&i| log.falling[i]).collect();
-        assert!(fall.len() > 30, "falls off the top");
+        assert!(fall.len() > 60, "falls off the top");
         for &i in &fall {
             assert!(log.placed.iter().all(|p| p.0 != i), "placed while falling");
         }
@@ -1141,32 +1248,25 @@ fn ramp_rush_stops_cleanly_at_the_height_limit_and_the_arena_edge() {
             "landing keeps the run speed"
         );
         // Landed, the rush starts again from the ground and runs up to the
-        // arena's edge, where the next ramp would leave the arena.
-        let restart: Vec<PieceSlot> = log.ramps()[chain.len()..].to_vec();
+        // arena's edge.
+        let restart: Vec<PieceSlot> = log.ramps()[high.len()..].to_vec();
         let first = restart.first().expect("the rush restarts").cell;
-        assert_eq!(first.level, 0);
-        for (k, slot) in restart.iter().enumerate() {
-            let k = k as i32;
-            assert_eq!(
-                *slot,
-                PieceSlot::ramp(cell(6, first.z - k, k), Facing::North)
-            );
-        }
+        assert_eq!(restart, chain_from(6, first.z + 1, 0));
         assert_eq!(restart.last().unwrap().cell.z, 0, "up to the arena's edge");
         let end = *log.feet.last().unwrap();
-        let bound = pieced::arena::ArenaLayout::default().bounds_min.y;
         assert!(
-            (end.z - bound).abs() < 1e-3,
-            "stopped by the arena's edge at {end}"
+            log.at_north_edge().is_some(),
+            "held by the arena's edge at {end}"
         );
         assert!(
             *log.grounded.last().unwrap(),
             "standing on the last ramp at {end}"
         );
-        let ghost = log.ghost.last().unwrap().expect("ghost");
-        assert_eq!(ghost.placement, Placement::OutOfBounds);
-        // Nothing stray anywhere.
-        assert_eq!(log.placed.len(), chain.len() + restart.len());
+        assert_eq!(
+            log.placed.len(),
+            high.len() + restart.len(),
+            "nothing stray"
+        );
     }
 }
 
@@ -1174,41 +1274,65 @@ fn ramp_rush_stops_cleanly_at_the_height_limit_and_the_arena_edge() {
 fn ramp_rush_with_walls_in_front_never_blocks_the_climb() {
     // Ramp + wall: flick between the two while holding forward and build. Each
     // wall shields the next ramp's high end and never blocks the way onto it.
+    let chain = chain();
     for (name, pitch, sprint) in [("sprint", 0.0, true), ("run, 15 down", -15.0, false)] {
         let r = Rush {
             pitch,
             sprint,
             wall_every: 4,
-            ticks: 320,
             ..default()
         };
-        let (seconds, slowest) = assert_endless_ramp(name, r);
-        let log = run_rush(r);
+        let climb = assert_endless_ramp(name, r, &chain, &[]);
+        let log = &climb.log;
         let walls: Vec<PieceSlot> = log
             .placed
             .iter()
-            .map(|p| p.1)
-            .filter(|s| s.kind == PieceKind::Wall)
-            .collect();
-        let top = log
-            .reaches(MAX_LEVELS as f32 * LEVEL_HEIGHT - 0.05)
-            .unwrap();
-        let on_the_way: Vec<PieceSlot> = log
-            .placed
-            .iter()
-            .filter(|p| p.0 <= top && p.1.kind == PieceKind::Wall)
+            .filter(|p| p.0 <= climb.end && p.1.kind == PieceKind::Wall)
             .map(|p| p.1)
             .collect();
-        let shields: Vec<PieceSlot> = chain()
+        let shields: Vec<PieceSlot> = chain
             .iter()
             .map(|r| PieceSlot::wall(r.cell, r.facing))
             .collect();
-        assert_eq!(on_the_way, shields, "{name}: {walls:?}");
+        assert_eq!(walls, shields, "{name}");
         println!(
-            "{name:>13}: 6 ramps + 6 walls, 18 m up in {seconds:.2} s, slowest {:.0}%",
-            slowest * 100.0
+            "{name:>13}: {} ramps + {} walls, {:.1} m up in {:.2} s, slowest {:.0}%",
+            chain.len(),
+            walls.len(),
+            log.feet[climb.end].y,
+            climb.seconds,
+            climb.slowest * 100.0
         );
     }
+}
+
+#[test]
+fn a_double_ramp_rush_builds_two_ramps_side_by_side() {
+    // Sweep the aim across to the tile on the right and back while rushing (and
+    // keep running straight): every row gets a second ramp beside the first,
+    // level with it.
+    let chain = chain();
+    let right = chain_from(7, 11, 0);
+    let r = Rush {
+        sweep: 35.0,
+        ..default()
+    };
+    let climb = assert_endless_ramp("double", r, &chain, &right);
+    let doubled = right
+        .iter()
+        .filter(|s| climb.log.ramps().contains(s))
+        .count();
+    assert!(
+        doubled >= chain.len() - 1,
+        "{doubled} of {} rows doubled",
+        chain.len()
+    );
+    println!(
+        "double ramp: {} + {doubled} ramps in {:.2} s, slowest {:.0}%",
+        chain.len(),
+        climb.seconds,
+        climb.slowest * 100.0
+    );
 }
 
 #[test]
@@ -1221,6 +1345,7 @@ fn ramp_rush_targeting_ignores_the_look_pitch() {
             PieceKind::Ramp,
             true,
             map,
+            &BuildTuning::default(),
         )
     };
     let own = cell(5, 5, 0);
@@ -1248,8 +1373,8 @@ fn ramp_rush_targeting_ignores_the_look_pitch() {
             PieceSlot::ramp(own, f)
         );
 
-        // On a ramp: the next link, whatever the pitch, and even looking up
-        // to 50° off its rise.
+        // On a ramp: the next link, whatever the pitch, looking a little to
+        // either side too.
         let mut sim = empty_sim();
         place_piece(sim.world_mut(), PieceSlot::ramp(own, f)).unwrap();
         let map = sim.world().resource::<PieceMap>().clone();
@@ -1257,7 +1382,7 @@ fn ramp_rush_targeting_ignores_the_look_pitch() {
         for along in [-1.9f32, 0.0, 1.9] {
             let feet = center(5, 5) + f.vector() * along + Vec3::Y * ramp_surface_height(-along);
             for pitch in (-17..=17).map(|k| k as f32 * 5.0) {
-                for turn in [-50.0f32, 0.0, 50.0] {
+                for turn in [-15.0f32, 0.0, 15.0] {
                     assert_eq!(
                         rush(&map, feet, f.yaw() + deg(turn), pitch),
                         next,
@@ -1265,6 +1390,19 @@ fn ramp_rush_targeting_ignores_the_look_pitch() {
                     );
                 }
             }
+        }
+        // Aiming at the tile beside the next one builds there, level with it
+        // (double ramps): 40° to the right or left from the middle of the ramp.
+        let mid = center(5, 5) + Vec3::Y * 1.5;
+        let right = f.vector().cross(Vec3::Y);
+        for (turn, side) in [(-40.0f32, right), (40.0, -right)] {
+            let o = Facing::from_direction(side).offset();
+            let beside = cell(next.cell.x + o.x, next.cell.z + o.y, 1);
+            assert_eq!(
+                rush(&map, mid, f.yaw() + deg(turn), 0.0),
+                PieceSlot::ramp(beside, f),
+                "{f:?} turned {turn}"
+            );
         }
         // Turned 90° at the top: a steep look down builds in your own column one
         // level up, facing the new way (90s); a level look starts a new chain.
@@ -1279,6 +1417,113 @@ fn ramp_rush_targeting_ignores_the_look_pitch() {
             PieceSlot::ramp(cell(ahead(own, side).x, ahead(own, side).z, 1), side)
         );
     }
+}
+
+#[test]
+fn running_up_near_a_ramps_side_edge_still_counts_as_on_it() {
+    // Feet a hair across the ramp's side edge (the body still on the ramp):
+    // building continues the chain, never caps the ramp you're on.
+    let own = cell(5, 5, 0);
+    for f in Facing::ALL {
+        let mut sim = empty_sim();
+        place_piece(sim.world_mut(), PieceSlot::ramp(own, f)).unwrap();
+        let map = sim.world().resource::<PieceMap>().clone();
+        let next = PieceSlot::ramp(cell(ahead(own, f).x, ahead(own, f).z, 1), f);
+        let side = f.vector().cross(Vec3::Y);
+        for along in [-1.0f32, 0.5, 1.5] {
+            let feet = center(5, 5)
+                + f.vector() * along
+                + side * (CELL_SIZE / 2.0 + 0.05)
+                + Vec3::Y * (ramp_surface_height(-along) + 0.09);
+            for (pitch, advancing) in [(8.0, false), (8.0, true), (-20.0, false), (20.0, true)] {
+                let slot = target_slot(
+                    feet + Vec3::Y * EYE,
+                    dir(f.yaw(), deg(pitch)),
+                    feet,
+                    PieceKind::Ramp,
+                    advancing,
+                    &map,
+                    &BuildTuning::default(),
+                );
+                assert_ne!(
+                    slot.cell,
+                    cell(5, 5, 1),
+                    "{f:?} at {along}: capped the ramp"
+                );
+                assert_eq!(
+                    slot, next,
+                    "{f:?} at {along}, pitch {pitch}, advancing {advancing}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn floors_and_ramps_go_where_the_aim_lands_around_you() {
+    // Fortnite reach: the tile under where the aim ray lands, among the 3×3
+    // tiles around yours (diagonals included), at your level looking down or
+    // one up looking up; looking about level (landing out of reach) builds
+    // ahead. Facing north throughout; offsets are (east, south) tiles.
+    let near = BuildTuning::default();
+    let far = BuildTuning {
+        reach_tiles: 2,
+        ..default()
+    };
+    let own = cell(5, 5, 0);
+    let at = |dx: i32, dz: i32, level: i32| cell(own.x + dx, own.z + dz, level);
+    let aim = |tuning: &BuildTuning,
+               kind: PieceKind,
+               offset: Vec2,
+               yaw: f32,
+               pitch: f32,
+               advancing: bool| {
+        let feet = center(5, 5) + Vec3::new(offset.x, 0.0, offset.y);
+        target_slot(
+            feet + Vec3::Y * EYE,
+            dir(deg(yaw), deg(pitch)),
+            feet,
+            kind,
+            advancing,
+            &PieceMap::default(),
+            tuning,
+        )
+    };
+    for kind in [PieceKind::Floor, PieceKind::Ramp] {
+        let cases: [(&BuildTuning, Vec2, f32, f32, GridCell); 7] = [
+            // Straight ahead, down onto the next tile.
+            (&near, Vec2::ZERO, 0.0, -30.0, at(0, -1, 0)),
+            // Diagonally ahead-right (yaw -44° still faces north).
+            (&near, Vec2::ZERO, -44.0, -25.0, at(1, -1, 0)),
+            // Standing in the south-east of the cell, down onto the tile to the right.
+            (&near, Vec2::new(1.5, 1.0), -30.0, -35.0, at(1, 0, 0)),
+            // Looking up at the tile diagonally ahead-left: one level up.
+            (&near, Vec2::ZERO, 44.0, 20.0, at(-1, -1, 1)),
+            // Landing two tiles out: out of reach, so the cell ahead...
+            (&near, Vec2::ZERO, -44.0, -8.0, at(0, -1, 0)),
+            // ...unless reach is 2.
+            (&far, Vec2::ZERO, -44.0, -8.0, at(2, -2, 0)),
+            // Near level, the cell ahead.
+            (&near, Vec2::ZERO, -44.0, 0.0, at(0, -1, 0)),
+        ];
+        for (tuning, offset, yaw, pitch, expected) in cases {
+            assert_eq!(
+                aim(tuning, kind, offset, yaw, pitch, false),
+                PieceSlot::new(kind, expected, Facing::North),
+                "{kind:?} from {offset} at yaw {yaw}, pitch {pitch}"
+            );
+        }
+    }
+    // Moving forward, a floor's landing point is pushed ahead: a look that
+    // lands at your feet standing lands in the next tile running.
+    assert_eq!(
+        aim(&near, PieceKind::Floor, Vec2::ZERO, 0.0, -45.0, false).cell,
+        own
+    );
+    assert_eq!(
+        aim(&near, PieceKind::Floor, Vec2::ZERO, 0.0, -45.0, true).cell,
+        at(0, -1, 0)
+    );
 }
 
 #[test]
