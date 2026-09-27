@@ -175,3 +175,5 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - the planet sits left of the station (the targets paint it right);
   - T01's foreground has no prop, because prop positions are fixed gameplay;
   - the T12 background isn't blurred (a dark overlay only, by the spec's cost rule).
+- 2026-09-26 17:13: **Jake's first play session**, on the release build `713feb0`, muted at his request: about 2–3 minutes, and the game quit cleanly (exit 0, no errors). This isn't the S8 session, which needs at least 10 minutes and a verdict; his impressions are pending.
+  - Launch took **10.7 s**, but it was the first launch of a new build with a cold Metal shader cache. S3 measures warm launches (in the go window). If warm launches aren't well under 5 s, the warm-up and pipeline count are the first suspects.
