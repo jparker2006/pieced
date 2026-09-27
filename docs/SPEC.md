@@ -220,7 +220,7 @@ It holds a steady 60 fps with low input delay on battery in Low Power Mode. A tu
 
 - Units are meters. **Grid cell 4 m × 4 m, level height 3 m.**
 - A wall fills a cell edge (4 m wide, 3 m tall, about 0.2 m thick). A floor fills a cell at a level (about 0.2 m thick). A ramp spans a cell, rising 3 m over 4 m in one of four directions.
-- The arena is about **12 × 12 cells (48 m square)** with a build height limit of **6 levels**.
+- The arena is about **12 × 12 cells (48 m square)** with a build height limit of **12 levels** (raised from 6 by M2 Amendment A so a ramp rush can run the arena).
 - The player capsule is about 1.8 m tall and 0.35 m in radius, with eyes at about 1.62 m. Crouching drops height to about 1.2 m.
 - The camera near plane is about 0.05 m.
 
