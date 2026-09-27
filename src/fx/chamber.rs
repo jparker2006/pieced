@@ -48,7 +48,7 @@ pub const ARC_GLOW: f32 = 4.2;
 pub const MOTE_GLOW: f32 = 2.0;
 /// The inner glow's halo: size (m) and intensity at full crystal glow.
 pub const GLOW_HALO_SIZE: f32 = 0.16;
-pub const GLOW_HALO_INTENSITY: f32 = 0.55;
+pub const GLOW_HALO_INTENSITY: f32 = 0.3;
 /// Mote radius (m).
 pub const MOTE_SIZE: f32 = 0.011;
 /// The inner glow sits this far toward the side of the gun that faces the

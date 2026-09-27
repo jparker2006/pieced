@@ -92,10 +92,10 @@ fn hip_poses_hold_the_gun_low_right_with_the_crystal_in_view() {
     }
 }
 
-/// The gallery-only inspect pose (target T02): the rifle turned about 30°
-/// further toward the camera than at the hip, crossing the frame from the
-/// crystal low right of centre to the muzzle up and left of it, bigger on
-/// screen than at the hip.
+/// The gallery-only inspect pose (target T02): the rifle turned well toward
+/// the camera from the hip (which points almost straight ahead, S1 round 3),
+/// crossing the frame from the crystal low right of centre to the muzzle up
+/// and left of it, bigger on screen than at the hip.
 #[test]
 fn the_inspect_pose_turns_the_rifle_toward_the_camera_across_the_frame() {
     let spec = &*RIFLE;
@@ -111,7 +111,7 @@ fn the_inspect_pose_turns_the_rifle_toward_the_camera_across_the_frame() {
     );
     let turn = (RIFLE_INSPECT.euler.y - spec.hip_euler.y).to_degrees();
     assert!(
-        (20.0..=32.0).contains(&turn),
+        (35.0..=50.0).contains(&turn),
         "turned {turn}° toward the camera"
     );
     let crystal = ndc(inspect.transform_point(spec.socket));

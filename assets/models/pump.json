@@ -3,18 +3,18 @@
   "kind": "gun",
   "source": "art/blender/assets/guns.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 5752,
-  "triangle_budget": 6000,
+  "triangles": 6984,
+  "triangle_budget": 8000,
   "bounds": {
     "min": [
-      -0.1,
+      -0.08,
       0.0,
-      -0.63
+      -0.558
     ],
     "max": [
-      0.1,
-      0.387,
-      0.358
+      0.08,
+      0.365,
+      0.362
     ]
   },
   "parts": {
@@ -22,17 +22,17 @@
       "parent": "pump",
       "bounds": {
         "min": [
-          -0.0625,
+          -0.059,
           0.0,
-          -0.504
+          -0.428
         ],
         "max": [
-          0.0625,
-          0.387,
+          0.059,
+          0.365,
           0.1412
         ]
       },
-      "triangles": 2752,
+      "triangles": 3304,
       "colors": [
         "gun_brass",
         "gun_brass_dark",
@@ -47,19 +47,38 @@
       "parent": "pump",
       "bounds": {
         "min": [
-          -0.056,
-          0.2095,
+          -0.05,
+          0.2155,
           -0.1
         ],
         "max": [
-          0.056,
-          0.3215,
+          0.05,
+          0.3155,
           0.068
         ]
       },
-      "triangles": 144,
+      "triangles": 168,
       "colors": [
         "glass_violet",
+        "gun_glass_violet"
+      ]
+    },
+    "ChamberBack": {
+      "parent": "pump",
+      "bounds": {
+        "min": [
+          -0.0475,
+          0.218,
+          -0.1
+        ],
+        "max": [
+          0.0475,
+          0.313,
+          0.068
+        ]
+      },
+      "triangles": 48,
+      "colors": [
         "gun_glass_violet"
       ]
     },
@@ -67,14 +86,14 @@
       "parent": "pump",
       "bounds": {
         "min": [
-          -0.037,
-          0.2295,
-          -0.0639
+          -0.0372,
+          0.23,
+          -0.0645
         ],
         "max": [
-          0.037,
-          0.3015,
-          0.0399
+          0.0372,
+          0.3011,
+          0.0405
         ]
       },
       "triangles": 140,
@@ -87,17 +106,17 @@
       "parent": "pump",
       "bounds": {
         "min": [
-          -0.1,
-          0.168,
-          -0.63
+          -0.08,
+          0.1855,
+          -0.558
         ],
         "max": [
-          0.1,
-          0.363,
-          -0.5
+          0.08,
+          0.3455,
+          -0.43
         ]
       },
-      "triangles": 840,
+      "triangles": 1024,
       "colors": [
         "gun_brass",
         "gun_brass_dark",
@@ -109,17 +128,17 @@
       "parent": "pump",
       "bounds": {
         "min": [
-          -0.042,
-          0.1805,
-          -0.436
+          -0.047,
+          0.1882,
+          -0.396
         ],
         "max": [
-          0.042,
-          0.2885,
-          -0.234
+          0.047,
+          0.2909,
+          -0.224
         ]
       },
-      "triangles": 788,
+      "triangles": 996,
       "colors": [
         "gun_brass",
         "gun_brass_light",
@@ -132,17 +151,17 @@
       "parent": "pump",
       "bounds": {
         "min": [
-          -0.0712,
-          0.1948,
-          -0.082
+          -0.0642,
+          0.2018,
+          -0.0802
         ],
         "max": [
-          0.0712,
-          0.3362,
-          0.058
+          0.0642,
+          0.3292,
+          0.0562
         ]
       },
-      "triangles": 464,
+      "triangles": 528,
       "colors": [
         "crystal_violet",
         "gold_rings"
@@ -152,17 +171,17 @@
       "parent": "pump",
       "bounds": {
         "min": [
-          -0.0633,
-          0.237,
-          -0.5475
+          -0.0626,
+          0.228,
+          -0.4675
         ],
         "max": [
-          0.0633,
-          0.3149,
-          0.0938
+          0.0626,
+          0.303,
+          0.094
         ]
       },
-      "triangles": 168,
+      "triangles": 232,
       "colors": [
         "crystal_violet"
       ]
@@ -191,17 +210,17 @@
       "parent": "pump",
       "bounds": {
         "min": [
-          -0.0452,
+          -0.0532,
           0.1403,
           0.1
         ],
         "max": [
-          0.0452,
+          0.0532,
           0.3235,
-          0.358
+          0.362
         ]
       },
-      "triangles": 432,
+      "triangles": 520,
       "colors": [
         "gun_brass",
         "gun_brass_dark",
@@ -231,8 +250,8 @@
       "parent": "PumpGrip",
       "position": [
         0.0,
-        0.2185,
-        -0.335
+        0.2235,
+        -0.31
       ],
       "rotation": [
         0.0,
@@ -260,7 +279,7 @@
       "position": [
         0.0,
         0.2655,
-        -0.63
+        -0.558
       ],
       "rotation": [
         0.0,
@@ -273,7 +292,7 @@
       "parent": "pump",
       "position": [
         0.0,
-        0.3775,
+        0.3555,
         0.089
       ],
       "rotation": [
@@ -287,8 +306,8 @@
       "parent": "pump",
       "position": [
         0.0,
-        0.3775,
-        -0.47
+        0.3555,
+        -0.412
       ],
       "rotation": [
         0.0,

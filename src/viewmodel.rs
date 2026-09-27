@@ -17,7 +17,8 @@
 //!   (tinted blue or violet) and its `Runes` (the rune windows, magazine slots
 //!   and muzzle rings); the crackling energy inside each chamber is
 //!   [`crate::fx::chamber`]'s;
-//! - rifle reload: the glass `Chamber` slides open, the dim `Crystal` pops up
+//! - rifle reload: the glass `Chamber` (with `ChamberBack`, the deep opaque far
+//!   wall inside it) slides open, the dim `Crystal` pops up
 //!   and spins away, a fresh one slides in, and its glow charges up the moment
 //!   the reload completes;
 //! - pump: the left glove pushes a violet `Shard` in through the `Rings` for
@@ -128,13 +129,15 @@ impl CrystalGlow {
 }
 
 /// Emissive strength of a crystal at glow 1 (crystal color × this is added).
-pub const CRYSTAL_EMISSIVE: f32 = 1.5;
+/// Low enough that its deep facets and bright facet edges still read (T02).
+pub const CRYSTAL_EMISSIVE: f32 = 0.5;
 /// Each gun's glass chamber glows with its crystal, fainter: the chamber is
 /// lit from inside (T02, T04).
-pub const GLASS_EMISSIVE: f32 = 0.2;
+pub const GLASS_EMISSIVE: f32 = 0.1;
 /// Each wall of the glass chamber's opacity (its tint and shine streaks are
-/// vertex colours).
-pub const GLASS_ALPHA: f32 = 0.5;
+/// vertex colours). Clear, so the crystal shows bright against the chamber's
+/// deep, opaque far wall (`ChamberBack`).
+pub const GLASS_ALPHA: f32 = 0.3;
 /// Idle spin of a seated crystal (rad/s): it's alive in there.
 pub const CRYSTAL_IDLE_SPIN: f32 = 0.7;
 
@@ -323,6 +326,8 @@ struct AnimPart {
 struct GunParts {
     crystal: Option<AnimPart>,
     chamber: Option<AnimPart>,
+    /// The chamber's opaque inner far wall (it slides open with the glass).
+    chamber_back: Option<AnimPart>,
     rings: Option<AnimPart>,
     pump_grip: Option<AnimPart>,
     shard: Option<AnimPart>,
@@ -671,6 +676,7 @@ fn configure_models(
                     rings: anim_part("Rings"),
                     pump_grip: anim_part("PumpGrip"),
                     chamber: anim_part("Chamber"),
+                    chamber_back: anim_part("ChamberBack"),
                     runes: anim_part("Runes"),
                     ..default()
                 };
@@ -736,6 +742,16 @@ fn configure_models(
                     match kind {
                         WeaponKind::Rifle => vm_models.rifle_glass = Some(glass),
                         WeaponKind::Pump => vm_models.pump_glass = Some(glass),
+                    }
+                }
+                if let Some(back) = found.chamber_back {
+                    // Its faces look inward (only the far wall draws), so an
+                    // ink hull round it would ring the inside of the glass.
+                    for mesh in meshes_below(back.entity) {
+                        commands
+                            .entity(mesh)
+                            .insert(NoOutline)
+                            .remove::<(Outline, InheritedOutline)>();
                     }
                 }
                 match kind {
@@ -1153,8 +1169,12 @@ fn animate_viewmodel(
         + reload.scaled(1.0 - 0.5 * ads_e)
         + kick_pose
         + LOWERED.scaled(lowered);
+    // The gun is held farther out at the hip than its motion was tuned for:
+    // the offsets reach as far, so they move it as far on screen (none of
+    // that in ADS, where the gun sits where it always did).
+    let reach = 1.0 + (spec.reach - 1.0) * (1.0 - ads_e);
     let rig_tf = Transform {
-        translation: base.pos + offset.pos,
+        translation: base.pos + offset.pos * reach,
         rotation: euler(base.euler + offset.euler),
         scale: Vec3::ONE,
     };
@@ -1181,6 +1201,7 @@ fn animate_viewmodel(
 
     let flash_on = st.flash_frames > 0 && gun == Some(st.flash_kind) && lowered < 0.5;
     let flash_size = st.flash_scale
+        * reach
         * if st.flash_frames >= 2 { 1.0 } else { 0.6 }
         * if st.flash_kind == WeaponKind::Pump {
             // The pump's fan, as wide as T04's.
@@ -1296,7 +1317,7 @@ fn animate_gun_parts(
             {
                 glove_l = hand_hold(r.hand, glove_l, spec.socket + r.hand_at);
             }
-            if let Some(chamber) = parts.chamber {
+            for chamber in [parts.chamber, parts.chamber_back].into_iter().flatten() {
                 place(
                     Some(chamber),
                     chamber_transform(chamber.rest, CHAMBER_HALF_LENGTH, open),

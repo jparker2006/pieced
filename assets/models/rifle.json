@@ -3,18 +3,18 @@
   "kind": "gun",
   "source": "art/blender/assets/guns.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 5656,
-  "triangle_budget": 6000,
+  "triangles": 6776,
+  "triangle_budget": 8000,
   "bounds": {
     "min": [
-      -0.0623,
+      -0.0616,
       0.0,
-      -0.626
+      -0.614
     ],
     "max": [
-      0.0623,
-      0.4172,
-      0.471
+      0.0616,
+      0.3921,
+      0.475
     ]
   },
   "parts": {
@@ -22,17 +22,17 @@
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.0615,
-          0.0135,
-          -0.552
+          -0.058,
+          0.0133,
+          -0.556
         ],
         "max": [
-          0.0615,
-          0.4172,
+          0.058,
+          0.3921,
           0.142
         ]
       },
-      "triangles": 3568,
+      "triangles": 4596,
       "colors": [
         "gun_brass",
         "gun_brass_dark",
@@ -47,19 +47,38 @@
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.055,
-          0.22,
+          -0.05,
+          0.2249,
           -0.114
         ],
         "max": [
-          0.055,
-          0.33,
+          0.05,
+          0.3249,
           0.104
         ]
       },
-      "triangles": 144,
+      "triangles": 168,
       "colors": [
         "barrier_cyan",
+        "gun_glass_blue"
+      ]
+    },
+    "ChamberBack": {
+      "parent": "rifle",
+      "bounds": {
+        "min": [
+          -0.0475,
+          0.2274,
+          -0.114
+        ],
+        "max": [
+          0.0475,
+          0.3224,
+          0.104
+        ]
+      },
+      "triangles": 48,
+      "colors": [
         "gun_glass_blue"
       ]
     },
@@ -67,20 +86,20 @@
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.0354,
-          0.2395,
-          -0.0431
+          -0.0327,
+          0.2421,
+          -0.0409
         ],
         "max": [
-          0.0354,
-          0.3105,
-          0.0331
+          0.0327,
+          0.3076,
+          0.0309
         ]
       },
       "triangles": 140,
       "colors": [
-        "barrier_cyan",
-        "crystal_blue"
+        "crystal_blue",
+        "gun_glass_blue"
       ]
     },
     "Mag": {
@@ -89,15 +108,15 @@
         "min": [
           -0.0313,
           0.0,
-          -0.1526
+          -0.1525
         ],
         "max": [
           0.0313,
-          0.1706,
-          -0.0561
+          0.1703,
+          -0.0562
         ]
       },
-      "triangles": 200,
+      "triangles": 264,
       "colors": [
         "gun_brass",
         "gun_brass_dark",
@@ -109,21 +128,19 @@
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.052,
-          0.223,
-          -0.626
+          -0.0385,
+          0.2364,
+          -0.614
         ],
         "max": [
-          0.052,
-          0.327,
-          -0.548
+          0.0385,
+          0.3134,
+          -0.556
         ]
       },
-      "triangles": 528,
+      "triangles": 504,
       "colors": [
-        "gun_brass",
         "gun_brass_dark",
-        "gun_brass_light",
         "gun_iron"
       ]
     },
@@ -131,17 +148,17 @@
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.0623,
-          0.036,
-          -0.5765
+          -0.0616,
+          0.0358,
+          -0.539
         ],
         "max": [
-          0.0623,
-          0.3243,
-          0.1248
+          0.0616,
+          0.3139,
+          0.125
         ]
       },
-      "triangles": 472,
+      "triangles": 488,
       "colors": [
         "barrier_cyan",
         "crystal_blue"
@@ -151,22 +168,21 @@
       "parent": "rifle",
       "bounds": {
         "min": [
-          -0.0481,
-          0.1372,
+          -0.0532,
+          0.1377,
           0.118
         ],
         "max": [
-          0.0481,
-          0.3295,
-          0.471
+          0.0532,
+          0.3319,
+          0.475
         ]
       },
-      "triangles": 604,
+      "triangles": 568,
       "colors": [
         "gun_brass",
         "gun_brass_dark",
         "gun_brass_light",
-        "gun_iron",
         "gun_wood_dark",
         "gun_wood_light",
         "stock"
@@ -178,7 +194,7 @@
       "parent": "rifle",
       "position": [
         0.0,
-        0.275,
+        0.2749,
         -0.005
       ],
       "rotation": [
@@ -192,7 +208,7 @@
       "parent": "rifle",
       "position": [
         0.0,
-        0.244,
+        0.2439,
         -0.2
       ],
       "rotation": [
@@ -206,7 +222,7 @@
       "parent": "rifle",
       "position": [
         0.0,
-        0.0922,
+        0.092,
         0.0883
       ],
       "rotation": [
@@ -220,8 +236,8 @@
       "parent": "rifle",
       "position": [
         0.0,
-        0.275,
-        -0.626
+        0.2749,
+        -0.614
       ],
       "rotation": [
         0.0,
@@ -234,7 +250,7 @@
       "parent": "rifle",
       "position": [
         0.0,
-        0.398,
+        0.3729,
         0.12
       ],
       "rotation": [
@@ -248,7 +264,7 @@
       "parent": "rifle",
       "position": [
         0.0,
-        0.398,
+        0.3729,
         -0.392
       ],
       "rotation": [
