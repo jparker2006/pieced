@@ -1,7 +1,16 @@
 //! Quality presets and perf-knob overrides, resolved once per frame into one
 //! [`LookSettings`] resource that every look system reads. Also owns the
 //! camera-level color pipeline: `Tonemapping::None` with no debanding on both
-//! 3D cameras, and one MSAA setting shared by both.
+//! 3D cameras, one MSAA setting shared by both, and FXAA.
+//!
+//! Anti-aliasing: MSAA 4× on both cameras was the main source of frames over
+//! 25 ms on battery (native knob runs, 2026-09-26: 22 spikes with the full
+//! look, 1 with `msaa=1`). The Battery preset therefore renders without MSAA
+//! and smooths edges with one FXAA pass over the finished 3D image (world and
+//! viewmodel together: FXAA sits on the viewmodel camera, the last 3D camera
+//! drawing the shared target). The ~3 px ink outlines hide most silhouette
+//! stair-steps already; FXAA softens what is left (outline edges, thin bars).
+//! Plugged in keeps MSAA 4× and no FXAA.
 
 use crate::{
     perf_knobs::PerfKnobs,
@@ -10,6 +19,7 @@ use crate::{
     viewmodel::ViewmodelCamera,
 };
 use bevy::{
+    anti_alias::fxaa::{Fxaa, Sensitivity},
     core_pipeline::tonemapping::{DebandDither, Tonemapping},
     prelude::*,
 };
@@ -46,6 +56,8 @@ pub struct PresetLook {
     pub outline: OutlineBackend,
     /// MSAA sample count for both 3D cameras (1 = off).
     pub msaa_samples: u32,
+    /// One FXAA pass over the finished 3D image.
+    pub fxaa: bool,
     /// Render-scale budget: multiplies `GraphicsTuning::max_megapixels`, the cap
     /// on 3D render pixels (Battery keeps the configured cap).
     pub pixel_budget: f32,
@@ -57,13 +69,15 @@ pub fn preset_look(preset: QualityPreset) -> PresetLook {
     match preset {
         QualityPreset::Battery => PresetLook {
             outline: OutlineBackend::Hull,
-            msaa_samples: 4,
+            msaa_samples: 1,
+            fxaa: true,
             pixel_budget: 1.0,
             dense_grass: false,
         },
         QualityPreset::PluggedIn => PresetLook {
             outline: OutlineBackend::Hull,
             msaa_samples: 4,
+            fxaa: false,
             pixel_budget: 1.5,
             dense_grass: true,
         },
@@ -92,6 +106,9 @@ pub struct LookSettings {
     pub msaa: Msaa,
     /// Normally equal to `msaa`; only the `vmmsaa` knob splits them.
     pub viewmodel_msaa: Msaa,
+    /// FXAA on the finished 3D image (on the viewmodel camera, which draws
+    /// last; `viewmodel=off` runs therefore have none).
+    pub fxaa: bool,
     pub far: bool,
     pub halos: bool,
     pub blobs: bool,
@@ -128,6 +145,7 @@ pub fn resolve_look(
         outline,
         msaa,
         viewmodel_msaa,
+        fxaa: knobs.and_then(|k| k.fxaa).unwrap_or(look.fxaa),
         far: knob(|k| k.far),
         halos: knob(|k| k.halos),
         blobs: knob(|k| k.blobs),
@@ -151,10 +169,12 @@ pub(crate) fn update_look_settings(
 }
 
 /// Keeps both 3D cameras on the settings' MSAA (only writes on change, so it
-/// never forces a pipeline re-specialization by itself).
+/// never forces a pipeline re-specialization by itself), and the viewmodel
+/// camera's FXAA on the setting.
 pub(crate) fn apply_camera_msaa(
     settings: Res<LookSettings>,
     mut cameras: Query<(&mut Msaa, Has<MainCamera>, Has<ViewmodelCamera>)>,
+    mut fxaa: Query<&mut Fxaa, With<ViewmodelCamera>>,
 ) {
     for (mut msaa, main, viewmodel) in &mut cameras {
         if main {
@@ -162,6 +182,21 @@ pub(crate) fn apply_camera_msaa(
         } else if viewmodel {
             msaa.set_if_neq(settings.viewmodel_msaa);
         }
+    }
+    for mut fxaa in &mut fxaa {
+        if fxaa.enabled != settings.fxaa {
+            fxaa.enabled = settings.fxaa;
+        }
+    }
+}
+
+/// The FXAA pass the look uses: default sensitivity (sharp enough to keep
+/// the ink crisp).
+pub fn look_fxaa(enabled: bool) -> Fxaa {
+    Fxaa {
+        enabled,
+        edge_threshold: Sensitivity::High,
+        edge_threshold_min: Sensitivity::High,
     }
 }
 
@@ -175,14 +210,17 @@ pub(crate) fn dress_look_camera(
     main: Query<(), With<MainCamera>>,
 ) {
     let settings = settings.map(|s| s.clone()).unwrap_or_default();
-    let msaa = if main.contains(add.entity) {
+    let is_main = main.contains(add.entity);
+    let msaa = if is_main {
         settings.msaa
     } else {
         settings.viewmodel_msaa
     };
-    commands
-        .entity(add.entity)
-        .insert((Tonemapping::None, DebandDither::Disabled, msaa));
+    let mut camera = commands.entity(add.entity);
+    camera.insert((Tonemapping::None, DebandDither::Disabled, msaa));
+    if !is_main {
+        camera.insert(look_fxaa(settings.fxaa));
+    }
 }
 
 #[cfg(test)]
@@ -194,7 +232,11 @@ mod tests {
         let battery = preset_look(QualityPreset::Battery);
         let plugged = preset_look(QualityPreset::PluggedIn);
         assert_eq!(battery.outline, OutlineBackend::Hull);
-        assert_eq!(battery.msaa_samples, plugged.msaa_samples);
+        // MSAA was the battery spike source: Battery smooths with FXAA instead.
+        assert_eq!(battery.msaa_samples, 1);
+        assert!(battery.fxaa);
+        assert_eq!(plugged.msaa_samples, 4);
+        assert!(!plugged.fxaa);
         assert!(battery.pixel_budget < plugged.pixel_budget);
         assert!(!battery.dense_grass && plugged.dense_grass);
         assert_eq!(QualityPreset::default(), QualityPreset::Battery);
@@ -211,7 +253,18 @@ mod tests {
 
         let none = resolve_look(QualityPreset::Battery, None, false);
         assert_eq!(none.outline, OutlineBackend::Hull);
-        assert_eq!(none.msaa, Msaa::Sample4);
+        assert_eq!(none.msaa, Msaa::Off);
+        assert!(none.fxaa);
+        let plugged = resolve_look(QualityPreset::PluggedIn, None, false);
+        assert_eq!(plugged.msaa, Msaa::Sample4);
+        assert!(!plugged.fxaa);
+        // The old look on battery, for comparisons: msaa=4,fxaa=off.
+        let old = resolve_look(
+            QualityPreset::Battery,
+            Some(&PerfKnobs::parse("msaa=4,fxaa=off")),
+            false,
+        );
+        assert_eq!((old.msaa, old.fxaa), (Msaa::Sample4, false));
         assert!(none.far && none.halos && none.blobs && none.sky_rotation);
     }
 
@@ -226,7 +279,7 @@ mod tests {
 
     #[test]
     fn viewmodel_msaa_knob_splits_the_cameras() {
-        let knobs = PerfKnobs::parse("vmmsaa=1");
+        let knobs = PerfKnobs::parse("msaa=4,vmmsaa=1");
         let s = resolve_look(QualityPreset::Battery, Some(&knobs), false);
         assert_eq!(s.msaa, Msaa::Sample4);
         assert_eq!(s.viewmodel_msaa, Msaa::Off);

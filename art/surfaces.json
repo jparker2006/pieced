@@ -1,0 +1,50 @@
+{
+  "_doc": "Surface tags for art/palette.json colours (M2 Amendment B, D47). Every face painted with a tagged palette colour gets that kind's cartoon highlight in the toon shader (src/look/surfaces.rs reads this file); untagged colours are matte. specular: highlight strength; shininess: exponent (bigger = smaller, crisper blob); sheen: broad soft gloss under the blob; tint: how much the highlight takes the surface's own colour (metals). Keep colours distinct from every untagged palette colour (a test checks).",
+  "kinds": {
+    "brass": {
+      "specular": 0.9,
+      "shininess": 14.0,
+      "sheen": 0.6,
+      "tint": 0.55
+    },
+    "steel": {
+      "specular": 0.75,
+      "shininess": 18.0,
+      "sheen": 0.35,
+      "tint": 0.15
+    },
+    "crystal": {
+      "specular": 1.0,
+      "shininess": 40.0,
+      "sheen": 0.3,
+      "tint": 0.0
+    },
+    "glass": {
+      "specular": 0.9,
+      "shininess": 40.0,
+      "sheen": 0.15,
+      "tint": 0.0
+    },
+    "satin": {
+      "specular": 0.14,
+      "shininess": 8.0,
+      "sheen": 0.12,
+      "tint": 0.2
+    }
+  },
+  "palette": {
+    "brass": "brass",
+    "gold_rings": "brass",
+    "star_gold": "brass",
+    "gun_iron": "steel",
+    "knight_steel": "steel",
+    "nail_head": "steel",
+    "crystal_blue": "crystal",
+    "crystal_violet": "crystal",
+    "shield_cyan": "crystal",
+    "glass_cyan": "glass",
+    "eye_white": "satin",
+    "glove_white": "satin",
+    "knight_purple": "satin"
+  }
+}
