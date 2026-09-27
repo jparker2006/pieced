@@ -628,7 +628,7 @@ def round_stock(butt, ax, stations, seed):
 # ---------------------------------------------------------------------------
 
 R_AXIS = 0.062           # chamber / barrel axis height
-R_SIGHT = 0.160          # sight line height (just over the collars: a compact ear)
+R_SIGHT = 0.166          # sight line height (just over the collars: a compact ear)
 R_CHAMBER_Y = -0.005     # chamber and crystal centre along the gun
 R_CHAMBER_R = 0.050      # glass radius (the chamber arcs hug 0.046-0.048)
 R_CHAMBER_HALF = 0.109   # half the glass length (viewmodel::CHAMBER_HALF_LENGTH)
@@ -716,13 +716,13 @@ def rifle_body(objs):
 def rifle_stock():
     """The rounded, warm red-brown wooden stock (T01-T03)."""
     return round_stock(0.471, R_AXIS,
-                       [(0.118, 0.002, 0.044, 0.058),
-                        (0.160, 0.007, 0.046, 0.064),
-                        (0.215, 0.016, 0.048, 0.071),
-                        (0.280, 0.025, 0.049, 0.078),
-                        (0.345, 0.034, 0.050, 0.084),
-                        (0.400, 0.040, 0.050, 0.088),
-                        (0.451, 0.044, 0.050, 0.090)], seed=13)
+                       [(0.118, 0.004, 0.040, 0.058),
+                        (0.160, 0.012, 0.041, 0.064),
+                        (0.215, 0.026, 0.043, 0.071),
+                        (0.280, 0.040, 0.046, 0.078),
+                        (0.345, 0.054, 0.050, 0.084),
+                        (0.400, 0.064, 0.050, 0.088),
+                        (0.451, 0.072, 0.050, 0.090)], seed=13)
 
 
 def rifle_mag():
@@ -865,7 +865,7 @@ def build_rifle(root):
 # ---------------------------------------------------------------------------
 
 P_AXIS = 0.066           # crystal and barrel axis height
-P_SIGHT = 0.156          # sight line height (just over the collars)
+P_SIGHT = 0.162          # sight line height (just over the collars)
 P_CRYSTAL_Y = -0.012     # crystal centre (between the collars)
 P_REAR_COLLAR = (0.068, 0.110)
 P_FRONT_COLLAR = (-0.140, -0.100)
@@ -930,12 +930,12 @@ def pump_body(objs):
 def pump_stock():
     """The rounded, warm red-brown wooden stock (T04)."""
     return round_stock(0.358, P_AXIS,
-                       [(0.100, 0.002, 0.045, 0.060),
-                        (0.135, 0.008, 0.047, 0.065),
-                        (0.180, 0.015, 0.048, 0.071),
-                        (0.235, 0.024, 0.049, 0.078),
-                        (0.290, 0.031, 0.050, 0.083),
-                        (0.338, 0.036, 0.050, 0.086)], seed=23)
+                       [(0.100, 0.004, 0.041, 0.060),
+                        (0.135, 0.012, 0.042, 0.065),
+                        (0.180, 0.024, 0.044, 0.071),
+                        (0.235, 0.040, 0.047, 0.078),
+                        (0.290, 0.054, 0.050, 0.083),
+                        (0.338, 0.064, 0.050, 0.086)], seed=23)
 
 
 def pump_grip():

@@ -103,19 +103,19 @@ pub fn sidecar(name: &str) -> Sidecar {
 /// The rifle at the hip (S1 round 3): tucked into the lower-right corner as
 /// T01, T03, T05, T10 and T11 paint it, the stock leaving the frame's corner,
 /// the glove low on the right and the barrel running up and left so the muzzle
-/// sits just below and right of the crosshair, the vista clear. Held about as
-/// far out as before, but lower, further right and pointing almost straight
+/// sits just below and right of the crosshair, the vista clear. Held a little
+/// nearer than before, but lower, further right and pointing almost straight
 /// ahead (perspective angles it toward the crosshair), and upright.
 pub const RIFLE_HIP: HipPose = HipPose {
-    anchor: Vec3::new(0.307, -0.2, -0.6),
-    euler: Vec3::new(0.13, 0.07, -0.05),
+    anchor: Vec3::new(0.257, -0.167, -0.52),
+    euler: Vec3::new(0.16, 0.06, -0.05),
 };
 /// The pump at the hip (T04): low right, a little farther out than the rifle
 /// and turned left so its bell faces up and left and reads as a horn from the
 /// side, the violet chamber by the corner. T04 catches it mid-kick, which
 /// lifts it up and right onto the target's framing.
 pub const PUMP_HIP: HipPose = HipPose {
-    anchor: Vec3::new(0.336, -0.234, -0.68),
+    anchor: Vec3::new(0.296, -0.213, -0.62),
     euler: Vec3::new(0.14, 0.42, -0.1),
 };
 
@@ -125,8 +125,8 @@ pub const PUMP_HIP: HipPose = HipPose {
 /// window, chamber, crystal) facing you. Only the gallery shows it
 /// (`super::ViewmodelInspect`); play never does.
 pub const RIFLE_INSPECT: HipPose = HipPose {
-    anchor: Vec3::new(0.098, -0.087, -0.62),
-    euler: Vec3::new(0.34, 0.84, 0.24),
+    anchor: Vec3::new(0.098, -0.085, -0.48),
+    euler: Vec3::new(0.26, 0.84, 0.24),
 };
 
 impl HipPose {
