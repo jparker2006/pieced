@@ -4,8 +4,8 @@ Writes `art/previews/<name>.png`: a 3/4 view (left) and a front view (right),
 768 px each, over the targets' violet sky. Surfaces are shaded like the game's
 toon material: a hard two-band step on N.L from one key light, the lit band in
 the face's palette colour and the shadow band in that colour's `_shadow`
-variant (or the mean lit-to-shadow tint when it has none), plus an inverted-hull
-ink outline. Height (metres) and triangle count are printed in the corner.
+variant (or the mean lit-to-shadow tint when it has none), darkened toward
+violet by the baked AO in the colour's alpha, plus an inverted-hull ink outline. Height (metres) and triangle count are printed in the corner.
 
 Runs after export, so nothing done here reaches the .glb.
 """
@@ -27,6 +27,8 @@ SIZE = 768
 KEY_DIR = Vector((-0.55, -0.7, 0.75)).normalized()  # towards the key light: front-left, above
 TERMINATOR = 0.18  # N.L below this is the shadow band
 OUTLINE_PX = 2.5
+# Linear colour a fully occluded corner is multiplied by (the game's `ao_tint`).
+AO_TINT = (0.34, 0.27, 0.52)
 
 
 def _shadow_tint(p):
@@ -104,7 +106,19 @@ def _toon_material():
     links.new(ramp.outputs["Color"], mix.inputs["Factor"])
     links.new(dark.outputs["Color"], _socket(mix.inputs, "A_Color"))
     links.new(lit.outputs["Color"], _socket(mix.inputs, "B_Color"))
-    links.new(_socket(mix.outputs, "Result_Color"), emit.inputs["Color"])
+    # Baked AO (the colour's alpha) darkens toward a violet, like the game.
+    occ = nt.nodes.new("ShaderNodeMix")
+    occ.data_type = "RGBA"
+    _socket(occ.inputs, "A_Color").default_value = AO_TINT + (1.0,)
+    _socket(occ.inputs, "B_Color").default_value = (1.0, 1.0, 1.0, 1.0)
+    links.new(lit.outputs["Alpha"], occ.inputs["Factor"])
+    shade = nt.nodes.new("ShaderNodeMix")
+    shade.data_type = "RGBA"
+    shade.blend_type = "MULTIPLY"
+    shade.inputs["Factor"].default_value = 1.0
+    links.new(_socket(mix.outputs, "Result_Color"), _socket(shade.inputs, "A_Color"))
+    links.new(_socket(occ.outputs, "Result_Color"), _socket(shade.inputs, "B_Color"))
+    links.new(_socket(shade.outputs, "Result_Color"), emit.inputs["Color"])
     links.new(emit.outputs["Emission"], out.inputs["Surface"])
     return mat
 

@@ -40,8 +40,8 @@ use crate::{
     combat::Loadout,
     fx::sim::{FxRng, Spring},
     look::{
-        InheritedOutline, ModelDressed, ModelLook, NoOutline, Outline, OutlineHull, ToonMaterial,
-        warmup::Warmup, with_outline_normals,
+        InheritedOutline, ModelDressed, ModelLook, NoOutline, Outline, OutlineHull, Surface,
+        ToonMaterial, VertexAlpha, warmup::Warmup, with_outline_normals,
     },
     models::{MODEL_FORWARD_FIX, ModelLibrary, ModelParts, spawn_model},
     movement::Motor,
@@ -675,8 +675,12 @@ fn configure_models(
                     ..default()
                 };
                 let color = crystal_color(kind);
-                let crystal_mat =
-                    toon.add(ToonMaterial::vertex_colored().with_emissive(color, CRYSTAL_EMISSIVE));
+                // Crystal glints on every facet, its bright edges included.
+                let crystal_mat = toon.add(
+                    ToonMaterial::vertex_colored()
+                        .with_emissive(color, CRYSTAL_EMISSIVE)
+                        .with_surface(Surface::named("crystal").unwrap_or_default()),
+                );
                 // The crystal, the pump's shard and every rune inlay glow together.
                 for part in [found.crystal, found.shard, found.runes]
                     .into_iter()
@@ -708,10 +712,14 @@ fn configure_models(
                     // double-sided: the far wall of the tube tints the view
                     // behind the crystal too, so the chamber reads deep and
                     // glowing while the crystal shows through one layer.
+                    // Its vertex alpha is baked AO like every model's, not
+                    // opacity, and it glints like glass.
                     let glass = toon.add(
                         ToonMaterial::new(Color::WHITE.with_alpha(GLASS_ALPHA))
                             .with_emissive(color, GLASS_EMISSIVE)
                             .with_alpha(AlphaMode::Blend)
+                            .with_vertex_alpha(VertexAlpha::Occlusion)
+                            .with_surface(Surface::named("glass").unwrap_or_default())
                             .double_sided(),
                     );
                     for mesh in meshes_below(chamber.entity) {
