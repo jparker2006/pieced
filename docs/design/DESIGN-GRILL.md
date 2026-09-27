@@ -151,6 +151,26 @@ Jake scored the board: T01 2, T02 2, T03 2, T04 2, T05 3, T06 2, T07 3, T08 3, T
 | D69 | **Short loops (Q68).** | The first chunk is **one basic grunt wave Jake can play**, to check the fun early. Then ship arrivals, the castle and the sky, then rebinding and the menu. Jake play-tests after each chunk. |
 | D70 | **M2 leftovers are step 1 of M3 (Q69).** | <ul><li>Add the frame-timing log for normal play (D53).</li><li>Check the 8.7 s launch.</li><li>Close the M2 report.</li></ul>Jake may start M3 from a new session. |
 
+## Round 9: the M3 spec grill, 2026-09-27
+
+Questions only the spec needs and Round 8 doesn't answer. Context from reading the code:
+- Combat already gives every character the same loadout and hit resolution, so a grunt carrying the player's rifle would deal 28 damage six times a second.
+- D68's count (wave 1 = 3, about +2 per wave) means wave 20 alone is 41 grunts, and passing it takes about 440 kills. Kills must be quick for a 10–15-minute average run.
+- D63 (knock knights into the void) conflicts with D22's barrier (no falling). Q77 resolves it.
+
+**Batch 1: the grunt (Q70–Q77).** Jake: "rec is good" on every question.
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D71 | **Grunt attack: a slow, visible spell orb (Q70).** | The grunt fires an orange-red orb (about 30 m/s, 12 damage, one shot every ~1.5 s) after a 0.4 s wand-glow wind-up. The orb is a real projectile, so you can dodge it, and builds block it (it chips the piece). Incoming fire becomes the reason to build. The player's guns stay hitscan (D3). The grunt carries a small crystal wand, built by a new Blender script. |
+| D72 | **Movement: mid-range and spread out (Q71).** | Grunts close to about 10–18 m, then strafe and shoot. Each picks its own spot, so they spread around the player instead of forming a conga line. |
+| D73 | **Against builds: path and shoot, never smash (Q72).** | Grunts always know where the player is (horde rules, no stealth). They path over the build grid, so they walk up ramps and floors, and they shoot whatever piece stands between them and the player. No smashing or building: that's the brute's and the builder knight's job later (D60). |
+| D74 | **Wave-1 grunt: 100 HP, no shield (Q73).** | That's 4 rifle body shots, 3 headshots or one close pump. Quick kills, as the ~440-kill run needs. |
+| D75 | **Scaling per wave (Q74).** | Each wave adds +4% HP, +1.5% move speed and +2% fire rate, and aim improves slightly. Speed stays below the player's sprint. Scaling stops at wave 25 (a grunt then has about 196 HP). |
+| D76 | **Aim and fairness (Q75).** | <ul><li>Wave 1 aims like bot-ai.md's "Normal" tier: 0.33 s reaction after first sight, leading the player's movement with some error. Aim creeps toward "Hard" by wave 15.</li><li>**At most 3 grunts shoot at once** (attack tokens); the others reposition.</li><li>No shot without line of sight.</li><li>Every hit on the player shows a red damage-direction arrow on the HUD. A shot from off-screen plays a warning sound first.</li></ul> |
+| D77 | **At most 8 knights alive (Q76).** | The rest wait for the next ship as slots open. Eight knights fit the M2 triangle budget. |
+| D78 | **Pump knockback and the void (Q77).** | <ul><li>The pump knocks knights back for real, up to about 4 m at point blank (distance-scaled). The player takes no knockback.</li><li>The barrier stops the player but lets knights through outward.</li><li>A knight past the edge falls with a cartoon yelp, and it counts as an elimination with bonus points.</li><li>The player can never fall.</li></ul> |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**
