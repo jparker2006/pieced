@@ -98,7 +98,7 @@ SHOULDER = Vector((0.20, 0.0, 1.20))
 NECK = Vector((0.0, 0.0, 1.42))
 NAPE = Vector((0.0, 0.14, 1.28))
 WAIST = Vector((0.0, 0.0, 0.745))
-HAT_BASE = Vector((0.0, 0.0, 1.72))
+HAT_BASE = Vector((0.0, 0.0, 1.705))  # under the brim, so the dropped hat rests low on it
 TORSO_ORIGIN = Vector((0.0, 0.0, 0.62))
 
 # Helmet: rings are shrunk to stay this far inside the head sphere's centre.
