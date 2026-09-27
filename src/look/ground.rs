@@ -9,7 +9,9 @@
 //! samples it in world space twice at blade scale (turned against each other so
 //! the tile never shows) and twice at patch scale, for darker and lighter,
 //! yellower patches of lawn. Mipmaps and anisotropic filtering fade the strokes
-//! into the average grass colour with distance, so nothing shimmers.
+//! into the average grass colour with distance, so nothing shimmers. The lawn
+//! ends with the shared colour grade ([`super::grade`]), like every toon and
+//! far surface.
 //!
 //! The grid's lines run every [`GroundMaterial::cell`] metres from
 //! [`GroundMaterial::origin`], only inside the build area

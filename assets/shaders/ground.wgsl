@@ -7,11 +7,16 @@
 // world space: R dark blade strokes and G light dabs at blade scale (twice,
 // turned against each other so the tile never repeats visibly), B and A soft
 // noise at patch scale for darker and lighter, yellower lawn.
+//
+// The final colour takes the same colour grade as every toon and far surface
+// (pieced::grade), so the lawn matches them in wide shots.
 
 #import bevy_pbr::{
     forward_io::VertexOutput,
     mesh_view_bindings::view,
 }
+
+#import pieced::grade::grade
 
 #ifdef TONEMAP_IN_SHADER
 #import bevy_core_pipeline::tonemapping::tone_mapping
@@ -122,7 +127,7 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
         rgb = rgb + line * glow * ground.params.y * fade;
     }
 
-    var out = vec4<f32>(rgb, 1.0);
+    var out = vec4<f32>(grade(rgb), 1.0);
 #ifdef TONEMAP_IN_SHADER
     out = tone_mapping(out, view.color_grading);
 #endif
