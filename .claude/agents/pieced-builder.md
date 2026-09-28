@@ -29,7 +29,8 @@ You are a builder on **Pieced**, a solo first-person shooter with Fortnite-style
 - If free disk (`df -h .`) is under 4 GB, stop and report.
 - **Jake is using this Mac.** Never open windows: no native scenarios, no `cargo run` of the game, no Blender GUI, no Blender MCP. Blender runs only headless (`blender -b --factory-startup --python-exit-code 1 -P ...`), and you review models through preview renders you write to disk and then open with the Read tool. `scripts/env.sh` already runs cargo at low priority; keep it that way.
 - Art must match the target images in `docs/design/concepts/` (`R4-M1-brick-walls-wood-floors.png` is the base design; `T01`-`T12` are the M2 targets; the M3 castle concept Jake picked is named in `docs/evidence/M3-report.md`). Open the ones relevant to your slice with the Read tool. Never commit them (they are git-ignored).
-- Never use `pgrep` wait loops.
+- Never write wait loops that poll processes or files (`pgrep`, `ps | grep`, `until …; do sleep …; done`). Run a long command in the foreground with a long timeout, or with `run_in_background` and wait for its completion notification. Never start a second copy of a run that's already going.
+- Run cargo with `CARGO_INCREMENTAL=0` (set by `scripts/env.sh`): the disk is tight.
 
 ## Report back (keep it under 300 words)
 
