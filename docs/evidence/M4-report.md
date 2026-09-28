@@ -86,3 +86,6 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
   - New best: humanoide9000 "Victory Fanfare" (466133).
   - All five are CC-BY 4.0, about 24 MB together. They would come from Freesound's high-quality previews, since originals need a login.
   - No CC0 or CC-BY celesta cue exists; the ideal ones are non-commercial. So the break is a code-built celesta ostinato over a string drone, and the death sting is a downward bend of a brass chord from the battle cue.
+- 2026-09-28: **music downloaded with Jake's OK** ("yes, download them").
+  - The five CC-BY 4.0 Freesound high-quality OGG previews (about 180 kbps, 4.9 MB in total), each license re-checked on its page.
+  - Committed as sources in `art/music/src/` with `CREDITS.md` (`98730d9`). Chunk 3 trims, loops and credits them in `assets/ASSETS.md`.
