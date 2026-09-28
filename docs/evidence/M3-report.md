@@ -162,3 +162,21 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - **Frames (S2 N/A, 250 s < 300 s):** mean 16.98 ms, p99 33.2, 278 frames > 25 ms, 94.31% < 18 ms.
   - **Bug found:** the first run of every launch uses the same seed (272065245258904011 in play-tests 2 and 3). D83 wants each run different unless `--seed` is given; being fixed.
 - 2026-09-28: **play-test 4, the castle look check.** Jake scored the two castle views against C4: "5 and 5, keep building". **W5 PASS.**
+- 2026-09-28: **performance slice merged** (`62a2920`). Branch: 573 passing, 0 failed; clippy and fmt clean; the Python tests pass.
+  - **Attribution:**
+    - Every `frames.csv` row splits the frame into pre, fixed (physics and tick count), update and post, plus the previous frame's render: extract, prepare, acquire (waiting for a drawable), graph (compile, encode, submit) and render end, idle time, and the drawable cadence.
+    - Event counters per frame: knights, orbs, pieces, particles, debris, potions, damage numbers, voices, pipelines compiled, entities.
+    - `session.json` gets a spike report (cause bucket, events over-represented on spikes, worst frames, jitter pairs), printed by `scripts/sessions.py --spikes`.
+    - A counting-allocator test pins zero per-frame allocation.
+    - GPU time is behind `--knobs gpu=on` (not verified on hardware).
+  - **Fixes from code reading** (not yet measured):
+    - pooled effect slots rewrite a mesh or material only when it changes;
+    - path smoothing is staggered by brain phase;
+    - building raycasts skip knights;
+    - path validation reuses one list;
+    - the blob-shadow probe no longer clones a filter per frame;
+    - the results card's box-shadow pipeline is warmed.
+  - A new test runs 5 simulated minutes of waves (reaching wave ≥ 6 with 8 alive) with every visual: no asset or entity growth.
+  - **Launch:** new `PIECED_BOOT` phases (app_built, plugins_ready, startup_start, startup_end). Sound synthesis (76 ms) moved to a thread. **The release build now strips symbols** (190 → about 115 MB), accepted by the orchestrator: faster to load, at the cost of function names in panic backtraces. Startup measures about 110 ms headless, so the ~3.2 s before the window is probably binary load or renderer init; the new phases will say which.
+  - Pacing knobs `latency=1|2|3` and `pipelined=on` (defaults unchanged).
+  - **Open options:** 6 far materials are touched every frame; one entity per sound; the orb spark pool saturates; damage-number text restyles; knight line of sight is checked at 60 Hz; A* allocates per plan.
