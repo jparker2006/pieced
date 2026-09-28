@@ -18,7 +18,7 @@ use crate::{
     dummy::look_toward,
     grunt::{self, AttackTokens, GruntBrain, GruntRng, GruntStats, Parked},
     movement::{Knockback, Motor},
-    orb::{Orb, Wand},
+    orb::Wand,
     rng::{Rng, SimRng},
     shared::{
         Ads, AppState, Character, EyeHeight, GameCue, GameMode, Health, Layer, LookAngles, Player,

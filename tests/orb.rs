@@ -33,7 +33,7 @@ struct Range {
 
 impl Range {
     fn new(seed: u64) -> Self {
-        let mut sim = Sim::waves(seed);
+        let mut sim = Sim::grunt_lab(seed);
         clear_pieces(sim.world_mut());
         sim.record::<GameCue>();
         sim.record::<DamageDealt>();
