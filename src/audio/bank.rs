@@ -82,6 +82,11 @@ pub const FOOTSTEP: CueSpec = spec(0.18, -12.0);
 pub const JUMP: CueSpec = spec(0.24, -11.0);
 pub const LAND: CueSpec = spec(0.28, -10.0);
 pub const SLIDE: CueSpec = spec(0.60, -11.0);
+// The knights' wand and orb (M3).
+pub const ORB_CAST: CueSpec = spec(0.50, -11.0);
+pub const ORB_WHOOSH: CueSpec = spec(0.45, -11.0);
+pub const ORB_BONK: CueSpec = spec(0.40, -10.0);
+pub const WAND_WARNING: CueSpec = spec(0.40, -11.0);
 
 /// Round-robin takes for the cues that repeat fastest (the rifle fires six times a
 /// second; footsteps never stop), so repeats never sound machine-gunned.
@@ -907,4 +912,127 @@ pub fn slide() -> Vec<f32> {
     );
     crackle(&mut b, 0.01, 0.4, 28, 0.2, 3600.0, 223);
     b.master(SLIDE.rms_db)
+}
+
+// ---------------------------------------------------------------------------
+// The knights' wand and orb (M3)
+// ---------------------------------------------------------------------------
+//
+// Fire, not frost: the orb sounds sit low and warm (a breathy flame roar and
+// soft crackle, 200 Hz – 2 kHz) so they never mask the player's bright zaps
+// and hit sparkles, and read at once as "incoming".
+
+/// Orb cast: a "fwoom" — a flame catching (band noise swelling up from
+/// 300 Hz), a falling warm tone and a few embers crackling off.
+pub fn orb_cast() -> Vec<f32> {
+    let mut b = Buffer::new(0.46);
+    noise_bp(
+        &mut b,
+        0.0,
+        0.44,
+        1.0,
+        301,
+        0.9,
+        |t| 320.0 + 900.0 * (t / 0.09).min(1.0) * decay((t - 0.09).max(0.0), 0.2),
+        |t| attack(t, 0.035) * decay(t, 0.13) * release(t, 0.44, 0.08),
+    );
+    let (mut o1, mut o2) = (Osc::default(), Osc::at(0.3));
+    b.add(0.0, 0.4, 0.55, |t| {
+        let freq = 190.0 + 260.0 * decay(t, 0.08);
+        (o1.soft_square(freq, 1.6) + 0.4 * o2.sine(freq * 2.01))
+            * attack(t, 0.02)
+            * decay(t, 0.1)
+            * release(t, 0.4, 0.06)
+    });
+    crackle(&mut b, 0.05, 0.3, 12, 0.3, 2400.0, 302);
+    b.saturate(1.4);
+    b.master(ORB_CAST.rms_db)
+}
+
+/// Orb passing close: a doppler whoosh — a breathy roar that swells, peaks as
+/// the orb goes by and drops in pitch as it leaves, with a low flame tone
+/// bending down with it.
+pub fn orb_whoosh() -> Vec<f32> {
+    let len = 0.42;
+    let peak = 0.2;
+    let mut b = Buffer::new(len);
+    // Approach (higher) to recede (lower): about a fifth down, eased around the pass.
+    let pitch = |t: f32| 2f32.powf(-0.7 / (1.0 + (-(t - peak) / 0.035).exp()));
+    let swell = |t: f32| {
+        let x = (t - peak) / if t < peak { 0.09 } else { 0.07 };
+        (-x * x).exp()
+    };
+    noise_bp(
+        &mut b,
+        0.0,
+        len,
+        1.0,
+        311,
+        1.4,
+        |t| 1500.0 * pitch(t),
+        |t| swell(t) * release(t, len, 0.05),
+    );
+    noise_lp(
+        &mut b,
+        0.0,
+        len,
+        0.6,
+        312,
+        |t| 700.0 * pitch(t),
+        |t| swell(t) * release(t, len, 0.05),
+    );
+    let mut o = Osc::default();
+    b.add(0.0, len, 0.35, |t| {
+        o.sine(420.0 * pitch(t)) * swell(t) * release(t, len, 0.05)
+    });
+    b.master(ORB_WHOOSH.rms_db)
+}
+
+/// Orb hitting the player: a crunchy cartoon "bonk" — a low, hollow knock with
+/// a gritty crunch of embers and a short hiss of flame.
+pub fn orb_bonk() -> Vec<f32> {
+    let mut b = Buffer::new(0.36);
+    bonk(&mut b, 0.0, 0.62, 1.0, 321);
+    thump(&mut b, 0.0, 150.0, 330.0, 0.02, 0.05, 0.8);
+    crackle(&mut b, 0.004, 0.08, 22, 0.55, 1900.0, 322);
+    noise_lp(
+        &mut b,
+        0.01,
+        0.3,
+        0.45,
+        323,
+        |t| 3000.0 * decay(t, 0.08) + 500.0,
+        |t| ad(t, 0.004, 0.07) * release(t, 0.3, 0.05),
+    );
+    b.saturate(2.2);
+    b.master(ORB_BONK.rms_db)
+}
+
+/// A knight winding up off-screen: a short rising charge (a warm, fluttering
+/// tone climbing over the wind-up) the player can locate, done by the time
+/// the orb leaves.
+pub fn wand_warning() -> Vec<f32> {
+    let len = 0.34;
+    let mut b = Buffer::new(len);
+    let (mut o1, mut o2, mut lfo) = (Osc::default(), Osc::at(0.2), Osc::default());
+    b.add(0.0, len, 0.7, |t| {
+        let x = t / len;
+        let freq = note(67.0) * 2f32.powf(1.1 * x);
+        let flutter = 0.65 + 0.35 * lfo.sine(18.0 + 20.0 * x);
+        (o1.soft_square(freq, 1.3) + 0.35 * o2.sine(freq * 1.5))
+            * flutter
+            * attack(t, 0.03)
+            * release(t, len, 0.05)
+    });
+    noise_bp(
+        &mut b,
+        0.0,
+        len,
+        0.35,
+        331,
+        1.2,
+        |t| 700.0 * 2f32.powf(1.3 * t / len),
+        |t| attack(t, 0.06) * release(t, len, 0.05),
+    );
+    b.master(WAND_WARNING.rms_db)
 }

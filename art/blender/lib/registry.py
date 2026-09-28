@@ -29,6 +29,8 @@ BUDGETS = {
     "station": 25000,
     "far_island": 1500,
     "ship": 500,
+    # M3: the grunt's crystal wand (docs/M3-SPEC.md → The grunt, item 10).
+    "wand": 400,
     "probe": 100,
 }
 

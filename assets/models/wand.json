@@ -1,0 +1,80 @@
+{
+  "name": "wand",
+  "kind": "wand",
+  "source": "art/blender/assets/wand.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 248,
+  "triangle_budget": 400,
+  "bounds": {
+    "min": [
+      -0.0387,
+      -0.0386,
+      -0.405
+    ],
+    "max": [
+      0.0387,
+      0.0386,
+      0.12
+    ]
+  },
+  "parts": {
+    "Crystal": {
+      "parent": "wand",
+      "bounds": {
+        "min": [
+          -0.0387,
+          -0.0386,
+          -0.405
+        ],
+        "max": [
+          0.0387,
+          0.0386,
+          -0.225
+        ]
+      },
+      "triangles": 24,
+      "colors": [
+        "wand_crystal",
+        "wand_crystal_light"
+      ]
+    },
+    "Wand": {
+      "parent": "wand",
+      "bounds": {
+        "min": [
+          -0.031,
+          -0.031,
+          -0.252
+        ],
+        "max": [
+          0.031,
+          0.031,
+          0.12
+        ]
+      },
+      "triangles": 224,
+      "colors": [
+        "gun_brass",
+        "gun_brass_dark",
+        "gun_brass_light",
+        "gun_wood_dark"
+      ]
+    }
+  },
+  "attach": {
+    "Tip": {
+      "parent": "wand",
+      "position": [
+        0.0,
+        0.0,
+        -0.42
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

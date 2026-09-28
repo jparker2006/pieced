@@ -19,6 +19,7 @@ mod geo;
 pub mod island;
 mod scenery;
 mod target;
+pub mod wand;
 
 pub use barrier::{BarrierMaterial, BarrierSide, REVEAL_END, barrier_reveal};
 pub use scenery::{
@@ -66,6 +67,8 @@ impl Plugin for ArenaVisualsPlugin {
         )
         // Non-player characters are drawn as the knight.
         .add_plugins(TargetFigurePlugin)
+        // Knights with a wand hold it in their right gauntlet (M3).
+        .add_plugins(wand::WandVisualsPlugin)
         .add_observer(dress_main_camera);
     }
 }

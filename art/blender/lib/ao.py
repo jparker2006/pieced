@@ -76,6 +76,7 @@ KIND_AO = {
     "ship": AoSettings(radius=1.5, rays=32),
     "planet": AoSettings(radius=6.0, rays=24),
     "probe": AoSettings(radius=0.1),
+    "wand": AoSettings(radius=0.02, open_parts=("Crystal",)),
 }
 
 

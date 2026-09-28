@@ -18,6 +18,7 @@
 pub mod chamber;
 pub mod hat;
 pub mod material;
+pub mod orbs;
 pub mod shapes;
 pub mod sim;
 pub mod spells;
@@ -238,7 +239,8 @@ impl Plugin for FxPlugin {
                     .before(TransformSystems::Propagate),
             )
             .add_systems(Last, end_hitstop_frame)
-            .add_plugins(spells::SpellsPlugin);
+            .add_plugins(spells::SpellsPlugin)
+            .add_plugins(orbs::OrbFxPlugin);
     }
 }
 

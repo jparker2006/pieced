@@ -252,6 +252,8 @@ fn spec_budget(kind: &str) -> u32 {
         "rock" | "stump" => 300,
         "station" => 25000,
         "ship" => 500,
+        // M3 (docs/M3-SPEC.md → The grunt, item 10): the grunt's crystal wand.
+        "wand" => 400,
         // Not in the spec's table: a ringed sphere (the far slice's choice).
         "planet" => 2000,
         "probe" => 100,

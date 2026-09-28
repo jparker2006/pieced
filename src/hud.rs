@@ -13,6 +13,7 @@
 //! here as functions so they're testable without a window.
 
 pub mod art;
+pub mod damage_arrow;
 mod layout;
 mod systems;
 
@@ -304,5 +305,6 @@ impl Plugin for HudPlugin {
             .add_systems(First, record_frame_start_tick);
         layout::build(app);
         systems::build(app);
+        app.add_plugins(damage_arrow::DamageArrowPlugin);
     }
 }

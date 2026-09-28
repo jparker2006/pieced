@@ -214,5 +214,9 @@
   {
     "name": "wall_brick_tiles_crack2",
     "file": "wall_brick_tiles_crack2.glb"
+  },
+  {
+    "name": "wand",
+    "file": "wand.glb"
   }
 ]
