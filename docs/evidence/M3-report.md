@@ -12,7 +12,7 @@ Every number here names its source (session folder or test), the commit, and the
 | W1 First grunt wave | **PASS** (`b3a4c24`) | Chunk 1 tests: `tests/grunt.rs` (10), `tests/orb.rs`, `tests/waves.rs` (7), `tests/knockback.rs` (5), with 501 passing on the merge. Play-test 1: fun 4, about right, no unfair deaths; Jake: "that was so much fun!" |
 | W2 Endless waves | **PASS** (`5086a57`) | Chunk 2 tests: `tests/waves.rs` (19), `tests/potions.rs` (5), `tests/waves_ui.rs` (11) and unit tests; 544 passing on the 2B branch, which contains main. Play-test 2: fun 4, about right, no unfair deaths |
 | W3 Fair knights | | |
-| W4 Ships and the void | | |
+| W4 Ships and the void | **PASS** (`fb039a3`) | `tests/ships.rs` (10), `tests/void.rs` (7), 6 unit tests; the branch's full suite, clippy, fmt and `build-art --check` are clean on top of `e1d5b9d`. Play-test 3: fun 4, about right, no unfair deaths |
 | W5 Castle and sky | | |
 | W6 Menu and controls | | |
 | W7 Performance (wave ≥ 6, battery, Low Power Mode) | | |
@@ -30,7 +30,7 @@ Every number here names its source (session folder or test), the commit, and the
 |---|---|---|---|---|---|---|---|
 | 1 | One grunt wave | `b3a4c24` | **4** | About right ("maybe a little hard to kill them in the 'early rounds'") | **None** | Early grunts a bit tanky → wave-1 HP 100 → 80 | `20260928-045508` (AC, 62 s), `20260928-045801` (AC, 387 s, measured under builder load) |
 | 2 | Endless waves | `5086a57` | **4** | About right | **None** | "the pump should hit a little harder" → pump falloff and knockback tuned; "map should be bigger with more progression / stuff to do... but thats out of scope" → backlog | `20260928-085054` (battery + LPM, 206 s, reached wave 3, score 1,900, 10 eliminations) |
-| 3 | Ships and the void | | | | | | |
+| 3 | Ships and the void | `fb039a3` | **4** | About right | **None** | Nothing named: "it was actually so much fun" | `20260928-163647` (battery + LPM, 250 s, wave 3, score 2,250, 12 eliminations); an earlier launch closed after 3 s when the display went away (`20260928-095221`) |
 | 4 | Castle and sky (look check) | | | | | | |
 | 5 | Menu and controls (final) | | | | | | |
 
@@ -150,3 +150,14 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - **Frames (S2 N/A, 206 s < 300 s):** mean 16.91 ms, p99 31.98, 168 frames > 25 ms, 94.45% < 18 ms. The spikes run all through the session and are denser in the heaviest fights. Background load from other apps was 7–25.
   - **Next:** a performance builder was dispatched (`m3-perf`). It adds per-frame attribution to the session log (CPU by schedule, GPU time if cheap, event counts, pipeline compiles), plus a spike report, and fixes per-event costs.
 - 2026-09-28: **settings file:** `Tuning::load_or_default` now takes only the menu-editable settings from `userdata/settings.json` (look, audio, graphics, HUD, feedback, aim friction). Every section is saved, so designer numbers had been frozen by Jake's first save; tuning changes (the pump) would otherwise never reach his game.
+- 2026-09-28: **chunk 3 merged** (`fb039a3`): drop ships and the void.
+  - Knights arrive by drop ship (`dropship.glb`, 1,632 triangles). It swoops from the station in about 4 s and hovers 12–16 m over one of 6 edge drop points.
+  - A rune circle lights 2 s before the first landing, with a hum. 1–3 knights come down a violet beam 0.4 s apart and can't be hit or act until they land.
+  - Knights alive or beaming never exceed 8, and the ship schedule is seeded.
+  - **The void:** a pump shove carries a knight through the barrier, and it is flung clear of the grass. It counts as a kill once 3 m below the island top (+100 +150), credited to the shover. The player can't cross.
+  - **Accepted decision:** "off the island" is judged at the barrier line, not the grass edge. The grass runs about 9 m past the barrier, more than a 5 m shove.
+  - **Known gaps:** a player standing on a lit circle can get knights landing closer than 12 m, and the 2 s warning is a hum then a shimmer rather than one sound.
+- 2026-09-28 09:36–09:41: **play-test 3** (release `pieced-play` from `fb039a3`, battery, Low Power Mode on, builds paused). Jake, quoted: "done playing, 4, about right, no unfair deaths it was actually so much fun. I think when we finish this pass, when we start making it look like a true AAA game, and then after that, when we start doing the story behind it and actual progression, it's going to be so fun." He reached wave 3 again (score 2,250).
+  - **Warm launch 4,139 ms**, with the window at 3,188 ms. More than 3 s goes before the window exists, and it grows with each build (cold launches of 6.8 s, the 8.7 s one, and 2.4–4.8 s windows). This is the W8 risk; the performance builder is looking at pre-window work.
+  - **Frames (S2 N/A, 250 s < 300 s):** mean 16.98 ms, p99 33.2, 278 frames > 25 ms, 94.31% < 18 ms.
+  - **Bug found:** the first run of every launch uses the same seed (272065245258904011 in play-tests 2 and 3). D83 wants each run different unless `--seed` is given; being fixed.

@@ -11,3 +11,4 @@ Features Jake wants later. They're not in the current milestone's scope; each be
 | 2026-09-27 | **More content** | New maps and guns to keep endless runs fresh (D58); a 1v1 build-fight mode; cosmetics such as robe colours and gun skins. |
 | 2026-09-27 | **Rename the game and name the modes** | D66: "Waves" is a placeholder. |
 | 2026-09-28 | **Bigger map and more progression** | Jake after play-test 2: "map should be bigger with more progression / stuff to do... but thats out of scope". Pairs with More content (new maps) and the Economy (points shop, upgrades). |
+| 2026-09-28 | **After Waves: an AAA look pass, then story and progression** | Jake after play-test 3: "when we finish this pass, when we start making it look like a true AAA game, and then after that, when we start doing the story behind it and actual progression, it's going to be so fun." That's the order of the next milestones: look, then story and progression. |
