@@ -62,7 +62,7 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
     - chunk 1, hit feedback and kills (`m4-hit-feedback`).
   - The art slice waits for a free build slot.
   - A researcher is shortlisting CC0 and CC-BY music for chunk 3's listening page. Nothing is downloaded before Jake's OK (D116).
-  - The board targets (`M4-V1`–`V8`) are in use as generated; Jake's explicit approval is still pending.
+  - The board targets (`M4-V1`–`V8`) are in use as generated.
 - 2026-09-28: **the music listening page is ready** (private Artifact https://claude.ai/artifact/6PhbUgWT9KYcLFX8r5E3Dx).
   - It lists 3 candidates for each of the 7 slots, all from OpenGameArt or Freesound, with every license checked on its page. Incompetech was left out: its pages wouldn't render, so its license couldn't be verified, and it offers MP3 only.
   - Recommended picks:
@@ -77,3 +77,4 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 - 2026-09-28: **music direction (D119).** Jake: "I'm sure your recs on the music are good. I want it to feel like John Williams composed this game."
   - The first shortlist leaned festival and comic, so a researcher is re-shortlisting symphonic, brass-fanfare and celesta candidates (CC0 or CC-BY only).
   - Jake gets one final file list to OK before anything is downloaded.
+- 2026-09-28: **board approved.** Jake: "approve all 8 board images". `M4-V1`–`V8` are the A6 targets.

@@ -264,7 +264,7 @@ The goal, from Jake: make Pieced "play and feel like a AAA game". Story and real
   - V1's hotbar shows made-up items;
   - V6's pump lost its bell muzzle;
   - V7's "17 knights incoming" should read 15 for wave 7.
-- **Waiting on Jake's approval** before the spec's board is final.
+- **Approved by Jake, 2026-09-28:** "approve all 8 board images". They are the A6 target board.
 
 **Music direction, 2026-09-28** (after the first listening page). Jake: "I'm sure your recs on the music are good. I want it to feel like John Williams composed this game."
 
