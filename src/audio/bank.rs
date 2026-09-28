@@ -90,8 +90,8 @@ pub const WAND_WARNING: CueSpec = spec(0.40, -11.0);
 // The run's beats (M3 chunk 2).
 pub const POTION_GULP: CueSpec = spec(0.50, -11.0);
 pub const WAVE_CLEARED: CueSpec = spec(0.90, -11.0);
-pub const WAVE_START: CueSpec = spec(0.55, -11.0);
-pub const NEW_BEST: CueSpec = spec(1.20, -10.0);
+pub const WAVE_START: CueSpec = spec(0.55, -12.0);
+pub const NEW_BEST: CueSpec = spec(1.00, -10.0);
 
 /// Round-robin takes for the cues that repeat fastest (the rifle fires six times a
 /// second; footsteps never stop), so repeats never sound machine-gunned.
@@ -1101,6 +1101,8 @@ pub fn wave_start() -> Vec<f32> {
                 * attack(t, 0.02)
                 * release(t, len, 0.06)
         });
+        // A bright ping on each note's onset gives the call its bite.
+        chime(&mut b, at, freq * 2.0, 0.04, 0.5);
         noise_bp(
             &mut b,
             at,
@@ -1118,7 +1120,7 @@ pub fn wave_start() -> Vec<f32> {
 /// "NEW BEST!": a fanfare arpeggio (C5 E5 G5 C6), a held bright chord and a
 /// shower of sparkles.
 pub fn new_best() -> Vec<f32> {
-    let mut b = Buffer::new(1.2);
+    let mut b = Buffer::new(0.98);
     for (i, m) in [72.0, 76.0, 79.0].into_iter().enumerate() {
         let at = 0.09 * i as f32;
         let mut o = Osc::default();
@@ -1132,11 +1134,11 @@ pub fn new_best() -> Vec<f32> {
     for (k, m) in [84.0, 88.0, 91.0].into_iter().enumerate() {
         let (mut o1, mut o2) = (Osc::default(), Osc::at(0.1 * k as f32));
         let freq = note(m);
-        b.add(hold, 0.8, 0.28, |t| {
+        b.add(hold, 0.7, 0.28, |t| {
             (o1.soft_square(freq, 1.2) + 0.25 * o2.sine(freq * 2.0))
                 * attack(t, 0.01)
-                * decay(t, 0.35)
-                * release(t, 0.8, 0.1)
+                * decay(t, 0.3)
+                * release(t, 0.7, 0.1)
         });
     }
     chime(&mut b, hold, note(96.0), 0.25, 0.5);

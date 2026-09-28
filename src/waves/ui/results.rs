@@ -81,7 +81,7 @@ pub fn burst_pixels(size: u32) -> Vec<u8> {
             let a = p.y.atan2(p.x).rem_euclid(std::f32::consts::TAU);
             let k = (a / seg).floor();
             let f = a / seg - k;
-            let (r0, r1) = if k as usize % 2 == 0 {
+            let (r0, r1) = if (k as usize).is_multiple_of(2) {
                 (outer, inner)
             } else {
                 (inner, outer)
@@ -395,11 +395,12 @@ fn spawn_results(
 
 /// The burst's pop and wobble at `age` seconds (scale, rotation in radians).
 pub fn burst_motion(age: f32) -> (f32, f32) {
-    let pop = super::hud::pop_scale(age, 0.45, 0.6);
-    let grow = (age / 0.12).clamp(0.0, 1.0);
+    let x = (age / 0.45).clamp(0.0, 1.0);
+    // Bursts out past full size, then settles and breathes.
+    let pop = 1.0 - (1.0 - x).powi(3) + 0.5 * (x * std::f32::consts::PI).sin() * (1.0 - x);
     let breathe = 1.0 + 0.04 * (age * 5.0).sin();
     let wobble = -0.21 + 0.06 * (age * 3.1).sin();
-    (grow * pop * breathe, wobble)
+    (pop * breathe, wobble)
 }
 
 #[allow(clippy::type_complexity)]
@@ -588,7 +589,10 @@ mod tests {
     #[test]
     fn the_burst_pops_in_then_breathes() {
         assert_eq!(burst_motion(0.0).0, 0.0);
-        assert!(burst_motion(0.15).0 > 1.1, "overshoots");
+        let peak = (1..45)
+            .map(|i| burst_motion(i as f32 * 0.01).0)
+            .fold(0.0, f32::max);
+        assert!(peak > 1.1, "overshoots: {peak}");
         let late = burst_motion(3.0).0;
         assert!((0.95..1.05).contains(&late), "{late}");
     }

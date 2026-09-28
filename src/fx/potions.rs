@@ -341,7 +341,7 @@ fn setup_potion_fx(
         flash_slots: SlotPool::new(FLASH_POOL),
         flashes,
         flash_live: vec![None; FLASH_POOL],
-        rng: FxRng::new(0x9071_0F),
+        rng: FxRng::new(0x0090_710F),
         clock: 0.0,
         next_mote: 0.0,
     });
@@ -422,7 +422,7 @@ pub fn bottle_pose(age: f32, clock: f32, phase: f32) -> (f32, f32, f32, f32) {
     let pop = if age < POP_SECONDS {
         let x = (age / POP_SECONDS).clamp(0.0, 1.0);
         // Swells past full size, then settles.
-        x * (1.0 + 0.35 * (1.0 - x) * (x * std::f32::consts::PI).sin() * 2.0)
+        1.0 - (1.0 - x).powi(3) + 0.35 * (x * std::f32::consts::PI).sin() * (1.0 - x)
     } else {
         1.0
     };

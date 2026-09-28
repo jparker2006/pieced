@@ -386,8 +386,8 @@ impl Sfx {
             return 3;
         }
         match self.category() {
-            SfxCategory::Hits | SfxCategory::Run => 3,
-            SfxCategory::Weapons | SfxCategory::Building => 2,
+            SfxCategory::Hits => 3,
+            SfxCategory::Weapons | SfxCategory::Building | SfxCategory::Run => 2,
             SfxCategory::Movement => 1,
         }
     }
