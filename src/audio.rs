@@ -493,7 +493,14 @@ pub struct GameAudioPlugin;
 
 impl Plugin for GameAudioPlugin {
     fn build(&self, app: &mut App) {
+        // Synthesis starts now, on its own thread, so it overlaps the renderer
+        // and window setup instead of adding to Startup (launch, W8).
+        let job = std::thread::Builder::new()
+            .name("sound-bank".into())
+            .spawn(render_bank)
+            .ok();
         app.init_resource::<PlayQueue>()
+            .insert_resource(SoundBankJob(std::sync::Mutex::new(job)))
             .add_systems(Startup, build_sound_bank)
             .add_observer(attach_listener)
             .add_systems(
@@ -512,9 +519,9 @@ impl Plugin for GameAudioPlugin {
     }
 }
 
-/// A playing sound effect.
+/// A playing sound effect (public so the session log can count voices).
 #[derive(Component, Debug, Clone, Copy)]
-pub(crate) struct Voice {
+pub struct Voice {
     priority: u8,
     started: f64,
     /// Volume before master volume (so master changes apply live).
@@ -589,8 +596,23 @@ impl PlayQueue {
     }
 }
 
-fn build_sound_bank(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>) {
-    let handles = render_bank()
+/// The sound bank's synthesis thread, started when the plugin builds.
+#[derive(Resource)]
+struct SoundBankJob(std::sync::Mutex<Option<std::thread::JoinHandle<Vec<Vec<Vec<u8>>>>>>);
+
+fn build_sound_bank(
+    mut commands: Commands,
+    mut sources: ResMut<Assets<AudioSource>>,
+    job: Option<Res<SoundBankJob>>,
+) {
+    let handle = job.and_then(|j| j.0.lock().ok().and_then(|mut h| h.take()));
+    // Joined here (normally long finished); synthesized in place if the
+    // thread could not start or panicked.
+    let bank = handle
+        .and_then(|h| h.join().ok())
+        .unwrap_or_else(render_bank);
+    commands.remove_resource::<SoundBankJob>();
+    let handles = bank
         .into_iter()
         .map(|takes| {
             takes

@@ -89,7 +89,7 @@ impl Default for OrbitCamera {
         Self {
             center: Vec3::new(0.0, 1.5, 0.0),
             radius: 34.0,
-            height: 14.0,
+            height: 10.0,
             speed: 0.05,
             start: 0.0,
             t: 0.0,
@@ -180,7 +180,7 @@ fn spawn_title(mut commands: Commands, art: Option<Res<UiArt>>) {
                                 label,
                                 button == MainMenuButton::Waves,
                                 72.0,
-                                30.0,
+                                26.0,
                                 Some(art.crystal_blue.clone()),
                             ),
                         ));

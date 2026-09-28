@@ -1286,8 +1286,9 @@ fn follow_path(brain: &mut GruntBrain, nav: &NavGrid, feet: Vec3, tick: u64) -> 
             break;
         }
     }
-    // String-pull across open ground.
-    if tick.is_multiple_of(4) && feet.y < 0.5 {
+    // String-pull across open ground, every 4 ticks, staggered by the
+    // brain's phase so the knights of a wave don't all pull on one tick.
+    if (tick + u64::from(brain.phase)).is_multiple_of(4) && feet.y < 0.5 {
         while brain.path_index + 1 < len {
             let (a, b) = (
                 brain.path[brain.path_index],

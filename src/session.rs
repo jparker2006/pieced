@@ -4,10 +4,13 @@
 //! folders, and never headless tests) writes
 //! `userdata/sessions/<YYYYMMDD-HHMMSS>/` (UTC stamp):
 //!
-//! - `frames.csv`: `frame,t_ms,dt_ms,state,occluded`, one row per frame;
+//! - `frames.csv`: `frame,t_ms,dt_ms,state,occluded`, then where the frame's
+//!   time went and what happened in it ([`crate::profile`]), one row per
+//!   frame;
 //! - `session.json`: commit, build id, preset, launch time (cold or warm) and
 //!   its boot phases, power and Low Power Mode samples, occluded and play
-//!   time, and the S2 verdict over the counted frames.
+//!   time, the S2 verdict over the counted frames, and the spike report
+//!   ([`SpikeStats`]; `scripts/sessions.py --spikes` prints it).
 //!
 //! The main thread only pushes a small `Copy` row into a bounded channel each
 //! frame. A background writer thread owns the files: it buffers the CSV and
@@ -23,6 +26,10 @@
 //! launch's (`userdata/sessions/last_build`), and **warm** otherwise.
 
 use crate::{
+    profile::{
+        Bucket, COUNTER_COLUMNS, FrameCost, FrameProfile, LastCounters, LastGpu, ProfileSystems,
+        TIME_COLUMNS,
+    },
     render::QualityPreset,
     shared::AppState,
     telemetry::{
@@ -128,6 +135,352 @@ pub struct SessionFrame {
     pub state: FrameState,
     /// The window was occluded (covered, not composited) at the frame's end.
     pub occluded: bool,
+    /// Where the interval went and what happened in it (zero when the
+    /// profiler is not running, as in most headless tests).
+    pub cost: FrameCost,
+}
+
+impl SessionFrame {
+    /// A row with no attribution (tests and tools).
+    pub fn plain(frame: u64, t_ms: f64, dt_ms: f64, state: FrameState) -> Self {
+        Self {
+            frame,
+            t_ms,
+            dt_ms,
+            state,
+            occluded: false,
+            cost: FrameCost::default(),
+        }
+    }
+}
+
+/// The `frames.csv` header: the M3 chunk 0 columns, then the attribution
+/// columns (see [`crate::profile`]).
+pub fn csv_header() -> String {
+    let mut h = String::from("frame,t_ms,dt_ms,state,occluded");
+    for c in TIME_COLUMNS.iter().chain(COUNTER_COLUMNS.iter()) {
+        h.push(',');
+        h.push_str(c);
+    }
+    h
+}
+
+/// Writes one `frames.csv` line (without the newline).
+pub fn write_csv_row(out: &mut impl Write, row: &SessionFrame) -> std::io::Result<()> {
+    let c = &row.cost;
+    write!(
+        out,
+        "{},{:.3},{:.3},{},{}",
+        row.frame,
+        row.t_ms,
+        row.dt_ms,
+        row.state.label(),
+        u8::from(row.occluded)
+    )?;
+    for v in [c.pre_ms, c.fixed_ms, c.physics_ms] {
+        write!(out, ",{v:.3}")?;
+    }
+    write!(out, ",{}", c.ticks)?;
+    for v in [
+        c.update_ms,
+        c.post_ms,
+        c.extract_ms,
+        c.prepare_ms,
+        c.acquire_ms,
+        c.graph_ms,
+        c.render_end_ms,
+        c.idle_ms,
+        c.vsync_dt_ms,
+    ] {
+        write!(out, ",{v:.3}")?;
+    }
+    match c.gpu_ms {
+        Some(g) => write!(out, ",{g:.3}")?,
+        None => write!(out, ",")?,
+    }
+    write!(out, ",{:.3}", c.work_ms())?;
+    for v in c.counters.values() {
+        write!(out, ",{v}")?;
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Spike attribution
+// ---------------------------------------------------------------------------
+
+/// A counted frame over this is a spike (S2's hitch threshold).
+pub const SPIKE_MS: f64 = 25.0;
+/// How fast each bucket's typical value follows normal frames.
+const BASELINE_ALPHA: f32 = 0.02;
+/// The worst spikes kept in the report.
+pub const WORST_KEPT: usize = 12;
+/// A spike whose largest bucket excess is under this is `unattributed`: the
+/// time went somewhere the markers do not see.
+pub const MIN_EXCESS_MS: f32 = 1.0;
+
+/// Events a spike may coincide with (in the spike's row or the row before,
+/// since a frame's render cost shows up in the next row).
+pub const SPIKE_EVENTS: [&str; 10] = [
+    "pipeline_compile",
+    "knight_spawn",
+    "orb_fired",
+    "piece_placed",
+    "piece_cracked",
+    "piece_broken",
+    "player_shot",
+    "damage",
+    "sound_started",
+    "two_fixed_ticks",
+];
+
+fn events_of(c: &FrameCost) -> [bool; SPIKE_EVENTS.len()] {
+    let k = &c.counters;
+    [
+        k.pipelines_compiled > 0,
+        k.knights_spawned > 0,
+        k.orbs_fired > 0,
+        k.placed > 0,
+        k.cracked > 0,
+        k.broken > 0,
+        k.shots > 0,
+        k.damage > 0,
+        k.voices_started > 0,
+        c.ticks >= 2,
+    ]
+}
+
+/// One spike, as the report lists it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SpikeFrame {
+    pub frame: u64,
+    pub t_ms: f64,
+    pub dt_ms: f64,
+    /// The bucket furthest above its typical value (or `unattributed`).
+    pub cause: &'static str,
+    pub excess_ms: f32,
+    /// Every bucket's time on this frame.
+    pub buckets_ms: Vec<(&'static str, f32)>,
+    /// The events on this frame or the one before.
+    pub events: Vec<&'static str>,
+    pub knights: u16,
+    pub orbs: u16,
+    pub particles: u16,
+    pub debris: u16,
+    pub entities: u32,
+}
+
+/// Which bucket each spike came from, over the counted frames. Built on the
+/// writer thread from the rows as they stream in.
+#[derive(Debug, Clone, Default)]
+pub struct SpikeStats {
+    baseline: Option<[f32; Bucket::ALL.len()]>,
+    normal_frames: u64,
+    normal_sum: [f64; Bucket::ALL.len()],
+    spikes: u64,
+    spike_sum: [f64; Bucket::ALL.len()],
+    by_cause: [u64; Bucket::ALL.len() + 1],
+    event_frames: [u64; SPIKE_EVENTS.len()],
+    event_spikes: [u64; SPIKE_EVENTS.len()],
+    counted: u64,
+    runs: u64,
+    last_was_spike: bool,
+    previous: Option<(FrameCost, f64)>,
+    late_then_early: u64,
+    vsync_frames: u64,
+    vsync_under_18: u64,
+    attributed_rows: u64,
+    worst: Vec<SpikeFrame>,
+}
+
+impl SpikeStats {
+    /// Takes one row; `counted` is whether it counts for S2.
+    pub fn observe(&mut self, row: &SessionFrame, counted: bool) {
+        let previous = self.previous.take();
+        if row.state.is_playing() {
+            self.previous = Some((row.cost, row.dt_ms));
+        }
+        if !counted {
+            self.last_was_spike = false;
+            return;
+        }
+        let c = &row.cost;
+        self.counted += 1;
+        if c.work_ms() > 0.0 {
+            self.attributed_rows += 1;
+        }
+        if c.vsync_dt_ms > 0.0 {
+            self.vsync_frames += 1;
+            if c.vsync_dt_ms < 18.0 {
+                self.vsync_under_18 += 1;
+            }
+        }
+        if let Some((_, prev_dt)) = previous
+            && prev_dt > 18.0
+            && prev_dt <= SPIKE_MS
+            && row.dt_ms < 15.5
+        {
+            self.late_then_early += 1;
+        }
+        let mut events = events_of(c);
+        if let Some((p, _)) = &previous {
+            for (e, before) in events.iter_mut().zip(events_of(p)) {
+                *e |= before;
+            }
+        }
+        for (i, on) in events.iter().enumerate() {
+            if *on {
+                self.event_frames[i] += 1;
+            }
+        }
+        let values = Bucket::ALL.map(|b| c.bucket(b));
+        if row.dt_ms <= SPIKE_MS {
+            self.last_was_spike = false;
+            if row.dt_ms < 18.0 {
+                self.normal_frames += 1;
+                for (sum, v) in self.normal_sum.iter_mut().zip(values) {
+                    *sum += f64::from(v);
+                }
+                match self.baseline.as_mut() {
+                    None => self.baseline = Some(values),
+                    Some(base) => {
+                        for (b, v) in base.iter_mut().zip(values) {
+                            *b += (v - *b) * BASELINE_ALPHA;
+                        }
+                    }
+                }
+            }
+            return;
+        }
+        // A spike.
+        self.spikes += 1;
+        if !self.last_was_spike {
+            self.runs += 1;
+        }
+        self.last_was_spike = true;
+        for (sum, v) in self.spike_sum.iter_mut().zip(values) {
+            *sum += f64::from(v);
+        }
+        for (i, on) in events.iter().enumerate() {
+            if *on {
+                self.event_spikes[i] += 1;
+            }
+        }
+        let base = self.baseline.unwrap_or([0.0; Bucket::ALL.len()]);
+        let (idx, excess) = values
+            .iter()
+            .zip(base)
+            .map(|(v, b)| v - b)
+            .enumerate()
+            .fold(
+                (0, f32::MIN),
+                |best, (i, e)| if e > best.1 { (i, e) } else { best },
+            );
+        let cause_idx = if excess >= MIN_EXCESS_MS {
+            idx
+        } else {
+            Bucket::ALL.len()
+        };
+        self.by_cause[cause_idx] += 1;
+        let spike = SpikeFrame {
+            frame: row.frame,
+            t_ms: row.t_ms,
+            dt_ms: row.dt_ms,
+            cause: cause_name(cause_idx),
+            excess_ms: excess.max(0.0),
+            buckets_ms: Bucket::ALL
+                .iter()
+                .map(|b| (b.name(), c.bucket(*b)))
+                .collect(),
+            events: SPIKE_EVENTS
+                .iter()
+                .zip(events)
+                .filter(|(_, on)| *on)
+                .map(|(n, _)| *n)
+                .collect(),
+            knights: c.counters.knights,
+            orbs: c.counters.orbs,
+            particles: c.counters.particles,
+            debris: c.counters.debris,
+            entities: c.counters.entities,
+        };
+        let pos = self
+            .worst
+            .iter()
+            .position(|w| w.dt_ms < spike.dt_ms)
+            .unwrap_or(self.worst.len());
+        if pos < WORST_KEPT {
+            self.worst.insert(pos, spike);
+            self.worst.truncate(WORST_KEPT);
+        }
+    }
+
+    pub fn spikes(&self) -> u64 {
+        self.spikes
+    }
+
+    /// Spikes per cause (bucket name or `unattributed`), most first.
+    pub fn by_cause(&self) -> Vec<(&'static str, u64)> {
+        let mut out: Vec<(&'static str, u64)> = self
+            .by_cause
+            .iter()
+            .enumerate()
+            .filter(|(_, n)| **n > 0)
+            .map(|(i, n)| (cause_name(i), *n))
+            .collect();
+        out.sort_by_key(|a| std::cmp::Reverse(a.1));
+        out
+    }
+
+    /// The report for `session.json`.
+    pub fn to_json(&self) -> serde_json::Value {
+        let mean = |sum: &[f64; Bucket::ALL.len()], n: u64| -> serde_json::Value {
+            let mut m = serde_json::Map::new();
+            for (b, s) in Bucket::ALL.iter().zip(sum) {
+                let v = if n > 0 { s / n as f64 } else { 0.0 };
+                m.insert(b.name().into(), json!((v * 1000.0).round() / 1000.0));
+            }
+            serde_json::Value::Object(m)
+        };
+        let events: serde_json::Map<String, serde_json::Value> = SPIKE_EVENTS
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let share = |k: u64, n: u64| if n > 0 { k as f64 / n as f64 } else { 0.0 };
+                (
+                    (*name).to_string(),
+                    json!({
+                        "spikes": self.event_spikes[i],
+                        "share_of_spikes": share(self.event_spikes[i], self.spikes),
+                        "share_of_frames": share(self.event_frames[i], self.counted),
+                    }),
+                )
+            })
+            .collect();
+        json!({
+            "threshold_ms": SPIKE_MS,
+            "counted_frames": self.counted,
+            "attributed_frames": self.attributed_rows,
+            "spikes": self.spikes,
+            "spike_runs": self.runs,
+            "by_cause": self.by_cause().into_iter().map(|(c, n)| json!({"cause": c, "spikes": n})).collect::<Vec<_>>(),
+            "mean_ms_on_spikes": mean(&self.spike_sum, self.spikes),
+            "mean_ms_on_normal_frames": mean(&self.normal_sum, self.normal_frames),
+            "events": events,
+            "late_then_early_pairs": self.late_then_early,
+            "vsync_pct_under_18_ms": if self.vsync_frames > 0 {
+                self.vsync_under_18 as f64 * 100.0 / self.vsync_frames as f64
+            } else {
+                0.0
+            },
+            "worst": self.worst,
+            "notes": "cause = the bucket furthest above its typical (normal-frame) value; acquire = waiting for the swapchain drawable (display or GPU behind); events count this row or the one before (a frame's render cost lands in the next row); vsync_pct_under_18_ms uses the drawable-acquire cadence instead of the CPU-side interval",
+        })
+    }
+}
+
+fn cause_name(idx: usize) -> &'static str {
+    Bucket::ALL.get(idx).map_or("unattributed", |b| b.name())
 }
 
 /// Whether a frame counts for S2: it is a `Playing` frame with a measured
@@ -794,6 +1147,7 @@ struct WriterState {
     launch: Option<LaunchRecord>,
     plays: Vec<PlayRecord>,
     dropped: Arc<AtomicU64>,
+    spikes: SpikeStats,
 }
 
 impl WriterState {
@@ -819,6 +1173,7 @@ impl WriterState {
             launch: None,
             plays: Vec::new(),
             dropped,
+            spikes: SpikeStats::default(),
         };
         match create_session_dir(&config.sessions_dir, &config.stamp) {
             Ok(dir) => {
@@ -828,7 +1183,7 @@ impl WriterState {
                 }
                 let csv = File::create(dir.join("frames.csv")).and_then(|file| {
                     let mut out = BufWriter::with_capacity(1 << 16, file);
-                    writeln!(out, "frame,t_ms,dt_ms,state,occluded")?;
+                    writeln!(out, "{}", csv_header())?;
                     out.flush()?;
                     Ok(out)
                 });
@@ -853,15 +1208,7 @@ impl WriterState {
 
     fn frame(&mut self, row: SessionFrame) {
         if let Some(csv) = self.csv.as_mut() {
-            let written = writeln!(
-                csv,
-                "{},{:.3},{:.3},{},{}",
-                row.frame,
-                row.t_ms,
-                row.dt_ms,
-                row.state.label(),
-                u8::from(row.occluded)
-            );
+            let written = write_csv_row(csv, &row).and_then(|()| writeln!(csv));
             if let Err(e) = written {
                 self.csv = None;
                 self.error(format!("frames.csv write: {e}"));
@@ -875,7 +1222,9 @@ impl WriterState {
                 self.occluded_play_ms += row.dt_ms;
             }
         }
-        if self.filter.admit(&row) {
+        let counted = self.filter.admit(&row);
+        self.spikes.observe(&row, counted);
+        if counted {
             self.counted.push(row.dt_ms);
             self.counted_ms += row.dt_ms;
             if row.occluded {
@@ -965,6 +1314,7 @@ impl WriterState {
             "errors": self.errors,
             "s2": report,
             "s2_line": quit_line(&report),
+            "spikes": self.spikes.to_json(),
             "s2_rules": {
                 "counted_frames": "Playing only; not the first 10 s after launch nor the first 1 s after each return to Playing",
                 "qualifies": "≥ 300 s counted play, every power sample on battery with Low Power Mode on, never occluded during counted play, release build, Battery preset",
@@ -1040,6 +1390,7 @@ impl Plugin for SessionPlugin {
                 (push_frame, track_preset, forward_launch, finish_on_exit)
                     .chain()
                     .after(TelemetrySystems)
+                    .after(ProfileSystems)
                     .after(bevy::window::ExitSystems)
                     .run_if(resource_exists::<SessionLog>),
             );
@@ -1148,18 +1499,42 @@ fn start_session(
     }
 }
 
+/// The attribution for the frame ending now: the profiler's buckets plus the
+/// counters gathered in `Last` (all zero without [`crate::profile::FrameProfilePlugin`]).
+fn frame_cost(
+    profile: Option<&FrameProfile>,
+    counters: Option<&LastCounters>,
+    gpu: Option<&LastGpu>,
+) -> FrameCost {
+    let mut cost = profile.map(FrameProfile::cost).unwrap_or_default();
+    if let Some(counters) = counters {
+        let compiled = cost.counters.pipelines_compiled;
+        cost.counters = counters.0;
+        cost.counters.pipelines_compiled = compiled;
+    }
+    cost.gpu_ms = gpu.and_then(|g| g.0);
+    cost
+}
+
 fn push_frame(
     log: Res<SessionLog>,
     last: Res<LastFrame>,
     state: Res<State<AppState>>,
     conditions: Res<RunConditions>,
+    attribution: (
+        Option<Res<FrameProfile>>,
+        Option<Res<LastCounters>>,
+        Option<Res<LastGpu>>,
+    ),
 ) {
+    let (profile, counters, gpu) = attribution;
     log.writer.push(SessionFrame {
         frame: last.frame,
         t_ms: last.t_ms,
         dt_ms: last.dt_ms,
         state: FrameState::of(state.get()),
         occluded: conditions.occluded_now,
+        cost: frame_cost(profile.as_deref(), counters.as_deref(), gpu.as_deref()),
     });
 }
 

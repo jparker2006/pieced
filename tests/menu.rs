@@ -64,7 +64,11 @@ fn client(mode: GameMode, target: Option<AppState>) -> Sim {
         WavesClientPlugin,
         MenuUiPlugin,
         BootPlugin,
+        pieced::telemetry::TelemetryPlugin,
     ))
+    // The window messages telemetry reads (no `WindowPlugin` headless).
+    .add_message::<bevy::window::WindowCreated>()
+    .add_message::<bevy::window::WindowOccluded>()
     .insert_resource(TimeUpdateStrategy::ManualDuration(tick_duration()))
     .insert_resource(SimRng(Rng::new(21)))
     .insert_resource(mode)
@@ -223,6 +227,26 @@ fn boot_opens_the_main_menu_over_an_idle_island() {
     updates(&mut sim, 5);
     assert_eq!(state(&sim), AppState::Menu);
     assert_eq!(sim.sim_tick(), tick, "the menu doesn't simulate");
+}
+
+#[test]
+fn launch_ready_is_the_clickable_menu() {
+    use pieced::telemetry::{BootPhases, LaunchTime};
+    let mut sim = menu_game();
+    assert!(sim.world().resource::<LaunchTime>().0.is_some(), "timed");
+    let phases = sim.world().resource::<BootPhases>().clone();
+    assert!(phases.menu_ready_ms.is_some(), "menu_ready");
+    assert_eq!(phases.controllable_ms, None, "not play: the menu");
+    assert!(phases.phases().iter().any(|(p, _)| p == "menu_ready"));
+    // Starting a mode doesn't retime the launch.
+    let launch = sim.world().resource::<LaunchTime>().0;
+    click(&mut sim, MainMenuButton::Practice);
+    updates(&mut sim, 3);
+    assert_eq!(sim.world().resource::<LaunchTime>().0, launch);
+    // A launch straight into play still times "controllable".
+    let direct = client(GameMode::Practice, None);
+    let phases = direct.world().resource::<BootPhases>().clone();
+    assert!(phases.controllable_ms.is_some() && phases.menu_ready_ms.is_none());
 }
 
 #[test]

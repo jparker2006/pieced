@@ -34,3 +34,7 @@ debug = false
 opt-level = 3
 codegen-units = 16
 debug = false
+# No symbol table in the play binary: 75 MB of its 190 MB, and a new binary's
+# first (cold) launch is scanned in full before it runs. Panics still name
+# file:line; backtraces lose function names.
+strip = "symbols"

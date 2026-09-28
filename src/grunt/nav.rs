@@ -430,10 +430,17 @@ impl<'a> NavGrid<'a> {
         out.iter().any(|(n, _)| *n == b)
     }
 
-    /// Whether every move along `path` still exists.
+    /// Whether every move along `path` still exists (one scratch list for
+    /// the whole path: every grunt revalidates on each piece change).
     pub fn path_valid(&self, path: &[NavNode]) -> bool {
-        path.first().is_none_or(|n| self.node_exists(*n))
-            && path.windows(2).all(|w| self.is_move(w[0], w[1]))
+        if !path.first().is_none_or(|n| self.node_exists(*n)) {
+            return false;
+        }
+        let mut out = Vec::with_capacity(16);
+        path.windows(2).all(|w| {
+            self.successors(w[0], None, &mut out);
+            out.iter().any(|(n, _)| *n == w[1])
+        })
     }
 
     /// A* from `start` (standing at `start_pos`) to `goal`, expanding at most
