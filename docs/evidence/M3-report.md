@@ -17,7 +17,7 @@ Every number here names its source (session folder or test), the commit, and the
 | W6 Menu and controls | **PASS** (`c3f6379`) | `tests/menu.rs` (15), `tests/bindings.rs` (10), updated `tests/waves_ui.rs`; the branch's full suite on top of `c2d4eed` had 609 passing, 0 failed (15 ignored); clippy and fmt clean. The ignored `tests/hud_offscreen.rs` review render covers the main menu and the Controls page (T12 style) |
 | W7 Performance (wave ≥ 6, battery, Low Power Mode) | | |
 | W8 Launch (warm < 5 s ×3; Play → controllable < 1 s) | | |
-| W9 Fun verdict (fun ≥ 4, no unfair deaths) | | |
+| W9 Fun verdict (fun ≥ 4, no unfair deaths) | **PASS** (`c3f6379`) | Play-test 5, quoted: "done playing, 4.5, about right, no unfair deaths, that was actually so much fun." Every play-test is recorded above: 4, 4, 4, castle 5/5, 4.5, with no unfair deaths in any |
 | W10 No regressions | | |
 
 ## Castle concept
@@ -32,7 +32,7 @@ Every number here names its source (session folder or test), the commit, and the
 | 2 | Endless waves | `5086a57` | **4** | About right | **None** | "the pump should hit a little harder" → pump falloff and knockback tuned; "map should be bigger with more progression / stuff to do... but thats out of scope" → backlog | `20260928-085054` (battery + LPM, 206 s, reached wave 3, score 1,900, 10 eliminations) |
 | 3 | Ships and the void | `fb039a3` | **4** | About right | **None** | Nothing named: "it was actually so much fun" | `20260928-163647` (battery + LPM, 250 s, wave 3, score 2,250, 12 eliminations); an earlier launch closed after 3 s when the display went away (`20260928-095221`) |
 | 4 | Castle and sky (look check) | `fb039a3` | Castle views **5 and 5** against C4 | — | — | — | Jake saw the castle in play-tests 1–3; he scored the offscreen spawn and up views in `docs/evidence/m3/castle/` next to `M3-C4` |
-| 5 | Menu and controls (final) | | | | | | |
+| 5 | Menu and controls (final) | `c3f6379` | **4.5** | About right | **None** | Nothing named. Jake: "that was actually so much fun … one time, they did break my ramps, which was just awesome" | `20260928-212450` (AC, reached wave 5, score 5,250, 25 eliminations, 363 s; fresh seed) |
 
 ## Tuning changes
 
@@ -187,3 +187,7 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - **Launch timing:** `PIECED_LAUNCH_MS` marks the clickable menu (`menu_ready`); `PIECED_PLAY_MS <ms> <mode>` prints each mode start and is logged under `plays`.
   - **Fresh seeds:** without `--seed`, each launch seeds from OS entropy and the clock.
 - 2026-09-28: **play-test 5 launched** (release `pieced-play` from `c3f6379`, 126 MB after stripping). The first launch at 11:13 on battery recorded 0 s of play (session `20260928-181344`). Relaunched at 14:24 on AC (5%, charging).
+- 2026-09-28 14:24–14:31: **play-test 5, the final verdict** (release `pieced-play` from `c3f6379`, AC power, Low Power Mode on). Jake, quoted: "done playing, 4.5, about right, no unfair deaths, that was actually so much fun. My strategy was I would just build up really high, and eventually they would start chasing me up my ramps. Something I really liked: one time, they did break my ramps, which was just awesome." **W9 PASS.** He reached wave 5 (score 5,250, 25 eliminations), with a fresh seed.
+  - **Launch:** 4,570 ms **warm** to a clickable menu (app built 721 ms, window 2,002 ms, knight rig +1.3 s, menu 4,570 ms). Play → controllable took 36 ms.
+  - **First attributed spike report** (`scripts/sessions.py --spikes`): 2,121 frames > 25 ms, 81.8% < 18 ms, not on battery. **86% of the spikes are `acquire`**, waiting for the swapchain drawable, so **the GPU is behind**, not gameplay CPU (fixed 4%, prepare 6%). Orb and damage frames are slightly over-represented (lift 1.7–1.8).
+  - **Caveat:** from about 14:28 the fairness suite compiled and ran at low priority beside the game, so this session's frame numbers are pessimistic. The attribution still points at GPU cost, which matters for W7 and for the look pass.
