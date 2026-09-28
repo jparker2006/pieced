@@ -369,7 +369,10 @@ impl SpikeStats {
             .zip(base)
             .map(|(v, b)| v - b)
             .enumerate()
-            .fold((0, f32::MIN), |best, (i, e)| if e > best.1 { (i, e) } else { best });
+            .fold(
+                (0, f32::MIN),
+                |best, (i, e)| if e > best.1 { (i, e) } else { best },
+            );
         let cause_idx = if excess >= MIN_EXCESS_MS {
             idx
         } else {
@@ -382,7 +385,10 @@ impl SpikeStats {
             dt_ms: row.dt_ms,
             cause: cause_name(cause_idx),
             excess_ms: excess.max(0.0),
-            buckets_ms: Bucket::ALL.iter().map(|b| (b.name(), c.bucket(*b))).collect(),
+            buckets_ms: Bucket::ALL
+                .iter()
+                .map(|b| (b.name(), c.bucket(*b)))
+                .collect(),
             events: SPIKE_EVENTS
                 .iter()
                 .zip(events)
@@ -419,7 +425,7 @@ impl SpikeStats {
             .filter(|(_, n)| **n > 0)
             .map(|(i, n)| (cause_name(i), *n))
             .collect();
-        out.sort_by(|a, b| b.1.cmp(&a.1));
+        out.sort_by_key(|a| std::cmp::Reverse(a.1));
         out
     }
 

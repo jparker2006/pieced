@@ -87,6 +87,83 @@ class SessionsTest(unittest.TestCase):
         out = run(["--root", os.path.join(self.root, "missing")])
         self.assertIn("No sessions", out)
 
+    def test_spikes_attribute_each_spike_to_the_bucket_that_ran_long(self):
+        write_frames(os.path.join(self.root, "20260927-130000"), attributed=True)
+        out = run(["--root", self.root, "--spikes", "latest"])
+        self.assertIn("Session 20260927-130000", out)
+        self.assertIn("3 spikes > 25 ms in 2 runs", out)
+        cause = {line.split()[0]: int(line.split()[1]) for line in cause_lines(out)}
+        self.assertEqual(cause, {"graph": 2, "update": 1})
+        # Events count on the spike row or the row before, so the Update
+        # overrun right after a compile is tagged with it too.
+        self.assertRegex(out, r"pipeline_compile\s+3\s+100\.0% of spikes")
+        self.assertRegex(out, r"knight_spawn\s+1\s+33\.3% of spikes")
+        self.assertIn("1 late-then-early pairs", out)
+        self.assertIn("dt= 40.0 graph", out)
+
+    def test_spikes_on_an_old_session_give_a_timeline(self):
+        write_frames(os.path.join(self.root, "20260927-100000"), attributed=False)
+        out = run(["--root", self.root, "--spikes", "20260927-100000"])
+        self.assertIn("predates the attribution columns: 3 spikes", out)
+        self.assertIn("20-30", out)
+
+    def test_spikes_for_a_missing_session(self):
+        out = run(["--root", self.root, "--spikes", "20990101-000000"])
+        self.assertIn("No session '20990101-000000'", out)
+
+
+HEADER = (
+    "frame,t_ms,dt_ms,state,occluded,pre_ms,fixed_ms,physics_ms,ticks,update_ms,post_ms,"
+    "extract_ms,prepare_ms,acquire_ms,graph_ms,render_end_ms,idle_ms,vsync_dt_ms,gpu_ms,work_ms,"
+    "knights,knights_spawned,orbs,orbs_fired,shots,damage,placed,cracked,broken,particles,debris,"
+    "spell_fx,potions,damage_numbers,voices,voices_started,pipelines_compiled,entities"
+)
+
+
+def write_frames(folder, attributed):
+    """30 s of play at 60 fps with three spikes at 20 s: a 40 ms first-use
+    compile in the render graph (after a knight spawn), a 34 ms Update
+    overrun right after it, then a 30 ms compile; and one 19 ms frame
+    followed by a 14 ms one (jitter) at 25 s."""
+    cols = HEADER.split(",")
+    lines = [HEADER if attributed else "frame,t_ms,dt_ms,state,occluded"]
+    t = 0.0
+    frame = 0
+    spikes = {1200: 40.0, 1201: 34.0, 1203: 30.0, 1500: 19.0, 1501: 14.0}
+    for i in range(1800):
+        frame += 1
+        dt = spikes.get(i, 16.667)
+        t += dt
+        row = {c: 0 for c in cols}
+        row.update(frame=frame, t_ms=f"{t:.3f}", dt_ms=f"{dt:.3f}", state="playing", ticks=1)
+        row.update(pre_ms=0.5, fixed_ms=2.0, update_ms=2.0, post_ms=1.0, extract_ms=0.5,
+                   prepare_ms=1.0, acquire_ms=8.0, graph_ms=1.0, render_end_ms=0.1,
+                   idle_ms=0.3, vsync_dt_ms=16.667, gpu_ms="", knights=4, entities=3000)
+        if i == 1199:
+            row["knights_spawned"] = 1
+        if i in (1200, 1203):
+            row["graph_ms"] = 20.0
+            row["pipelines_compiled"] = 2
+        if i == 1201:
+            row["update_ms"] = 12.0
+        if attributed:
+            lines.append(",".join(str(row[c]) for c in cols))
+        else:
+            lines.append(f"{frame},{t:.3f},{dt:.3f},playing,0")
+    with open(os.path.join(folder, "frames.csv"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
+
+def cause_lines(out):
+    lines = out.splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("Cause")) + 1
+    rows = []
+    for line in lines[start:]:
+        if not line.strip():
+            break
+        rows.append(line)
+    return rows
+
 
 if __name__ == "__main__":
     unittest.main()

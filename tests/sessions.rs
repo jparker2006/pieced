@@ -668,3 +668,389 @@ fn the_commit_is_embedded_at_build_time() {
     );
     eprintln!("embedded commit: {commit}");
 }
+
+// ---------------------------------------------------------------------------
+// Frame attribution (M3 performance slice)
+// ---------------------------------------------------------------------------
+
+/// The columns `scripts/sessions.py --spikes` reads (its tests use the same
+/// header).
+const ATTRIBUTED_HEADER: &str = "frame,t_ms,dt_ms,state,occluded,pre_ms,fixed_ms,physics_ms,\
+    ticks,update_ms,post_ms,extract_ms,prepare_ms,acquire_ms,graph_ms,render_end_ms,idle_ms,\
+    vsync_dt_ms,gpu_ms,work_ms,knights,knights_spawned,orbs,orbs_fired,shots,damage,placed,\
+    cracked,broken,particles,debris,spell_fx,potions,damage_numbers,voices,voices_started,\
+    pipelines_compiled,entities";
+
+#[test]
+fn the_csv_header_lists_every_attribution_column() {
+    assert_eq!(pieced::session::csv_header(), ATTRIBUTED_HEADER);
+}
+
+/// A normal frame: 16.7 ms, most of it waiting for the drawable.
+fn attributed(frame: u64, t_ms: f64, dt_ms: f64) -> SessionFrame {
+    let mut row = row(frame, t_ms, dt_ms, FrameState::Playing);
+    let c = &mut row.cost;
+    c.pre_ms = 0.5;
+    c.fixed_ms = 2.0;
+    c.ticks = 1;
+    c.update_ms = 2.0;
+    c.post_ms = 1.0;
+    c.extract_ms = 0.5;
+    c.prepare_ms = 1.0;
+    c.acquire_ms = 8.0;
+    c.graph_ms = 1.0;
+    c.render_end_ms = 0.1;
+    c.idle_ms = 0.3;
+    c.vsync_dt_ms = 16.667;
+    c.counters.knights = 4;
+    c.counters.entities = 3000;
+    row
+}
+
+/// The scenario `scripts/test_sessions.py` uses: 30 s of play with a 40 ms
+/// first-use compile (after a knight spawn), a 34 ms Update overrun, then a
+/// 30 ms compile at 20 s, and one late-then-early pair at 25 s.
+fn spiky_rows() -> Vec<SessionFrame> {
+    let mut rows = Vec::new();
+    let mut t = 0.0;
+    for i in 0..1800u64 {
+        let dt = match i {
+            1200 => 40.0,
+            1201 => 34.0,
+            1203 => 30.0,
+            1500 => 19.0,
+            1501 => 14.0,
+            _ => 16.667,
+        };
+        t += dt;
+        let mut r = attributed(i + 1, t, dt);
+        if i == 1199 {
+            r.cost.counters.knights_spawned = 1;
+        }
+        if i == 1200 || i == 1203 {
+            r.cost.graph_ms = 20.0;
+            r.cost.counters.pipelines_compiled = 2;
+        }
+        if i == 1201 {
+            r.cost.update_ms = 12.0;
+        }
+        rows.push(r);
+    }
+    rows
+}
+
+#[test]
+fn spikes_are_attributed_to_the_bucket_that_ran_long() {
+    let mut stats = pieced::session::SpikeStats::default();
+    let mut filter = pieced::session::S2Filter::default();
+    for r in spiky_rows() {
+        let counted = filter.admit(&r);
+        stats.observe(&r, counted);
+    }
+    assert_eq!(stats.spikes(), 3);
+    assert_eq!(stats.by_cause(), vec![("graph", 2), ("update", 1)]);
+    let doc = stats.to_json();
+    assert_eq!(doc["spike_runs"], 2);
+    assert_eq!(doc["late_then_early_pairs"], 1);
+    // Events count on the spike's row or the row before.
+    assert_eq!(doc["events"]["pipeline_compile"]["spikes"], 3);
+    assert_eq!(doc["events"]["knight_spawn"]["spikes"], 1);
+    assert_eq!(doc["worst"][0]["dt_ms"], 40.0);
+    assert_eq!(doc["worst"][0]["cause"], "graph");
+    assert!((doc["worst"][0]["excess_ms"].as_f64().unwrap() - 19.0).abs() < 1e-3);
+    assert_eq!(doc["vsync_pct_under_18_ms"], 100.0);
+    assert!((doc["mean_ms_on_normal_frames"]["acquire"].as_f64().unwrap() - 8.0).abs() < 1e-6);
+}
+
+#[test]
+fn the_writer_streams_attribution_and_writes_the_spike_report() {
+    let root = temp_dir("writer-spikes");
+    let mut writer = SessionWriter::spawn(WriterConfig {
+        sessions_dir: root.clone(),
+        stamp: "20260928-100000".into(),
+        keep: KEEP_SESSIONS,
+        power: sampler("Battery Power", Some(true)),
+        meta: meta(true),
+    })
+    .unwrap();
+    for r in spiky_rows() {
+        writer.push_wait(r);
+    }
+    let outcome = writer.finish(Duration::from_secs(10)).unwrap().clone();
+    let dir = outcome.dir.unwrap();
+    let csv = std::fs::read_to_string(dir.join("frames.csv")).unwrap();
+    let mut lines = csv.lines();
+    let header: Vec<&str> = lines.next().unwrap().split(',').collect();
+    let spike: Vec<&str> = lines.nth(1200).unwrap().split(',').collect();
+    let col = |name: &str| spike[header.iter().position(|h| *h == name).unwrap()];
+    assert_eq!(col("dt_ms"), "40.000");
+    assert_eq!(col("graph_ms"), "20.000");
+    assert_eq!(col("acquire_ms"), "8.000");
+    assert_eq!(col("pipelines_compiled"), "2");
+    assert_eq!(col("knights"), "4");
+    assert_eq!(col("entities"), "3000");
+    // No GPU timing without the knob: an empty cell, not a zero.
+    assert_eq!(col("gpu_ms"), "");
+    assert_eq!(col("work_ms"), "27.100");
+    let doc = read_json(&dir.join("session.json"));
+    assert_eq!(doc["spikes"]["spikes"], 3);
+    assert_eq!(doc["spikes"]["by_cause"][0]["cause"], "graph");
+    assert_eq!(doc["spikes"]["by_cause"][0]["spikes"], 2);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// The headless game (as `app::headless_app`) plus telemetry, the frame
+/// profiler and the session log, in Waves mode with a player who can't die.
+fn profiled_waves_app(root: &Path, seed: u64) -> App {
+    use avian3d::prelude::PhysicsPlugins;
+    use bevy::time::TimeUpdateStrategy;
+    use pieced::{
+        rng::{Rng, SimRng},
+        shared::{GameMode, tick_duration},
+    };
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        TransformPlugin,
+        bevy::state::app::StatesPlugin,
+        AssetPlugin::default(),
+        bevy::mesh::MeshPlugin,
+        bevy::scene::ScenePlugin,
+        PhysicsPlugins::default(),
+    ))
+    .add_plugins(pieced::app::SimPlugins)
+    .add_message::<WindowOccluded>()
+    .add_message::<WindowCreated>()
+    .add_plugins((TelemetryPlugin, pieced::profile::FrameProfilePlugin))
+    .add_plugins(SessionPlugin {
+        log_frames: true,
+        sessions_dir: root.to_path_buf(),
+        power: sampler("Battery Power", Some(true)),
+        stamp: Some("20260928-110000".into()),
+    })
+    .insert_resource(TimeUpdateStrategy::ManualDuration(tick_duration()))
+    .insert_resource(SimRng(Rng::new(seed)))
+    .insert_resource(GameMode::Waves);
+    app.finish();
+    app.cleanup();
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Playing);
+    app.update();
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<pieced::shared::Player>>()
+        .single(app.world())
+        .unwrap();
+    let mut health = pieced::shared::Health::full(1.0e9, 100.0);
+    health.shield = 100.0;
+    *app.world_mut()
+        .get_mut::<pieced::shared::Health>(player)
+        .unwrap() = health;
+    app
+}
+
+#[test]
+fn a_headless_waves_session_fills_the_attribution_columns() {
+    let root = temp_dir("profiled");
+    let mut app = profiled_waves_app(&root, 7);
+    // 40 simulated seconds: the first wave poofs in and starts casting.
+    for _ in 0..(40 * 60) {
+        app.update();
+    }
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    let dir = app
+        .world()
+        .resource::<SessionLog>()
+        .outcome()
+        .unwrap()
+        .dir
+        .clone()
+        .unwrap();
+    drop(app);
+
+    let csv = std::fs::read_to_string(dir.join("frames.csv")).unwrap();
+    let mut lines = csv.lines();
+    let header: Vec<&str> = lines.next().unwrap().split(',').collect();
+    assert_eq!(header.join(","), ATTRIBUTED_HEADER);
+    let idx = |name: &str| header.iter().position(|h| *h == name).unwrap();
+    let rows: Vec<Vec<&str>> = lines
+        .map(|l| l.split(',').collect::<Vec<&str>>())
+        .filter(|r| r[idx("state")] == "playing")
+        .collect();
+    assert!(rows.len() > 2000, "{} playing rows", rows.len());
+    assert!(rows.iter().all(|r| r.len() == header.len()));
+    let num = |r: &Vec<&str>, name: &str| r[idx(name)].parse::<f64>().unwrap();
+    let sum = |name: &str| rows.iter().map(|r| num(r, name)).sum::<f64>();
+    let max = |name: &str| rows.iter().map(|r| num(r, name)).fold(0.0, f64::max);
+    // The main world's parts are timed on every frame...
+    for bucket in ["pre_ms", "fixed_ms", "update_ms", "post_ms"] {
+        assert!(
+            rows.iter().all(|r| num(r, bucket) > 0.0),
+            "{bucket} not filled on every playing frame"
+        );
+    }
+    assert!(sum("physics_ms") > 0.0);
+    assert!(sum("physics_ms") < sum("fixed_ms"));
+    // ...one fixed tick per update here...
+    assert!(rows.iter().skip(1).all(|r| num(r, "ticks") == 1.0));
+    // ...and there is no render world headless, so its parts read zero.
+    for bucket in [
+        "extract_ms",
+        "prepare_ms",
+        "acquire_ms",
+        "graph_ms",
+        "vsync_dt_ms",
+    ] {
+        assert_eq!(sum(bucket), 0.0, "{bucket}");
+    }
+    assert!(rows.iter().all(|r| r[idx("gpu_ms")].is_empty()));
+    // The counters follow the fight.
+    assert!(sum("knights_spawned") >= 3.0, "knights spawned");
+    assert!(max("knights") >= 3.0);
+    assert!(sum("orbs_fired") > 0.0, "no orb fired in 40 s");
+    assert!(max("orbs") > 0.0);
+    assert!(sum("damage") > 0.0);
+    assert!(max("entities") > 100.0);
+    assert!(max("potions") <= pieced::waves::POTION_POOL as f64);
+    let doc = read_json(&dir.join("session.json"));
+    assert!(doc["spikes"]["attributed_frames"].is_u64());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+// The per-frame path of the profiler and the session log allocates nothing:
+// a counting allocator (armed on the test thread only) compares the frames of
+// an app with and without them.
+
+struct CountingAlloc;
+
+static ALLOCATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+thread_local! {
+    static ARMED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn count_allocation() {
+    if ARMED.with(std::cell::Cell::get) {
+        ALLOCATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+// SAFETY: forwards every call to the system allocator unchanged.
+unsafe impl std::alloc::GlobalAlloc for CountingAlloc {
+    unsafe fn alloc(&self, layout: std::alloc::Layout) -> *mut u8 {
+        count_allocation();
+        unsafe { std::alloc::System.alloc(layout) }
+    }
+
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: std::alloc::Layout) {
+        unsafe { std::alloc::System.dealloc(ptr, layout) }
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: std::alloc::Layout) -> *mut u8 {
+        count_allocation();
+        unsafe { std::alloc::System.alloc_zeroed(layout) }
+    }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: std::alloc::Layout, size: usize) -> *mut u8 {
+        count_allocation();
+        unsafe { std::alloc::System.realloc(ptr, layout, size) }
+    }
+}
+
+#[global_allocator]
+static GLOBAL: CountingAlloc = CountingAlloc;
+
+/// Allocations on this thread while `f` runs.
+fn allocations_in(f: impl FnOnce()) -> u64 {
+    let before = ALLOCATIONS.load(std::sync::atomic::Ordering::Relaxed);
+    ARMED.with(|a| a.set(true));
+    f();
+    ARMED.with(|a| a.set(false));
+    ALLOCATIONS.load(std::sync::atomic::Ordering::Relaxed) - before
+}
+
+/// A minimal app with the messages and resources the session log reads, its
+/// schedules single-threaded (so every system runs on this thread), with or
+/// without the profiler and the session log.
+fn minimal_app(root: &Path, profiled: bool) -> App {
+    use bevy::ecs::schedule::{Schedules, SingleThreadedExecutor};
+    use pieced::shared::{DamageDealt, GameCue, PieceChanged, ShotFired};
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .init_resource::<Tuning>()
+        .init_resource::<pieced::telemetry::LastFrame>()
+        .init_resource::<pieced::telemetry::RunConditions>()
+        .init_resource::<LaunchTime>()
+        .init_resource::<BootPhases>()
+        .add_message::<WindowOccluded>()
+        .add_message::<WindowCreated>()
+        .add_message::<GameCue>()
+        .add_message::<ShotFired>()
+        .add_message::<DamageDealt>()
+        .add_message::<PieceChanged>();
+    if profiled {
+        app.add_plugins(pieced::profile::FrameProfilePlugin)
+            .add_plugins(SessionPlugin {
+                log_frames: true,
+                sessions_dir: root.to_path_buf(),
+                power: sampler("Battery Power", Some(true)),
+                stamp: Some("20260928-120000".into()),
+            });
+    }
+    app.finish();
+    app.cleanup();
+    for (_, schedule) in app.world_mut().resource_mut::<Schedules>().iter_mut() {
+        schedule.set_executor(SingleThreadedExecutor::new());
+    }
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Playing);
+    app
+}
+
+#[test]
+fn profiling_and_logging_a_frame_allocate_nothing() {
+    let root = temp_dir("allocations");
+    let mut plain = minimal_app(&root, false);
+    let mut profiled = minimal_app(&root, true);
+    // Warm up: systems initialize, message buffers and the channel settle.
+    for _ in 0..30 {
+        plain.update();
+        profiled.update();
+    }
+    let frames = 300;
+    let base = allocations_in(|| {
+        for _ in 0..frames {
+            plain.update();
+        }
+    });
+    let with = allocations_in(|| {
+        for _ in 0..frames {
+            profiled.update();
+        }
+    });
+    assert!(
+        with <= base,
+        "the profiler and session log allocated {} times over {frames} frames ({with} vs {base})",
+        with.saturating_sub(base)
+    );
+    // And the pieces called directly.
+    let profile = pieced::profile::FrameProfile::default();
+    let direct = allocations_in(|| {
+        for i in 0..1000u64 {
+            for m in pieced::profile::Mark::ALL {
+                profile.mark(m);
+            }
+            profile.physics_start(i);
+            profile.physics_end(i + 1);
+            profile.pipelines_ready(100 + i as u32);
+            std::hint::black_box(profile.cost());
+        }
+    });
+    assert_eq!(direct, 0);
+    drop(profiled);
+    let _ = std::fs::remove_dir_all(root);
+}

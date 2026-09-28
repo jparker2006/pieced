@@ -197,9 +197,7 @@ impl FrameProfile {
         } else {
             ok.saturating_sub(before)
         };
-        self.0
-            .pipelines_compiled
-            .store(compiled, Ordering::Relaxed);
+        self.0.pipelines_compiled.store(compiled, Ordering::Relaxed);
     }
 
     /// The frame that ends at `Last` now, split into its parts: main-world
@@ -722,7 +720,10 @@ mod tests {
         assert!(near(c.idle_ms, 0.25));
         // The first acquisition has no previous one.
         assert!(near(c.vsync_dt_ms, 0.0));
-        assert!(near(c.work_ms(), 0.75 + 2.5 + 2.0 + 1.0 + 0.5 + 1.5 + 3.0 + 0.5));
+        assert!(near(
+            c.work_ms(),
+            0.75 + 2.5 + 2.0 + 1.0 + 0.5 + 1.5 + 3.0 + 0.5
+        ));
     }
 
     #[test]
