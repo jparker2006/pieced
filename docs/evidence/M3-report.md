@@ -9,7 +9,7 @@ Every number here names its source (session folder or test), the commit, and the
 | Gate | Status | Evidence |
 |---|---|---|
 | W0 M2 closed | | |
-| W1 First grunt wave | | |
+| W1 First grunt wave | **PASS** (`b3a4c24`) | Chunk 1 tests: `tests/grunt.rs` (10), `tests/orb.rs`, `tests/waves.rs` (7), `tests/knockback.rs` (5), with 501 passing on the merge. Play-test 1: fun 4, about right, no unfair deaths; Jake: "that was so much fun!" |
 | W2 Endless waves | | |
 | W3 Fair knights | | |
 | W4 Ships and the void | | |
@@ -28,7 +28,7 @@ Every number here names its source (session folder or test), the commit, and the
 
 | # | Chunk | Commit | Fun (1–5) | Difficulty | Unfair deaths | What's off | Session / runs |
 |---|---|---|---|---|---|---|---|
-| 1 | One grunt wave | | | | | | |
+| 1 | One grunt wave | `b3a4c24` | **4** | About right ("maybe a little hard to kill them in the 'early rounds'") | **None** | Early grunts a bit tanky → wave-1 HP 100 → 80 | `20260928-045508` (AC, 62 s), `20260928-045801` (AC, 387 s, measured under builder load) |
 | 2 | Endless waves | | | | | | |
 | 3 | Ships and the void | | | | | | |
 | 4 | Castle and sky (look check) | | | | | | |
@@ -40,6 +40,7 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
 
 | Date | Number | From → to | Why |
 |---|---|---|---|
+| 2026-09-27 | `GruntTuning::hp` (wave-1 grunt health; later waves scale from it) | 100 → 80 (−20%) | Play-test 1: "maybe a little hard to kill them in the 'early rounds'". Now 3 rifle body shots or 2 headshots; wave 25 is ≈ 157 HP |
 
 ## Log
 
@@ -118,3 +119,8 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - The wand model (`wand.glb`).
   - After merging main, the grunt tests use a player the orbs can't kill (they watch movement and tokens for minutes of real fire), and orbs may break pieces.
 - 2026-09-27: **chunk 1 is complete on `main` (`b3a4c24`).** 501 tests pass, 0 failed; clippy and fmt are clean; `build-art --check` matches (65 assets). The release `pieced-play` for **play-test 1** is building.
+- 2026-09-27 21:55–22:05: **play-test 1** (release `pieced-play` from `b3a4c24`, AC power, Low Power Mode on, two sessions). Jake's answers, quoted: "4, about right maybe a little hard to kill them in the 'early rounds', no unfair deaths", then after a second run: "launch it again i wanna play again … done playing that was so much fun!"
+  - **Tuning:** wave-1 grunt HP 100 → 80 (see Tuning changes).
+  - **Session `20260928-045508`** (62 s, builds paused): mean 16.77 ms, p99 20.29, 25 frames > 25 ms, 96.35% < 18 ms. That's much better than the first logged session, which ran under build load, but still short of the S2 bar.
+  - **Session `20260928-045801`** (387 s): mean 45.2 ms and a 23.5 s launch. **Not a measurement of the game:** load was 57 at launch and still 12–16 later. The chunk-2 builder was compiling at full priority, because hand-set environment variables skip `env.sh`'s wrapper, so neither low priority nor quiet mode applied.
+  - **Fix:** `scripts/cargo.sh` is now the only way builders run cargo; it applies low priority, the quiet-mode wait and the disk guard.

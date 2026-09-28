@@ -10,7 +10,7 @@ You are a builder on **Pieced**, a solo first-person shooter with Fortnite-style
 ## Before coding
 
 1. Read the current milestone's contract and brief: for Milestone 3, `docs/M3-SPEC.md` and `docs/M3-GOAL.md`. `docs/SPEC.md` (M1 gameplay) and `docs/M2-SPEC.md` (the look) stay in force. Skim the relevant `docs/research/*.md`: `bot-ai.md` for knights, `fortnite-building.md` for the build grid, `look-stack.md` for rendering and Blender.
-2. Run `source scripts/env.sh` in every shell before any cargo command. There is no Rust on PATH otherwise. This script also points every worktree at one shared build cache. **Never** override `CARGO_TARGET_DIR`; disk space is tight.
+2. **Run every cargo command through `scripts/cargo.sh`** (e.g. `scripts/cargo.sh test --locked`), never bare `cargo` with hand-set variables: it applies `scripts/env.sh` (low priority, shared cache, no incremental), waits while Jake plays, and refuses to build on a nearly full disk. (`source scripts/env.sh` then `cargo` is equivalent where your shell allows it.) There is no Rust on PATH otherwise. This script also points every worktree at one shared build cache. **Never** override `CARGO_TARGET_DIR`; disk space is tight.
 3. For Bevy 0.19 / avian3d 0.7 API questions, check real docs first: Context7 (`resolve-library-id` then `query-docs`), docs.rs, or the crate source under `$CARGO_HOME/registry/src`. Do not guess APIs from older Bevy versions.
 
 ## Rules

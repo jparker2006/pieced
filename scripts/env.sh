@@ -52,5 +52,7 @@ cargo() {
 # No incremental caches: the sources are touched before every build anyway, and
 # with several worktrees they grew to 6 GB on a disk with ~10 GB free.
 export CARGO_INCREMENTAL=0
+# Tests each start Bevy apps with their own thread pools: cap parallel tests too.
+export RUST_TEST_THREADS="${RUST_TEST_THREADS:-4}"
 # Leave cores free for Jake's apps.
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
