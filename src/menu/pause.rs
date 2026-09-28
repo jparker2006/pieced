@@ -14,8 +14,12 @@ use crate::{
     },
     shared::AppState,
     tuning::Tuning,
+    waves::{
+        EndRun, Run,
+        ui::{PauseQuit, pause_quit},
+    },
 };
-use bevy::{prelude::*, text::LetterSpacing, ui::RelativeCursorPosition};
+use bevy::{ecs::message::Messages, prelude::*, text::LetterSpacing, ui::RelativeCursorPosition};
 
 pub(super) fn build(app: &mut App) {
     app.add_systems(Startup, spawn_menu).add_systems(
@@ -567,6 +571,8 @@ fn menu_visibility(
 fn menu_buttons(
     buttons: Query<(&Interaction, &MenuAction, &InheritedVisibility), Changed<Interaction>>,
     state: Res<State<AppState>>,
+    run: Option<Res<Run>>,
+    mut end_run: Option<ResMut<Messages<EndRun>>>,
     mut next: ResMut<NextState<AppState>>,
     mut menu: ResMut<MenuState>,
     mut exit: MessageWriter<AppExit>,
@@ -586,7 +592,20 @@ fn menu_buttons(
             MenuAction::Settings => menu.page = MenuPage::Settings,
             MenuAction::Back => menu.page = MenuPage::Main,
             MenuAction::Quit => {
-                exit.write(AppExit::Success);
+                // Quitting a Waves run ends it and shows the results (D84);
+                // Quit on the results card (or outside a run) closes the game.
+                match pause_quit(run.as_deref()) {
+                    PauseQuit::EndRun => {
+                        if let Some(end) = end_run.as_mut() {
+                            end.write(EndRun);
+                        }
+                        next.set(AppState::Playing);
+                    }
+                    PauseQuit::Resume => next.set(AppState::Playing),
+                    PauseQuit::Exit => {
+                        exit.write(AppExit::Success);
+                    }
+                }
             }
         }
     }
