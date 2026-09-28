@@ -266,6 +266,12 @@ The goal, from Jake: make Pieced "play and feel like a AAA game". Story and real
   - V7's "17 knights incoming" should read 15 for wave 7.
 - **Waiting on Jake's approval** before the spec's board is final.
 
+**Music direction, 2026-09-28** (after the first listening page). Jake: "I'm sure your recs on the music are good. I want it to feel like John Williams composed this game."
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D119 | **The score should sound like John Williams.** | <ul><li>Full, sweeping orchestra, with bold brass fanfares and soaring strings.</li><li>A magical celesta and woodwind colour for the calm and menu slots (the Hedwig's Theme feel).</li><li>Driving Star Wars-style brass and percussion for combat.</li><li>Stings are short orchestral hits and fanfares, and the death sting stays orchestral too (a deflating brass fall rather than a comic trombone).</li><li>Picks favour tracks that share a key and instrumentation, so the slots sound like one score.</li><li>The shortlist is redone to this direction, still CC0 or CC-BY only. Jake OKs the final file list in one message before anything is downloaded (D116).</li></ul> |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**

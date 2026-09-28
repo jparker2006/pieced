@@ -74,3 +74,6 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
     - wah wah sad trombone (death);
     - Won! (new best).
   - Waiting on Jake's picks and his OK to download (D116). `ffmpeg` is available for trimming and OGG encoding.
+- 2026-09-28: **music direction (D119).** Jake: "I'm sure your recs on the music are good. I want it to feel like John Williams composed this game."
+  - The first shortlist leaned festival and comic, so a researcher is re-shortlisting symphonic, brass-fanfare and celesta candidates (CC0 or CC-BY only).
+  - Jake gets one final file list to OK before anything is downloaded.

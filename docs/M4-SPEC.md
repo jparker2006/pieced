@@ -203,6 +203,13 @@ Everything shows **on the hit frame** (M2's same-frame rule), works muted, and i
 
   - Loops crossfade in 1–2 s, and stings duck the music.
   - Music and effect levels are separate sliders in Settings (Audio), and both work at 0.
+- **The score should sound like John Williams composed it** (D119):
+  - a sweeping symphonic orchestra, bold brass fanfares and soaring strings;
+  - a celesta and woodwind magic colour in the menu and break slots;
+  - Star Wars-style brass and percussion in combat;
+  - orchestral stings, with the death sting a deflating brass fall.
+
+  Picks favour tracks with a shared key and orchestration, so the slots sound like one score.
 - **The music is openly licensed** (CC0 or CC-BY only), from OpenGameArt, Incompetech or Freesound:
   1. The orchestrator searches and builds a **listening page** (a private Artifact) with 2–3 candidates per slot. Each shows its name, source, license, length and size.
   2. **Jake OKs the downloads in one message.** Nothing is downloaded before that.
