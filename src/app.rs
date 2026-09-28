@@ -119,6 +119,8 @@ impl PluginGroup for ClientPlugins {
             .add(MenuPlugin)
             .add(WavesUiPlugin)
             .add(WavesClientPlugin)
+            // The drop ships' look and sound (M3 chunk 3).
+            .add(crate::waves::ships_visuals::ShipsVisualsPlugin)
             .add(ScenarioPlugin)
             .add(BootPlugin)
             .add(NativeWindowPlugin)

@@ -22,11 +22,12 @@ use crate::{
     },
     look::{BlobShadow, ModelDressed, Outline},
     models::{ModelLibrary, spawn_model},
-    movement::Motor,
+    movement::{Motor, VoidFall},
     shared::{
         AppState, Character, DamageDealt, DamageTarget, EyeHeight, GameCue, Health, LookAngles,
-        Player, PreviousFeet,
+        Player, PreviousFeet, SimTick, TICK_SECONDS,
     },
+    waves::ships::Beaming,
 };
 use bevy::prelude::*;
 
@@ -156,10 +157,27 @@ pub fn figure_hidden(health: Option<&Health>, downed: bool) -> bool {
     downed || health.is_some_and(Health::is_dead)
 }
 
-/// Follows each figure's owner: interpolated feet, look yaw, crouch height.
+/// A knight flung into the void tumbles head over heels this fast (turns/s)...
+pub const VOID_TUMBLE: f32 = 1.6;
+/// ...and spins about itself this fast (turns/s).
+pub const VOID_SPIN: f32 = 1.1;
+
+/// The cartoon tumble of a knight falling into the void, `seconds` after it
+/// was flung along `direction`: head over heels away from the island and a
+/// spin, about its middle.
+pub fn void_tumble(direction: Vec3, seconds: f32) -> Quat {
+    let axis = Vec3::Y.cross(direction.with_y(0.0)).normalize_or(Vec3::X);
+    let tau = std::f32::consts::TAU;
+    Quat::from_axis_angle(axis, tau * VOID_TUMBLE * seconds)
+        * Quat::from_rotation_y(tau * VOID_SPIN * seconds)
+}
+
+/// Follows each figure's owner: interpolated feet, look yaw, crouch height
+/// (and the void tumble, D78).
 pub fn pose_target_figures(
     mut commands: Commands,
     fixed: Res<Time<Fixed>>,
+    tick: Option<Res<SimTick>>,
     state: Res<State<AppState>>,
     owners: Query<
         (
@@ -167,6 +185,7 @@ pub fn pose_target_figures(
             Option<&PreviousFeet>,
             Option<&LookAngles>,
             Option<&EyeHeight>,
+            Option<&VoidFall>,
         ),
         (With<Character>, Without<TargetFigure>),
     >,
@@ -178,7 +197,7 @@ pub fn pose_target_figures(
         1.0
     };
     for (entity, figure, mut transform) in &mut figures {
-        let Ok((owner, previous, look, eye)) = owners.get(figure.owner) else {
+        let Ok((owner, previous, look, eye, fall)) = owners.get(figure.owner) else {
             commands.entity(entity).despawn();
             continue;
         };
@@ -188,6 +207,13 @@ pub fn pose_target_figures(
         transform.translation = feet;
         transform.rotation = Quat::from_rotation_y(yaw);
         transform.scale = Vec3::new(1.0, crouch, 1.0);
+        if let (Some(fall), Some(tick)) = (fall, tick.as_deref()) {
+            let seconds = (tick.0.saturating_sub(fall.tick) as f32 + alpha) * TICK_SECONDS;
+            let tumble = void_tumble(fall.direction, seconds);
+            let middle = Vec3::Y * 0.9;
+            transform.rotation = tumble * transform.rotation;
+            transform.translation = feet + middle - tumble * middle;
+        }
     }
 }
 
@@ -204,6 +230,7 @@ pub fn animate_knights(
             Option<&Health>,
             Has<Downed>,
             Option<&LookAngles>,
+            Has<Beaming>,
         ),
         With<Character>,
     >,
@@ -277,10 +304,12 @@ pub fn animate_knights(
             anim.event(*event);
         }
         let input = match owners.get(figure.owner) {
-            Ok((motor, health, downed, _)) => KnightInput {
+            // A knight coming down a ship's beam is out of play (downed) but
+            // shows, legs dangling (D82).
+            Ok((motor, health, downed, _, beaming)) => KnightInput {
                 velocity: local(figure.owner, motor.map_or(Vec3::ZERO, |m| m.velocity)),
-                grounded: motor.is_none_or(|m| m.grounded),
-                downed: figure_hidden(health, downed),
+                grounded: !beaming && motor.is_none_or(|m| m.grounded),
+                downed: figure_hidden(health, downed && !beaming),
             },
             Err(_) => KnightInput::default(),
         };

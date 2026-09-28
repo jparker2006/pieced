@@ -92,6 +92,10 @@ pub const POTION_GULP: CueSpec = spec(0.50, -11.0);
 pub const WAVE_CLEARED: CueSpec = spec(0.90, -11.0);
 pub const WAVE_START: CueSpec = spec(0.55, -12.0);
 pub const NEW_BEST: CueSpec = spec(1.00, -10.0);
+// Ship arrivals and the void (M3 chunk 3).
+pub const SHIP_HUM: CueSpec = spec(1.0, -11.0);
+pub const SHIP_BEAM: CueSpec = spec(1.0, -11.0);
+pub const VOID_YELP: CueSpec = spec(1.0, -10.0);
 
 /// Round-robin takes for the cues that repeat fastest (the rifle fires six times a
 /// second; footsteps never stop), so repeats never sound machine-gunned.
@@ -1154,4 +1158,98 @@ pub fn new_best() -> Vec<f32> {
         431,
     );
     b.master(NEW_BEST.rms_db)
+}
+
+// ---------------------------------------------------------------------------
+// Ship arrivals and the void (M3 chunk 3)
+// ---------------------------------------------------------------------------
+
+/// The rune circle lighting under a drop ship: a warm hum swelling over the
+/// second before the beam comes on (two detuned voices climbing a fifth, a
+/// quickening flutter and a rising breath of shimmer); the beam's shimmer
+/// takes over for the second after, so the landing is heard coming for 2 s.
+pub fn ship_hum() -> Vec<f32> {
+    let len = 0.98;
+    let mut b = Buffer::new(len);
+    let (mut o1, mut o2, mut o3, mut lfo) =
+        (Osc::default(), Osc::at(0.37), Osc::at(0.61), Osc::default());
+    b.add(0.0, len, 0.6, |t| {
+        let x = t / len;
+        let freq = note(55.0) * 2f32.powf(7.0 / 12.0 * x * x);
+        let flutter = 0.75 + 0.25 * lfo.sine(4.0 + 10.0 * x);
+        (o1.soft_square(freq, 1.2)
+            + 0.7 * o2.soft_square(freq * 1.004, 1.2)
+            + 0.3 * o3.sine(freq * 2.0))
+            * flutter
+            * (0.25 + 0.75 * x.powf(1.3))
+            * attack(t, 0.15)
+            * release(t, len, 0.1)
+    });
+    noise_bp(
+        &mut b,
+        0.0,
+        len,
+        0.3,
+        341,
+        2.0,
+        |t| 900.0 * 2f32.powf(1.2 * t / len),
+        |t| (t / len).powf(1.6) * release(t, len, 0.1),
+    );
+    b.master(SHIP_HUM.rms_db)
+}
+
+/// A knight sliding down the beam: a bright glide falling an octave with a
+/// shimmer of pentatonic twinkles and an airy swish.
+pub fn ship_beam() -> Vec<f32> {
+    let len = 0.98;
+    let mut b = Buffer::new(len);
+    let (mut o1, mut o2) = (Osc::default(), Osc::at(0.25));
+    b.add(0.0, len, 0.5, |t| {
+        let x = t / len;
+        let freq = note(84.0) * 2f32.powf(-x);
+        (o1.sine(freq) + 0.35 * o2.sine(freq * 1.5))
+            * attack(t, 0.05)
+            * (1.0 - 0.6 * x)
+            * release(t, len, 0.15)
+    });
+    sparkle(&mut b, 0.02, 0.7, 7, (84.0, 100.0), 0.12, 0.35, true, 342);
+    noise_bp(
+        &mut b,
+        0.0,
+        len,
+        0.4,
+        343,
+        1.5,
+        |t| 3000.0 * 2f32.powf(-1.2 * t / len),
+        |t| attack(t, 0.08) * release(t, len, 0.2),
+    );
+    b.master(SHIP_BEAM.rms_db)
+}
+
+/// A knight knocked off the island: a cartoon "yip!" and a long slide whistle
+/// falling away into the void.
+pub fn void_yelp() -> Vec<f32> {
+    let len = 0.98;
+    let mut b = Buffer::new(len);
+    // The yip: a quick nasal chirp upward.
+    let (mut y1, mut y2) = (Osc::default(), Osc::at(0.3));
+    b.add(0.0, 0.16, 0.7, |t| {
+        let freq = 620.0 + 520.0 * (t / 0.08).min(1.0);
+        (y1.soft_square(freq, 1.8) + 0.4 * y2.sine(freq * 2.0))
+            * attack(t, 0.01)
+            * release(t, 0.16, 0.05)
+    });
+    // The fall: a slide whistle down two octaves, with vibrato.
+    let fall = 0.82;
+    let (mut o1, mut o2, mut vib) = (Osc::default(), Osc::default(), Osc::default());
+    let mut n = Noise::new(344);
+    let mut bp = Svf::default();
+    b.add(0.14, fall, 0.5, |t| {
+        let x = t / fall;
+        let freq = 1500.0 * 2f32.powf(-2.2 * x.powf(1.2)) * (1.0 + 0.015 * vib.sine(6.5));
+        let tone = o1.sine(freq) + 0.08 * o2.sine(2.0 * freq);
+        let breath = 0.15 * bp.band(n.signed(), freq, 6.0);
+        (tone + breath) * attack(t, 0.02) * (1.0 - 0.5 * x) * release(t, fall, 0.12)
+    });
+    b.master(VOID_YELP.rms_db)
 }

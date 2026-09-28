@@ -161,6 +161,12 @@ pub enum Sfx {
     WaveStart,
     /// "NEW BEST!" on the results: a little fanfare and a sparkle shower.
     NewBest,
+    /// A drop ship's rune circle lighting: a hum rising to the landing (D82).
+    ShipHum,
+    /// A knight sliding down a drop ship's beam: a falling shimmer.
+    ShipBeam,
+    /// A knight knocked into the void: a yip and a falling slide whistle (D78).
+    VoidYelp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -174,7 +180,7 @@ pub enum SfxCategory {
 }
 
 impl Sfx {
-    pub const ALL: [Sfx; 31] = [
+    pub const ALL: [Sfx; 34] = [
         Sfx::RifleShot,
         Sfx::PumpShot,
         Sfx::PumpRack,
@@ -206,6 +212,9 @@ impl Sfx {
         Sfx::WaveCleared,
         Sfx::WaveStart,
         Sfx::NewBest,
+        Sfx::ShipHum,
+        Sfx::ShipBeam,
+        Sfx::VoidYelp,
     ];
 
     /// The cue for a piece event: walls are brick (clunk, crack, crumble); floors
@@ -261,6 +270,9 @@ impl Sfx {
             Sfx::WaveCleared => bank::wave_cleared(),
             Sfx::WaveStart => bank::wave_start(),
             Sfx::NewBest => bank::new_best(),
+            Sfx::ShipHum => bank::ship_hum(),
+            Sfx::ShipBeam => bank::ship_beam(),
+            Sfx::VoidYelp => bank::void_yelp(),
         }
     }
 
@@ -313,6 +325,9 @@ impl Sfx {
             WaveCleared => bank::WAVE_CLEARED,
             WaveStart => bank::WAVE_START,
             NewBest => bank::NEW_BEST,
+            ShipHum => bank::SHIP_HUM,
+            ShipBeam => bank::SHIP_BEAM,
+            VoidYelp => bank::VOID_YELP,
         }
     }
 
@@ -328,6 +343,8 @@ impl Sfx {
             // The knights' casts sit with the guns (the weapons volume).
             OrbCast | OrbWhoosh | OrbBonk | WandWarning => SfxCategory::Weapons,
             PotionGulp | WaveCleared | WaveStart | NewBest => SfxCategory::Run,
+            // The ships and the void sit with the knights' casts.
+            ShipHum | ShipBeam | VoidYelp => SfxCategory::Weapons,
         }
     }
 
@@ -346,10 +363,10 @@ impl Sfx {
     /// | body hit, shield hit | −14 |
     /// | pump cast, orb bonk (hitting you), off-screen wand warning | −15 |
     /// | piece breaks | −16 |
-    /// | orb whoosh | −17 |
+    /// | orb whoosh, void yelp | −17 |
     /// | rifle cast, piece places and cracks | −18 |
-    /// | orb cast (a knight's fwoom) | −19 |
-    /// | pump rack, reload, rejected | −20 |
+    /// | orb cast (a knight's fwoom), ship hum | −19 |
+    /// | pump rack, reload, rejected, ship beam | −20 |
     /// | pump shell | −21 |
     /// | weapon switch | −22 |
     /// | land, slide | −22 |
@@ -362,10 +379,10 @@ impl Sfx {
             HitTick | ShieldHit | WaveCleared => -14.0,
             PumpShot | OrbBonk | WandWarning | PotionGulp => -15.0,
             BrickBreak | PlankBreak | WaveStart => -16.0,
-            OrbWhoosh => -17.0,
+            OrbWhoosh | VoidYelp => -17.0,
             RifleShot | BrickPlace | PlankPlace | BrickCrack | PlankCrack => -18.0,
-            OrbCast => -19.0,
-            PumpRack | RifleMagOut | RifleMagIn | Rejected => -20.0,
+            OrbCast | ShipHum => -19.0,
+            PumpRack | RifleMagOut | RifleMagIn | Rejected | ShipBeam => -20.0,
             PumpShell => -21.0,
             WeaponSwitch | Land | Slide => -22.0,
             Jump => -26.0,
@@ -517,8 +534,8 @@ struct PlayRequest {
     when: f64,
 }
 
-#[derive(Resource, Default)]
-struct PlayQueue {
+#[derive(Resource)]
+pub(crate) struct PlayQueue {
     pending: Vec<PlayRequest>,
     /// Counter for deterministic pitch variation.
     variation: u32,
@@ -526,12 +543,30 @@ struct PlayQueue {
     takes: [u32; Sfx::ALL.len()],
 }
 
+// More cues than `Default` covers for arrays (32).
+impl Default for PlayQueue {
+    fn default() -> Self {
+        Self {
+            pending: Vec::new(),
+            variation: 0,
+            takes: [0; Sfx::ALL.len()],
+        }
+    }
+}
+
 impl PlayQueue {
-    fn push(&mut self, sfx: Sfx, at: Option<Vec3>, now: f64) {
+    pub(crate) fn push(&mut self, sfx: Sfx, at: Option<Vec3>, now: f64) {
         self.push_with(sfx, at, 1.0, 0.0, now);
     }
 
-    fn push_with(&mut self, sfx: Sfx, at: Option<Vec3>, gain: f32, delay: f64, now: f64) {
+    pub(crate) fn push_with(
+        &mut self,
+        sfx: Sfx,
+        at: Option<Vec3>,
+        gain: f32,
+        delay: f64,
+        now: f64,
+    ) {
         // Small, deterministic pitch variation so repeats never sound machine-gunned.
         self.variation = self.variation.wrapping_add(1);
         let h = self.variation.wrapping_mul(2_654_435_761) >> 16;
@@ -702,6 +737,8 @@ fn queue_cue_sounds(
             // Drinking a potion gulps and chimes; a drop is only seen.
             GameCue::PotionPicked { who, .. } => (who, Sfx::PotionGulp),
             GameCue::PotionDropped { .. } => continue,
+            // The void yelp is voiced with the ships (`waves::ships_visuals`).
+            GameCue::VoidFall { .. } => continue,
         };
         let own = Some(who) == player;
         if !own && sfx.category() != SfxCategory::Movement {
@@ -758,7 +795,7 @@ pub fn run_beat(
     }
 }
 
-fn play_queued(
+pub(crate) fn play_queued(
     mut commands: Commands,
     time: Res<Time<Real>>,
     tuning: Res<Tuning>,

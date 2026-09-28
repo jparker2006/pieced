@@ -23,8 +23,8 @@ pub mod wand;
 
 pub use barrier::{BarrierMaterial, BarrierSide, REVEAL_END, barrier_reveal};
 pub use scenery::{
-    CLOSE_EDGE_Z, EDGE_CLEARANCE, FLOOR_CLUTTER_MAX_HEIGHT, Island, MIN_MARGIN, edge_distance,
-    sun_direction,
+    CLOSE_EDGE_Z, EDGE_CLEARANCE, EdgeSample, FLOOR_CLUTTER_MAX_HEIGHT, Island, MIN_MARGIN,
+    edge_distance, inside_rim, outline, sun_direction,
 };
 pub use target::{
     FIGURE_SHADOW_RADIUS, KNIGHT_GATE, TargetFigure, TargetFigurePlugin, animate_knights,
