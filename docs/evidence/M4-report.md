@@ -1,6 +1,6 @@
 # Milestone 4 "AAA": report
 
-**Status:** NOT STARTED. The contract is `docs/M4-SPEC.md`, and the brief is `docs/M4-GOAL.md` (grill Round 11, D96–D118).
+**Status:** IN PROGRESS (goal launched 2026-09-28). The contract is `docs/M4-SPEC.md`, and the brief is `docs/M4-GOAL.md` (grill Round 11, D96–D118).
 
 Every number here names its source (session folder or test), the commit, and the power and Low Power Mode state. Failures and reruns are recorded, not deleted.
 
@@ -54,3 +54,12 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 ## Log
 
 - 2026-09-28: grill Round 11 (D96–D118) settled; `docs/M4-SPEC.md`, `docs/M4-GOAL.md` and this report written.
+- 2026-09-28: **goal launched** (Jake pasted the launcher into the grill session).
+  - Housekeeping: the 11 merged M3 worktrees were removed (branches kept), and stale test binaries were pruned. Free disk went from 12 to 18 GB.
+  - **Gameplay pin landed** (`327e4c5`): `tests/gameplay_pin.rs` compares every gameplay section of `Tuning`, the hitboxes and the grid with `tests/fixtures/gameplay-pin.json`, taken from M3's closing values (D117).
+  - **Dispatched** in parallel (the two-build cap):
+    - chunk 0, GPU budget and launch (`m4-gpu-launch`);
+    - chunk 1, hit feedback and kills (`m4-hit-feedback`).
+  - The art slice waits for a free build slot.
+  - A researcher is shortlisting CC0 and CC-BY music for chunk 3's listening page. Nothing is downloaded before Jake's OK (D116).
+  - The board targets (`M4-V1`–`V8`) are in use as generated; Jake's explicit approval is still pending.
