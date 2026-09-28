@@ -4,6 +4,12 @@
 //! within its amplitude, the stained glass pulses, and the galaxy cubemap is
 //! deterministic and generated within its load-time budget.
 //!
+//! The castle and the magical sky (M3, docs/M3-SPEC.md → The castle and the
+//! sky): shooting stars fire every 8–20 s and cross the sky, motes drift
+//! inside their boxes, lanterns bob and stream up into the sky, the rune ring
+//! turns about its tilted axis, and the galaxy shimmer and aurora vary over
+//! their periods.
+//!
 //! All of it runs headless: `FarMotionPlugin` plus the far view's anchors from
 //! `spawn_far_view`, stepped with a manual clock. No GPU, window or models. The
 //! far layer's triangle and batch budget is checked from the model sidecars.
@@ -11,9 +17,14 @@
 use bevy::{core_pipeline::Skybox, prelude::*, time::TimeUpdateStrategy};
 use pieced::{
     far::{
-        Bob, FarLayout, FarMotionPlugin, GALAXY_PERIOD_S, GLASS_PERIOD_S, GalaxyParams, GalaxySky,
-        GalaxySpin, GlassPulse, SPAWN_EYE, ShipFlight, SkyClock, galaxy::sample_galaxy,
-        generate_galaxy, glass_panes, spawn_far_view,
+        Aurora, Bob, Ember, FarLayout, FarMotionPlugin, GALAXY_PERIOD_S, GLASS_PERIOD_S,
+        GalaxyLayer, GalaxyParams, GalaxySky, GalaxySpin, GlassPulse, Lantern, LanternPath, Mote,
+        RuneRing, SHIMMER_PERIOD_S, SPAWN_EYE, ShipFlight, ShootingStar, ShootingStars, SkyClock,
+        SkyGlow, SkyMagic, Twinkle, aurora_level,
+        galaxy::sample_galaxy,
+        galaxy_rotation, generate_galaxy, glass_panes,
+        magic::{self, AURORA_BREATH_S, AURORA_SWAY_S, MAX_MOTES, create_magic_assets},
+        shimmer_level, spawn_far_view, spawn_sky_magic,
     },
     look::{FarMaterial, LookSettings},
     models::Sidecar,
@@ -28,17 +39,22 @@ use std::{
 
 const STEP: f64 = 1.0 / 60.0;
 
-/// A headless app with the motion systems and the far view's anchors.
+/// A headless app with the motion systems, the far view's anchors and the
+/// castle's magic (its materials too, so they can breathe; nothing is drawn).
 fn far_app() -> App {
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, AssetPlugin::default()))
         .init_asset::<FarMaterial>()
+        .init_asset::<Mesh>()
         .init_resource::<FarLayout>()
         .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs_f64(
             STEP,
         )))
         .add_plugins(FarMotionPlugin)
-        .add_systems(Startup, spawn_far_view);
+        .add_systems(
+            Startup,
+            (spawn_far_view, spawn_sky_magic, create_magic_assets).chain(),
+        );
     let layout = app.world().resource::<FarLayout>().clone();
     app.insert_resource(GalaxySpin {
         axis: layout.galaxy,
@@ -345,12 +361,14 @@ fn the_galaxy_is_deterministic_and_generates_within_budget() {
     );
 }
 
-/// The far layer's budget (performance first, docs/M2-SPEC.md): the whole far
-/// view stays within 75k triangles, and however many islands float, the opaque
-/// far models draw as at most 16 batches, because every island instance shares
-/// its model's meshes and the one island material (Bevy instances equal mesh
-/// and material pairs) and the station is a handful of merged parts. Every
-/// waterfall draws from one shared strip mesh with one material.
+/// The far layer's budget (performance first; M3 raised it for the castle
+/// and the magical sky, docs/M3-SPEC.md): the whole far view stays within 90k
+/// triangles, and however many islands and lanterns float, the opaque far
+/// models draw as at most 18 batches, because every island instance shares
+/// its model's meshes and the one island material, every lantern shares one
+/// mesh and material (Bevy instances equal mesh and material pairs), and the
+/// castle is a handful of merged parts. Every waterfall draws from one shared
+/// strip mesh with one material. At most 64 halos glow.
 #[test]
 fn the_far_layer_stays_within_its_triangle_and_batch_budget() {
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/models");
@@ -376,12 +394,12 @@ fn the_far_layer_stays_within_its_triangle_and_batch_budget() {
         .keys()
         .filter(|n| n.starts_with("Waterfall"))
         .count();
-    // Additive halos: the station's glows and mists, the ships' engines, the
-    // planet's atmosphere, and the mists of the islands inside MIST_RANGE.
+    // Additive halos: the castle's glows, aura and mists, the ships' engines,
+    // the planet's atmosphere, and the mists of the islands inside MIST_RANGE.
     let mut halos = station
         .attach
         .keys()
-        .filter(|n| n.starts_with("Glow") || n.starts_with("Mist"))
+        .filter(|n| n.starts_with("Glow") || n.starts_with("Mist") || n.starts_with("Aura"))
         .count()
         + ships
         + 1;
@@ -407,7 +425,13 @@ fn the_far_layer_stays_within_its_triangle_and_batch_budget() {
         .len() as u32
         / 3;
     triangles += horizon;
-    // Opaque batches: each distinct (mesh, material) among the far models.
+    // The castle's magic and the sky: ring, lanterns, embers, motes, twinkles,
+    // shooting stars and aurora.
+    let sky = SkyMagic::new(&layout);
+    let magic_triangles = magic::magic_triangles(&sky);
+    triangles += magic_triangles;
+    // Opaque batches: each distinct (mesh, material) among the far models,
+    // plus the lanterns (one instanced batch).
     let opaque = |s: &Sidecar| {
         s.parts
             .keys()
@@ -420,17 +444,307 @@ fn the_far_layer_stays_within_its_triangle_and_batch_budget() {
         + island_models
             .iter()
             .map(|m| opaque(&side(m)))
-            .sum::<usize>();
+            .sum::<usize>()
+        + 1;
     println!(
-        "far layer: {triangles} triangles, {} islands from {} models, {waterfalls} waterfalls \
-         (one mesh), {halos} halos, {batches} opaque batches",
+        "far layer: {triangles} triangles ({} castle, {magic_triangles} magic with {} \
+         lanterns), {} islands from {} models, {waterfalls} waterfalls (one mesh), {halos} \
+         halos, {batches} opaque batches",
+        station.triangles,
+        sky.lanterns.len(),
         layout.all_islands().count(),
         island_models.len()
     );
-    assert!(triangles <= 75_000, "{triangles} far triangles");
-    assert!(batches <= 16, "{batches} opaque far batches");
-    assert!(halos <= 50, "{halos} far halos");
+    assert!(triangles <= 90_000, "{triangles} far triangles");
+    assert!(batches <= 18, "{batches} opaque far batches");
+    assert!(halos <= 64, "{halos} far halos");
     assert!(island_models.len() <= 5);
+    assert!(sky.motes.len() <= MAX_MOTES);
+}
+
+// ---------------------------------------------------------------------------
+// The castle's magic and the magical sky (M3)
+// ---------------------------------------------------------------------------
+
+fn entities_with<C: Component + Copy>(app: &mut App) -> Vec<(Entity, C)> {
+    let world = app.world_mut();
+    let mut q = world.query::<(Entity, &C)>();
+    q.iter(world).map(|(e, c)| (e, *c)).collect()
+}
+
+fn translation(app: &App, e: Entity) -> Vec3 {
+    app.world().get::<Transform>(e).unwrap().translation
+}
+
+#[test]
+fn shooting_stars_fire_every_8_to_20_seconds_and_cross_the_sky() {
+    let mut app = far_app();
+    let streaks = entities_with::<ShootingStar>(&mut app);
+    assert!(
+        (1..=4).contains(&streaks.len()),
+        "a small pool: {}",
+        streaks.len()
+    );
+    // Each pass seen: (first seen s, last seen s, first direction, last direction).
+    let mut runs: Vec<(f64, f64, Vec3, Vec3)> = Vec::new();
+    let mut showing: Option<Entity> = None;
+    run_until(&mut app, 75.0, |app| {
+        let t = clock(app);
+        let visible: Vec<Entity> = streaks
+            .iter()
+            .map(|s| s.0)
+            .filter(|&e| app.world().get::<Visibility>(e) != Some(&Visibility::Hidden))
+            .collect();
+        assert!(visible.len() <= 1, "one star at a time: {visible:?}");
+        match visible.first() {
+            Some(&e) => {
+                let dir = translation(app, e).normalize();
+                if showing == Some(e) {
+                    let run = runs.last_mut().unwrap();
+                    run.1 = t;
+                    run.3 = dir;
+                } else {
+                    runs.push((t, t, dir, dir));
+                }
+                showing = Some(e);
+            }
+            None => showing = None,
+        }
+    });
+    assert!(runs.len() >= 4, "{} shooting stars in 75 s", runs.len());
+    for pair in runs.windows(2) {
+        let gap = pair[1].0 - pair[0].0;
+        assert!(
+            (8.0 - 2.0 * STEP..=20.0 + 2.0 * STEP).contains(&gap),
+            "{gap:.2} s between two shooting stars"
+        );
+    }
+    for (i, &(t0, t1, d0, d1)) in runs.iter().enumerate() {
+        let secs = t1 - t0;
+        let swept = d0.angle_between(d1).to_degrees();
+        println!("shooting star {i}: {secs:.2} s, {swept:.1}° across, from {d0}");
+        assert!((0.9..=1.7).contains(&secs), "star {i} flew {secs} s");
+        assert!(swept >= 12.0, "star {i} only crossed {swept}°");
+        // Up in the sky, not under the horizon.
+        assert!(d0.y > 0.3, "star {i} starts at {d0}");
+    }
+    // The schedule is seeded: the same passes every run.
+    let a = ShootingStars::default().passes(10);
+    assert_eq!(a, ShootingStars::default().passes(10));
+    assert!((a[0].start_s - runs[0].0).abs() < 2.0 * STEP);
+}
+
+#[test]
+fn motes_drift_inside_their_boxes() {
+    let mut app = far_app();
+    let motes = entities_with::<Mote>(&mut app);
+    assert!(
+        (16..=MAX_MOTES).contains(&motes.len()),
+        "{} motes",
+        motes.len()
+    );
+    let starts: Vec<Vec3> = motes.iter().map(|m| translation(&app, m.0)).collect();
+    let mut farthest = vec![0.0f32; motes.len()];
+    run_until(&mut app, 30.0, |app| {
+        for (i, (e, mote)) in motes.iter().enumerate() {
+            let p = translation(app, *e);
+            let off = (p - mote.centre).abs();
+            assert!(
+                off.cmple(mote.extent + Vec3::splat(1e-3)).all(),
+                "mote {i} left its box: {off} > {}",
+                mote.extent
+            );
+            farthest[i] = farthest[i].max(p.distance(starts[i]));
+        }
+    });
+    for (i, (_, mote)) in motes.iter().enumerate() {
+        assert!(
+            farthest[i] > 0.3 * mote.extent.min_element(),
+            "mote {i} barely moved ({} m)",
+            farthest[i]
+        );
+    }
+    // Some round the arena, some out round the far islands.
+    let near = motes.iter().filter(|m| m.1.centre.length() < 80.0).count();
+    assert!(near >= 10 && motes.len() - near >= 10, "{near} near");
+}
+
+#[test]
+fn lanterns_bob_and_stream_up_into_the_sky() {
+    let mut app = far_app();
+    let lanterns = entities_with::<Lantern>(&mut app);
+    let swarm = lanterns
+        .iter()
+        .filter(|l| matches!(l.1.path, LanternPath::Swarm { .. }))
+        .count();
+    let streams: Vec<_> = lanterns
+        .iter()
+        .filter(|l| matches!(l.1.path, LanternPath::Stream { .. }))
+        .collect();
+    assert!(swarm >= 100, "{swarm} lanterns in the swarm");
+    assert!(streams.len() >= 40, "{} lanterns streaming", streams.len());
+    let mut y_range = vec![(f32::MAX, f32::MIN); lanterns.len()];
+    let start: Vec<(Vec3, f32)> = lanterns
+        .iter()
+        .map(|l| {
+            let t = app.world().get::<Transform>(l.0).unwrap();
+            (t.translation, t.scale.x)
+        })
+        .collect();
+    run_until(&mut app, 10.0, |app| {
+        for (i, (e, _)) in lanterns.iter().enumerate() {
+            let y = translation(app, *e).y;
+            y_range[i] = (y_range[i].0.min(y), y_range[i].1.max(y));
+        }
+    });
+    for (i, (e, lantern)) in lanterns.iter().enumerate() {
+        let p = translation(&app, *e);
+        match lantern.path {
+            LanternPath::Swarm {
+                home, drift, bob, ..
+            } => {
+                // Bobs through most of its range in 10 s, never strays from home.
+                let span = y_range[i].1 - y_range[i].0;
+                assert!(span > 1.5 * bob, "lantern {i} bobbed {span} m of ±{bob}");
+                let off = p - home;
+                assert!(off.x.abs() <= drift.x + 1e-3 && off.z.abs() <= drift.y + 1e-3);
+                assert!(off.y.abs() <= bob + 1e-3);
+            }
+            LanternPath::Stream { from, rise, .. } => {
+                // Rising (unless it reached the top and started again from
+                // the bottom in these 10 s).
+                let p0 = start[i].0;
+                if p.y > p0.y {
+                    assert!(p.y - p0.y > 10.0, "lantern {i} only rose {} m", p.y - p0.y);
+                } else {
+                    assert!(
+                        p0.y > from.y + rise.y * 0.75 && p.y < from.y + rise.y * 0.25,
+                        "lantern {i} sank from {} to {}",
+                        p0.y,
+                        p.y
+                    );
+                }
+                assert!(p.y >= from.y - 1.0 && p.y <= from.y + rise.y + 1.0);
+            }
+        }
+    }
+    // The streams reach high into the sky over the castle.
+    let top = streams
+        .iter()
+        .filter_map(|l| match l.1.path {
+            LanternPath::Stream { from, rise, .. } => Some(from.y + rise.y),
+            _ => None,
+        })
+        .fold(0.0f32, f32::max);
+    assert!(top > 500.0, "streams top out at {top} m");
+    // Gold embers drift up off the castle's glow too.
+    let embers = entities_with::<Ember>(&mut app);
+    assert!(!embers.is_empty());
+    for (e, ember) in &embers {
+        let y = translation(&app, *e).y;
+        assert!(y >= ember.from.y - 1e-3 && y <= ember.from.y + ember.rise.y + 1e-3);
+    }
+}
+
+#[test]
+fn the_rune_ring_turns_about_its_tilted_axis() {
+    let mut app = far_app();
+    let rings = entities_with::<RuneRing>(&mut app);
+    assert_eq!(rings.len(), 1, "one rune ring");
+    let (e, ring) = rings[0];
+    let r0 = app.world().get::<Transform>(e).unwrap().rotation;
+    let t0 = clock(&app);
+    run_until(&mut app, 10.0, |_| {});
+    let t1 = clock(&app);
+    let r1 = app.world().get::<Transform>(e).unwrap().rotation;
+    let (axis, angle) = (r1 * r0.inverse()).to_axis_angle();
+    let expected = TAU * ((t1 - t0) as f32) / ring.period_s;
+    assert!(
+        (angle - expected).abs() < 1e-3,
+        "turned {angle} rad, expected {expected}"
+    );
+    assert!(axis.dot(ring.axis()).abs() > 0.9999, "about its own axis");
+    // Slow and stately: a turn takes minutes, not seconds.
+    assert!((60.0..=300.0).contains(&ring.period_s));
+    // Tilted 20–40° off vertical, its front dipping toward the arena (-Z in
+    // the station's frame), so from the arena below it opens as an ellipse
+    // (C4) instead of lying edge-on.
+    let tilt = ring.axis().angle_between(Vec3::Y).to_degrees();
+    assert!((20.0..=40.0).contains(&tilt), "tilt {tilt}°");
+    assert!(ring.axis().z < 0.0, "front dips toward the arena");
+}
+
+#[test]
+fn the_galaxy_shimmers_and_the_aurora_drifts_over_their_periods() {
+    assert!((4.0..=8.0).contains(&SHIMMER_PERIOD_S));
+    let mut app = far_app();
+    let glow = app.world().resource::<SkyGlow>().clone();
+    let twinkle_mat = glow.twinkle.expect("the twinkle material");
+    let aurora_mat = glow.aurora.expect("the aurora material");
+    let twinkles = entities_with::<Twinkle>(&mut app);
+    let auroras = entities_with::<Aurora>(&mut app);
+    assert!(twinkles.len() >= 12 && (2..=5).contains(&auroras.len()));
+    let level = |app: &App, h: &Handle<FarMaterial>| {
+        app.world()
+            .resource::<Assets<FarMaterial>>()
+            .get(h)
+            .unwrap()
+            .base_color
+            .to_linear()
+            .red
+    };
+    let mut shimmer = Vec::new();
+    let mut scales = vec![(f32::MAX, f32::MIN); twinkles.len()];
+    let end = clock(&app) + SHIMMER_PERIOD_S as f64;
+    run_until(&mut app, end, |app| {
+        shimmer.push(level(app, &twinkle_mat));
+        for (i, (e, _)) in twinkles.iter().enumerate() {
+            let s = app.world().get::<Transform>(*e).unwrap().scale.x;
+            scales[i] = (scales[i].0.min(s), scales[i].1.max(s));
+        }
+    });
+    let (lo, hi) = shimmer
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(a, b), &v| (a.min(v), b.max(v)));
+    assert!(hi - lo > 0.3 * hi, "the shimmer only varies {lo}..{hi}");
+    let (first, last) = (shimmer[0], *shimmer.last().unwrap());
+    assert!(
+        (first - last).abs() < 0.02,
+        "one full cycle: {first} vs {last}"
+    );
+    for (i, (lo, hi)) in scales.iter().enumerate() {
+        assert!(*hi > 2.0 * lo, "twinkle {i} only swells {lo}..{hi}");
+    }
+    assert!((shimmer_level(0.0) - shimmer_level(SHIMMER_PERIOD_S as f64)).abs() < 1e-4);
+    // The twinkles turn with the galaxy (they sit on its sky).
+    let layer = entities_with::<GalaxyLayer>(&mut app)[0].0;
+    let spin = *app.world().resource::<GalaxySpin>();
+    let rotation = app.world().get::<Transform>(layer).unwrap().rotation;
+    assert!(rotation.dot(galaxy_rotation(&spin, clock(&app))).abs() > 0.999_999);
+    // The aurora sways and breathes.
+    let start: Vec<Quat> = auroras
+        .iter()
+        .map(|a| app.world().get::<Transform>(a.0).unwrap().rotation)
+        .collect();
+    let mut swayed = vec![0.0f32; auroras.len()];
+    let mut breath = (f32::MAX, f32::MIN);
+    let end = clock(&app) + AURORA_SWAY_S as f64;
+    run_until(&mut app, end, |app| {
+        for (i, (e, _)) in auroras.iter().enumerate() {
+            let r = app.world().get::<Transform>(*e).unwrap().rotation;
+            swayed[i] = swayed[i].max(r.angle_between(start[i]).to_degrees());
+        }
+        let l = level(app, &aurora_mat);
+        breath = (breath.0.min(l), breath.1.max(l));
+    });
+    for (i, s) in swayed.iter().enumerate() {
+        assert!(*s > 3.0, "aurora {i} only swayed {s}°");
+    }
+    assert!(
+        breath.1 - breath.0 > 0.3 * breath.1,
+        "aurora breath {breath:?}"
+    );
+    assert!((aurora_level(0.0) - aurora_level(AURORA_BREATH_S as f64)).abs() < 1e-4);
 }
 
 /// Writes the galaxy as an equirectangular panorama and a pinhole spawn view,

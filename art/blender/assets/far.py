@@ -244,9 +244,9 @@ CONE = [(0.18, 0.96, 0.03), (0.36, 0.84, 0.1), (0.54, 0.64, 0.13), (0.72, 0.42, 
         (0.87, 0.2, 0.18)]
 
 
-def cone_depth(f):
+def cone_depth(f, cone=None):
     """Depth fraction of the underside's cone at radius fraction `f` from the axis."""
-    pts = [(1.0, 0.1)] + [(r, d) for d, r, _ in CONE] + [(0.0, 1.0)]
+    pts = [(1.0, 0.1)] + [(r, d) for d, r, _ in cone or CONE] + [(0.0, 1.0)]
     for (r0, d0), (r1, d1) in zip(pts, pts[1:]):
         if r1 <= f <= r0:
             t = (f - r1) / max(r0 - r1, 1e-6)
@@ -255,7 +255,7 @@ def cone_depth(f):
 
 
 def floating_rock(bm, centre, radius, depth, seed, sides=14, cols=None, top="grass",
-                  top_z=0.0, plaza=0.0, squash=1.0, shadow=0.0):
+                  top_z=0.0, plaza=0.0, squash=1.0, shadow=0.0, crag=False, cone=None):
     """A floating mass as the targets paint it (T01, T10, T11): a flat grass top
     at `top_z` whose lip drapes over the rim in drips, a band of rock faces and
     a jagged inverted cone of rock, with rock columns jutting below it as
@@ -265,7 +265,8 @@ def floating_rock(bm, centre, radius, depth, seed, sides=14, cols=None, top="gra
     fraction, extra length as a fraction of `depth`). With `plaza` > 0 the
     top's middle (that radius) is stone, for a building. `shadow` (0..0.5)
     turns more of the rock to its shadow tones (the station's rock is
-    backlit by the galaxy in T01 and T10). Returns the rim as
+    backlit by the galaxy in T01 and T10); `crag` paints it in the castle
+    rock's cool blue-grey (M3-C4) instead of brown. Returns the rim as
     [((x, y), outward angle)] for placing waterfalls.
     """
     rng = shapes.rng(seed)
@@ -306,7 +307,7 @@ def floating_rock(bm, centre, radius, depth, seed, sides=14, cols=None, top="gra
 
     # The jagged cone: rings stepping in and down, every other vertex dropped
     # and pushed out, so its faces read as columns.
-    rings = [lip] + [ring(r, -d * depth, jag, drop=0.04) for d, r, jag in CONE]
+    rings = [lip] + [ring(r, -d * depth, jag, drop=0.04) for d, r, jag in cone or CONE]
     apex = bm.verts.new((cx + rng.uniform(-0.08, 0.08) * radius,
                          cy + rng.uniform(-0.08, 0.08) * radius, top_z - depth * 0.97))
     rock_faces = []
@@ -314,7 +315,8 @@ def floating_rock(bm, centre, radius, depth, seed, sides=14, cols=None, top="gra
         rock_faces += shapes.bridge(bm, lower, upper)
     rock_faces += [bm.faces.new((rings[-1][i], apex, rings[-1][(i + 1) % sides]))
                    for i in range(sides)]
-    shade3(bm, rock_faces, ROCK, hi=0.18 + shadow, lo=-0.28 + shadow, jitter=jitter)
+    ramp = CRAG if crag else ROCK
+    shade3(bm, rock_faces, ramp, hi=0.18 + shadow, lo=-0.28 + shadow, jitter=jitter)
     # Stalactites jutting below the cone.
     cols = cols or [(0.35, 4, 0.2, 0.22), (0.68, 7, 0.14, 0.16)]
     col_faces = []
@@ -325,7 +327,7 @@ def floating_rock(bm, centre, radius, depth, seed, sides=14, cols=None, top="gra
             fj = f * rng.uniform(0.9, 1.1)
             r = radius * fj
             x, y = cx + math.cos(a) * r, cy + math.sin(a) * r * squash
-            surface = cone_depth(fj) * depth
+            surface = cone_depth(fj, cone) * depth
             length = extra * depth * rng.uniform(0.6, 1.3)
             cr_j = radius * cr * rng.uniform(0.8, 1.2)
             z0 = top_z - surface + 0.12 * depth
@@ -336,7 +338,7 @@ def floating_rock(bm, centre, radius, depth, seed, sides=14, cols=None, top="gra
                                 top_z - surface - length))
             col_faces += shapes.bridge(bm, lower, upper)
             col_faces += [bm.faces.new((lower[i], tip, lower[(i + 1) % 6])) for i in range(6)]
-    shade3(bm, col_faces, ROCK, hi=0.2 + shadow, lo=-0.25 + shadow, jitter=jitter)
+    shade3(bm, col_faces, ramp, hi=0.2 + shadow, lo=-0.25 + shadow, jitter=jitter)
     return [((cx + math.cos(a) * rad[i], cy + math.sin(a) * rad[i] * squash), a)
             for i, a in enumerate(angles)]
 
@@ -463,8 +465,9 @@ def arch_outline(width, height, n_arc=6, offset=0.0):
     return [(-w / 2.0, -offset)] + right + [top] + left[:-1]
 
 
-def glass_colour(scheme, u, v, width, height, k, j, rows, cols, rng, memo):
+def glass_colour(scheme, u, v, width, height, k, j, rows, cols, rng, memo, jewels=None):
     """The palette colour of a glass cell centred at (u, v)."""
+    jewels = jewels or JEWELS
     mid = (cols - 1) / 2.0
     m = abs(j - mid)
     if scheme == "rose":
@@ -479,11 +482,11 @@ def glass_colour(scheme, u, v, width, height, k, j, rows, cols, rng, memo):
             sector = int(math.atan2(abs(du), dv) / (math.pi / 5))
             key = ("r", ring, sector)
             if key not in memo:
-                memo[key] = JEWELS[(ring * 3 + sector * 2 + (sector + ring) % 2) % len(JEWELS)]
+                memo[key] = jewels[(ring * 3 + sector * 2 + (sector + ring) % 2) % len(jewels)]
             return memo[key]
         key = ("l", k // 2, round(m))
         if key not in memo:
-            memo[key] = JEWELS[rng.randrange(len(JEWELS))]
+            memo[key] = jewels[rng.randrange(len(jewels))]
         return memo[key]
     # Tall lancets: symmetric jewel blocks with a gold-and-white medallion.
     centre_row = rows * 0.62
@@ -491,11 +494,12 @@ def glass_colour(scheme, u, v, width, height, k, j, rows, cols, rng, memo):
         return "far_glass_gold" if (k + j) % 2 else "far_glass_white"
     key = ("b", k // 2, round(m))
     if key not in memo:
-        memo[key] = JEWELS[rng.randrange(len(JEWELS))]
+        memo[key] = jewels[rng.randrange(len(jewels))]
     return memo[key]
 
 
-def stained_glass(bm, width, height, rows, cols, seed, matrix, scheme="lancet", lead=0.14):
+def stained_glass(bm, width, height, rows, cols, seed, matrix, scheme="lancet", lead=0.14,
+                  jewels=None, lead_colour=LEAD):
     """A mosaic of leaded glass cells filling a pointed-arch window of the given
     size, in the u-v plane (u right, v up, facing -Y), then placed by `matrix`.
     Colours are symmetric about the centre line."""
@@ -526,14 +530,14 @@ def stained_glass(bm, width, height, rows, cols, seed, matrix, scheme="lancet", 
     for f, k, j in cells:
         c = f.calc_center_median()
         palette.tag(bm, [f], glass_colour(scheme, c.x, c.z, width, height, k, j, rows, cols,
-                                          rng, memo))
+                                          rng, memo, jewels))
     leads = []
     for f, _, _ in cells:
         size = min(e.calc_length() for e in f.edges)
         res = bmesh.ops.inset_individual(bm, faces=[f], thickness=size * lead, depth=0.0,
                                          use_even_offset=True)
         leads += res["faces"]
-    palette.tag(bm, leads, LEAD)
+    palette.tag(bm, leads, lead_colour)
     bmesh.ops.transform(bm, matrix=matrix, verts=unique_verts([f for f, _, _ in cells] + leads))
 
 
@@ -559,14 +563,14 @@ def window_frame(bm, width, height, fw, matrix, proud=1.4):
 
 
 def glass_window(stone, glass, x, y_face, sill, width, height, rows, cols, seed,
-                 scheme="lancet", yaw=0.0, frame=None):
+                 scheme="lancet", yaw=0.0, frame=None, jewels=None, lead_colour=LEAD):
     """A stained-glass window set flush into a wall facing -Y at y = `y_face`
     (after turning by `yaw` about the window's centre line): the glass a hair
     proud of the wall, a raised stone frame round it."""
     fw = frame if frame is not None else max(1.2, width * 0.09)
     m = placed(x, y_face, sill, yaw)
     stained_glass(glass, width, height, rows, cols, seed, m @ Matrix.Translation((0, -0.3, 0)),
-                  scheme)
+                  scheme, jewels=jewels, lead_colour=lead_colour)
     window_frame(stone, width, height, fw, m)
 
 
@@ -581,307 +585,585 @@ def warm_window(bm, x, y, sill, w, h, yaw=0.0):
 
 
 # ---------------------------------------------------------------------------
-# Station: a massive dark gothic cathedral on a floating rock (T01, T02, T10)
+# Station: the starlit citadel, a castle city on a floating rock (M3-C4)
 # ---------------------------------------------------------------------------
+#
+# C4 (D94): C3's vast dark-indigo castle city on a jagged floating rock with
+# waterfalls, and C2's taller centre stacked like a wedding cake of towers.
+# From the plaza up: a town of little houses and turrets round the rim, the
+# great walled terrace with its arcades and glowing gate, the great hall with
+# the gold-and-teal rose window (the heart), a ring of cone-roofed towers round
+# it, and the keep rising in three drums to the needle spire. Every spire ends
+# in a gold star; hundreds of warm windows are one part (`GlassWindows`).
+# Bridges reach out to a tower rock on each side, and two satellite rocks
+# carry little castle clusters, all pouring waterfalls. The golden rune ring,
+# the lanterns and the aura are the game's (src/far): the model only marks
+# where the aura glows (`Aura*`).
 
-PLAT_R = 150.0          # the platform's grass rim
-ROCK_DEPTH = 118.0      # platform top to the cone's apex
-ARCADE_R = 126.0        # the lower arcade wall round the cathedral
-ARCADE_H = 30.0
-RING_Z = 40.0           # the ring walkway, just above the arcade
-RING_R = (193.0, 203.0)
-NAVE_HW = 30.0          # the nave: half width, front and back, wall top, roof peak
-NAVE_Y = (-66.0, 64.0)
-NAVE_TOP = 128.0
-NAVE_PEAK = 172.0
-# The great west window on the nave front: width, height, sill.
-GREAT_WINDOW = (44.0, 118.0, 36.0)
-# The crossing flèche: its base on the roof and its tip, the station's top.
-FLECHE = (146.0, 267.0)
+# Roofs: deep violet-indigo cones; trims and finials: gold.
+ROOF = ("gun_glass_violet", "knight_purple_shadow", "far_stone_dark")
+GOLD = ("gun_brass_light", "gun_brass", "gun_brass_dark")
+# The castle rock: cool blue-grey crags (C3, C4), not the islands' brown.
+CRAG = ("far_rock_shade", "far_rock_dark", "far_stone_dark")
+# The castle's walls: C4's dark indigo stone, so the windows, the rose, the
+# ring and the lanterns carry the light (in greyscale the castle is a dark
+# mass pricked with lights).
+CSTONE = ("far_stone", "far_stone_shade", "far_stone_dark")
+TONES[ROOF] = (0.42, -0.1)
+TONES[GOLD] = (0.25, -0.35)
+TONES[CRAG] = (0.3, -0.2)
+TONES[CSTONE] = (0.45, -0.05)
+# The flanking lancets: C4's mint-teal, cyan and white panes in gold tracery.
+LANCET_JEWELS = ["far_glass_teal", "glass_cyan", "far_glass_blue", "far_glass_teal",
+                 "far_glass_white", "far_glass_teal"]
 
-# Towers: (x, y, base z, shaft top, half width, spire height, shape, window)
-# with window = None or (group, width, height, sill, rows, cols). Mirrored for
-# every x > 0; "sq" towers carry four corner pinnacles. The whole cathedral is
-# broader than it is tall, as the targets paint it from the arena: about 300 m
-# across its towers and 267 m to the flèche's tip.
+PLAT_R = 170.0          # the plaza's rim
+ROCK_DEPTH = 160.0      # plaza to the cone's apex
+# The rock's underside: steep columnar cliffs under the rim, then the taper
+# (see CONE).
+CASTLE_CONE = [(0.12, 0.97, 0.05), (0.28, 0.9, 0.08), (0.46, 0.74, 0.12), (0.64, 0.52, 0.15),
+               (0.83, 0.27, 0.18)]
+TERRACE = (0.0, 4.0, 98.0, 34.0)    # the great terrace: centre x, y, radius, wall top
+HALL_FRONT = -56.0      # the great hall's facade (y), on the terrace
+HALL_BACK = 30.0
+HALL_HW = 46.0
+HALL_TOP = 136.0        # its wall top and gable peak
+HALL_PEAK = 172.0
+ROSE = (58.0, 112.0, 36.0)          # the rose window: width, height, sill
+GATE = (15.0, 27.0)     # the glowing gate in the terrace's front: width, height
+KEEP = (0.0, 38.0)      # the keep's centre (behind the hall)
+# The keep's drums: (radius, bottom, top, sides, window rows).
+KEEP_DRUMS = [(32.0, TERRACE[3], 188.0, 12, 6), (22.0, 188.0, 246.0, 10, 3),
+              (13.5, 246.0, 276.0, 8, 2)]
+KEEP_SPIRE = 58.0       # the keep's crowning roof: from its top drum to the tip
+# Towers: (x, y, base z, top z, radius, roof height, sides, window rows).
+# Mirrored for x > 0 (with small differences so the skyline isn't a mirror).
 TOWERS = [
-    # The facade's flanking towers.
-    (40.0, -64.0, ARCADE_H, 150.0, 8.5, 64.0, "sq", ("side", 7.0, 64.0, 66.0, 10, 2)),
-    # The wing towers with the great tall windows (T10's far left and right).
-    (98.0, -40.0, ARCADE_H, 146.0, 16.0, 52.0, "sq", ("towers", 22.0, 104.0, 38.0, 16, 5)),
-    # Between the facade and the wings.
-    (68.0, -54.0, ARCADE_H, 118.0, 7.0, 56.0, "oct", ("side", 4.4, 40.0, 62.0, 7, 2)),
-    # Outer towers on the platform's edge.
-    (136.0, -14.0, 0.0, 104.0, 8.0, 50.0, "oct", ("side", 4.6, 36.0, 50.0, 6, 2)),
-    (124.0, 40.0, 0.0, 86.0, 7.0, 44.0, "oct", None),
-    # Behind: the skyline's depth, at several heights.
-    (58.0, 26.0, ARCADE_H, 138.0, 8.0, 62.0, "oct", None),
-    (36.0, 80.0, ARCADE_H, 116.0, 7.0, 52.0, "oct", None),
-    (90.0, 70.0, ARCADE_H, 100.0, 7.5, 46.0, "sq", None),
-    (18.0, 112.0, 0.0, 90.0, 6.0, 42.0, "oct", None),
-    (112.0, -74.0, 0.0, 64.0, 5.5, 34.0, "oct", None),
+    # The facade's flanking towers stand apart (square, `FLANKS`).
+    # The ring of towers round the hall, on the terrace.
+    (78.0, -26.0, 34.0, 124.0, 8.0, 50.0, 8, 4),
+    (88.0, 18.0, 34.0, 148.0, 9.0, 58.0, 8, 5),
+    (68.0, 60.0, 34.0, 172.0, 8.5, 60.0, 8, 5),
+    (36.0, 84.0, 34.0, 144.0, 7.5, 50.0, 8, 4),
+    # The great side towers on the plaza, carrying the bridges.
+    (136.0, 6.0, 0.0, 176.0, 11.0, 64.0, 8, 7),
+    # Behind: the skyline's depth.
+    (108.0, 82.0, 0.0, 122.0, 9.0, 46.0, 8, 4),
+    (56.0, 118.0, 0.0, 108.0, 8.0, 42.0, 8, 3),
+    (0.0, 124.0, 0.0, 150.0, 10.0, 50.0, 8, 4),
+    # A middle ring on the plaza, filling the skyline between the terrace and
+    # the side towers, and slender spires between the hall and the keep.
+    (114.0, -54.0, 0.0, 104.0, 7.5, 44.0, 8, 4),
+    (120.0, 46.0, 0.0, 136.0, 8.0, 50.0, 8, 4),
+    (30.0, 36.0, 34.0, 206.0, 6.0, 46.0, 8, 5),
+    (88.0, -70.0, 0.0, 70.0, 6.0, 30.0, 8, 3),
 ]
-# Thin pinnacles on the arcade's top, every few metres round it.
-ARCADE_SEGMENTS = 40
-# Flying buttresses: y positions along the nave, from the aisles to the nave wall.
-BUTTRESS_YS = (-36.0, -8.0, 20.0, 48.0)
-# Satellite rocks under the ring: (angle deg, radius, top z, rock radius, depth, seed).
-SATELLITES = [(205.0, 212.0, -16.0, 28.0, 56.0, 131), (236.0, 206.0, -26.0, 22.0, 46.0, 133),
-              (304.0, 206.0, -22.0, 24.0, 50.0, 137), (336.0, 212.0, -12.0, 30.0, 58.0, 139),
-              (160.0, 208.0, -28.0, 20.0, 40.0, 141), (20.0, 208.0, -24.0, 20.0, 42.0, 143)]
-# Waterfalls off the platform rim: (angle deg, width, length).
-STATION_FALLS = [(238.0, 15.0, 185.0), (257.0, 12.0, 170.0), (283.0, 17.0, 195.0),
-                 (302.0, 12.0, 160.0)]
-# Waterfalls off satellite rocks: (satellite index, width, length).
-SATELLITE_FALLS = [(0, 9.0, 130.0), (3, 10.0, 140.0), (1, 7.0, 110.0)]
+# The facade's flanking towers: (x, y, half width, shaft top, lancet window).
+FLANKS = (56.0, HALL_FRONT, 10.5, 168.0, (12.0, 74.0, 54.0, 12, 3))
+# The terrace's corner turrets: every other one of its 18 corners.
+TERRACE_SIDES = 18
+# Satellite rocks: (x, y, top z, radius, depth, seed, cluster).
+SATELLITES = [
+    (150.0, -216.0, -66.0, 48.0, 88.0, 131, "town"),     # C4's lower-right castle rock
+    (-158.0, -196.0, -52.0, 34.0, 66.0, 133, "town"),    # its lower-left twin
+    (-262.0, -24.0, -8.0, 30.0, 64.0, 137, "tower"),     # the left bridge's tower rock
+    (258.0, 20.0, -2.0, 30.0, 66.0, 139, "tower"),       # the right bridge's
+]
+# Bridges from the great side towers to the tower rocks: (x0, x1, y, deck z).
+BRIDGES = [(-138.0, -244.0, 4.0, 26.0), (138.0, 240.0, 12.0, 30.0)]
+# Waterfalls off the plaza rim: (angle deg, width, length).
+STATION_FALLS = [(238.0, 16.0, 236.0), (256.0, 12.0, 214.0), (284.0, 21.0, 250.0),
+                 (303.0, 14.0, 204.0)]
+# Waterfalls off the satellites: (satellite index, angle deg, width, length).
+SATELLITE_FALLS = [(0, 262.0, 11.0, 150.0), (1, 280.0, 8.0, 120.0), (2, 250.0, 7.0, 96.0)]
 
 
-def tower(stone, glass, x, y, z0, z1, hw, spire, shape, window, seed):
-    """A gothic tower: shaft, cornice, a tall spire and (square towers) four
-    corner pinnacles; a stained-glass window on its front."""
-    if shape == "sq":
-        faces = prism(stone, (x, y), hw * 1.414, hw * 1.414, z0, z1, 4, math.pi / 4, top=False)
-        for k in (0.34, 0.68):
-            zc = z0 + (z1 - z0) * k
-            faces += prism(stone, (x, y), hw * 1.52, hw * 1.52, zc, zc + 1.8, 4, math.pi / 4)
-        faces += prism(stone, (x, y), hw * 1.56, hw * 1.56, z1, z1 + hw * 0.35, 4, math.pi / 4)
-        shade3(stone, faces, STONE)
-        # An octagonal belfry stage, then the spire.
-        bel = prism(stone, (x, y), hw * 0.95, hw * 0.9, z1 + hw * 0.35, z1 + hw * 2.0, 8,
-                    math.pi / 8, top=False)
-        shade3(stone, bel, STONE)
-        shade3(stone, pyramid(stone, (x, y), hw * 1.0, z1 + hw * 2.0, spire, 8, math.pi / 8),
-               SPIRE)
-        for k in range(4):
-            a = math.pi / 4 + k * math.pi / 2
-            px, py = x + math.cos(a) * hw * 1.3, y + math.sin(a) * hw * 1.3
-            pinnacle(stone, px, py, z1 + hw * 0.35, hw * 2.6, hw * 0.2)
-        face_y = y - hw
+def front_facing(a, lim=0.35):
+    """Whether an outward angle `a` (radians) faces the arena's half (-Y)."""
+    return math.sin(a) < lim
+
+
+def cone_roof(bm, x, y, z0, r, h, sides=8, lean=(0.0, 0.0), angle0=0.0):
+    """A cartoon witch-hat roof on a round shaft of radius `r` topped at `z0`:
+    a drooping eave, a concave cone that bends toward `lean` (the tip's offset,
+    metres) and a needle point. Returns its faces."""
+    # (radius factor, height fraction); the lean grows toward the tip.
+    profile = [(1.22, -0.03), (0.84, 0.13), (0.5, 0.36), (0.22, 0.66)]
+    rings = []
+    for k, (rf, hf) in enumerate(profile):
+        t = max(hf, 0.0) ** 1.6
+        rings.append(ring_verts(bm, (x + lean[0] * t, y + lean[1] * t), r * rf, z0 + h * hf,
+                                sides, angle0))
+    faces = []
+    for lower, upper in zip(rings, rings[1:]):
+        faces += shapes.bridge(bm, lower, upper)
+    apex = bm.verts.new((x + lean[0], y + lean[1], z0 + h))
+    top = rings[-1]
+    faces += [bm.faces.new((top[i], top[(i + 1) % sides], apex)) for i in range(sides)]
+    # The eave's underside, seen from below (T10).
+    under = ring_verts(bm, (x, y), r * 0.98, z0 + h * 0.01, sides, angle0)
+    faces += shapes.bridge(bm, rings[0], under)
+    return faces
+
+
+def star_tip(bm, x, y, z, size):
+    """A little gold star on a spire's tip: two crossed four-point diamonds,
+    seen from both sides."""
+    faces = []
+    for axis in ("x", "y"):
+        pts = [(0.0, size), (size * 0.28, 0.0), (0.0, -size * 0.7), (-size * 0.28, 0.0)]
+        if axis == "x":
+            vs = [bm.verts.new((x + u, y, z + v)) for u, v in pts]
+        else:
+            vs = [bm.verts.new((x, y + u, z + v)) for u, v in pts]
+        faces.append(bm.faces.new(vs))
+        faces.append(bm.faces.new(list(reversed([bm.verts.new(v.co) for v in vs]))))
+    palette.tag(bm, faces, "spell_gold")
+    return faces
+
+
+def window_row(win, x, y, r, sides, angle0, sill, w, h, per_face=1, lim=0.35, inset=1.0):
+    """Warm arched windows round a prism (centre x, y, radius r) on the faces
+    turned toward the arena: `per_face` side by side, sill at `sill`."""
+    face_r = r * math.cos(math.pi / sides) * inset
+    width = 2.0 * r * math.sin(math.pi / sides)
+    n = 0
+    for i in range(sides):
+        a = angle0 + 2.0 * math.pi * (i + 0.5) / sides
+        if not front_facing(a, lim):
+            continue
+        yaw = a + math.pi / 2.0
+        for k in range(per_face):
+            off = (k + 0.5) / per_face - 0.5
+            dx, dy = math.cos(yaw) * off * width, math.sin(yaw) * off * width
+            warm_window(win, x + math.cos(a) * face_r + dx, y + math.sin(a) * face_r + dy,
+                        sill, w, h, yaw)
+            n += 1
+    return n
+
+
+def turret(stone, win, x, y, z0, z1, r, roof_h, rng, sides=8, rows=2, star=True,
+           win_size=(3.0, 5.2), lean_k=0.12, band=True, hang=False, bartizans=0):
+    """A round castle tower: a shaft, a gold band under a corbelled top, a
+    cone roof and a star. Warm windows in `rows` on its front. A `hang`ing
+    turret clings to a wall on a corbelled cone instead of standing."""
+    a0 = rng.uniform(0.0, 1.0)
+    shaft = prism(stone, (x, y), r, r * 0.95, z0, z1, sides, a0, top=False)
+    shade3(stone, shaft, CSTONE)
+    if hang:
+        base = ring_verts(stone, (x, y), r, z0, sides, a0)
+        tip = stone.verts.new((x, y, z0 - r * 1.8))
+        shade3(stone, [stone.faces.new((base[(i + 1) % sides], base[i], tip))
+                       for i in range(sides)], CSTONE)
+    if band:
+        corbel = prism(stone, (x, y), r * 0.96, r * 1.1, z1 - r * 0.5, z1, sides, a0, top=False)
+        shade3(stone, corbel, GOLD)
+        r_top = r * 1.1
     else:
-        faces = prism(stone, (x, y), hw, hw, z0, z1, 8, math.pi / 8, top=False)
-        zc = z0 + (z1 - z0) * 0.6
-        faces += prism(stone, (x, y), hw * 1.08, hw * 1.08, zc, zc + 1.6, 8, math.pi / 8)
-        faces += prism(stone, (x, y), hw * 1.14, hw * 1.14, z1, z1 + hw * 0.3, 8, math.pi / 8)
-        shade3(stone, faces, STONE)
-        shade3(stone, pyramid(stone, (x, y), hw * 1.02, z1 + hw * 0.3, spire, 8, math.pi / 8),
-               SPIRE)
-        for k in range(4):
-            a = k * math.pi / 2
-            px, py = x + math.cos(a) * hw * 1.05, y + math.sin(a) * hw * 1.05
-            pinnacle(stone, px, py, z1 + hw * 0.3, hw * 1.9, hw * 0.16)
-        face_y = y - hw * math.cos(math.pi / 8)
-    if window is not None:
-        group, w, h, sill, rows, cols = window
-        glass_window(stone, glass[group], x, face_y, sill, w, h, rows, cols, seed)
+        r_top = r
+    ang = rng.uniform(0.0, 2.0 * math.pi)
+    lean = (math.cos(ang) * roof_h * lean_k * rng.uniform(0.3, 1.0),
+            math.sin(ang) * roof_h * lean_k * rng.uniform(0.3, 1.0))
+    shade3(stone, cone_roof(stone, x, y, z1, r_top, roof_h, sides, lean, a0), ROOF)
+    if star:
+        star_tip(win, x + lean[0], y + lean[1], z1 + roof_h + r * 0.25, max(2.2, r * 0.42))
+    # Little hanging turrets clinging under the corbel, turned to the arena.
+    for k in range(bartizans):
+        a = -math.pi / 2 + (k - (bartizans - 1) / 2) * 1.5
+        br = max(2.4, r * 0.34)
+        bx, by = x + math.cos(a) * (r + br * 0.5), y + math.sin(a) * (r + br * 0.5)
+        turret(stone, win, bx, by, z1 - r * 1.9, z1 - r * 0.3, br, br * 3.4, rng, sides=6,
+               rows=1, win_size=(1.8, 3.0), hang=True, band=False)
+    w, h = win_size
+    span = (z1 - r * 0.6) - z0
+    for k in range(rows):
+        sill = z1 - r * 0.6 - (k + 1) * span / (rows + 0.6)
+        if sill > z0 + 1.5:
+            window_row(win, x, y, r * 0.975, sides, a0, sill, w, h)
 
 
-def nave(stone, glass):
-    """The nave: a tall block with a steep roof, the great window on its front,
-    aisles, a transept, the apse and the crossing flèche (the tallest point)."""
-    y0, y1 = NAVE_Y
-    hw = NAVE_HW
-    top, peak = NAVE_TOP, NAVE_PEAK
-    body = extrude(stone, [(-hw, ARCADE_H), (hw, ARCADE_H), (hw, top), (0, peak), (-hw, top)],
-                   "y", y0, y1)
-    shade3(stone, body, STONE)
-    # A raised gable frame round the front's peak and a finial.
-    gable = extrude(stone, [(-hw - 3, top - 5), (-hw, top - 5), (0, peak - 3), (hw, top - 5),
-                            (hw + 3, top - 5), (0, peak + 5)], "y", y0 - 2.0, y0 + 2.0)
-    shade3(stone, gable, STONE)
-    pinnacle(stone, 0.0, y0, peak + 3, 26.0, 2.0)
-    w, h, sill = GREAT_WINDOW
-    glass_window(stone, glass["nave"], 0.0, y0, sill, w, h, 24, 10, 1, scheme="rose", frame=3.0)
-    # Aisles with lean-to roofs.
+def house(stone, win, x, y, a, rng, z=0.0):
+    """A little town house at (x, y, z) with its front turned out along angle
+    `a`: a stone box, a steep violet gable roof and one or two warm windows."""
+    w, d = rng.uniform(9.0, 15.0), rng.uniform(8.0, 11.0)
+    h = rng.uniform(8.0, 17.0)
+    rh = rng.uniform(6.0, 10.0)
+    yaw = a + math.pi / 2.0
+    m = placed(x, y, z, yaw)
+    body = box(stone, (-w / 2, -d / 2, 0.0), (w / 2, d / 2, h))
+    bmesh.ops.transform(stone, matrix=m, verts=unique_verts(body))
+    shade3(stone, body, CSTONE, jitter=lambda f: rng.uniform(-0.12, 0.12))
+    # A gable end turned out to the rim.
+    roof = extrude(stone, [(-w / 2 - 1.0, h - 0.6), (w / 2 + 1.0, h - 0.6), (0.0, h + rh)],
+                   "y", -d / 2 - 1.2, d / 2 + 1.2)
+    bmesh.ops.transform(stone, matrix=m, verts=unique_verts(roof))
+    shade3(stone, roof, ROOF)
+    n = 1 if w < 11.5 else 2
+    for k in range(n):
+        off = ((k + 0.5) / n - 0.5) * w * 0.8
+        p = m @ Vector((off, -d / 2, 0.0))
+        warm_window(win, p.x, p.y, z + h * 0.3, 2.6, 4.2, yaw)
+
+
+def drum(stone, win, x, y, r, z0, z1, sides, rows, per_face, angle0=0.0, win_size=(3.4, 6.0),
+         parapet=True):
+    """A castle drum: a wide round (n-gon) wall stage with rows of warm windows
+    on its front, a gold string course and a parapet. Returns its top radius."""
+    faces = prism(stone, (x, y), r, r, z0, z1, sides, angle0, top=False)
+    shade3(stone, faces, CSTONE)
+    top_r = r
+    if parapet:
+        band = prism(stone, (x, y), r * 1.02, r * 1.07, z1 - 2.2, z1, sides, angle0, top=False)
+        shade3(stone, band, GOLD)
+        par = prism(stone, (x, y), r * 1.07, r * 1.07, z1, z1 + 3.2, sides, angle0, top=False)
+        cap = prism(stone, (x, y), r * 1.07, r * 0.9, z1 + 3.2, z1 + 3.2, sides, angle0,
+                    top=True)
+        shade3(stone, par + cap, CSTONE)
+        top_r = r * 0.9
+    w, h = win_size
+    for k in range(rows):
+        sill = z0 + 4.0 + k * (z1 - z0 - 8.0) / rows
+        window_row(win, x, y, r, sides, angle0, sill, w, h, per_face)
+    return top_r
+
+
+def panel(bm, pts, m, depth, colour):
+    """A flat glass panel through the (u, v) outline `pts` (counter-clockwise
+    seen from the front), `depth` metres toward the viewer, placed by `m`."""
+    f = bm.faces.new([bm.verts.new(m @ Vector((u, -depth, v))) for u, v in pts])
+    palette.tag(bm, [f], colour)
+    return f
+
+
+def rose_window(glass, stone, x, y_face, sill, width, height):
+    """The great window (C4's heart): a pointed arch of gold tracery holding a
+    rose of teal, white and gold petals round a glowing heart, over four
+    teal lancets, in a raised stone frame. Drawn as panels proud of a gold
+    backing plate, so the tracery is the plate showing between them."""
+    m = placed(x, y_face, sill)
+    panel(glass, arch_outline(width, height, n_arc=8), m, 0.3, "gun_brass")
+    cv = height * 0.64
+    big = width * 0.45
+    # The rose: a heart, a ring of petals, an outer ring of cells.
+    sectors = 12
+    def ring_cell(r0, r1, a0, a1, colour, depth=0.7):
+        pts = [(math.cos(a0) * r0, cv + math.sin(a0) * r0), (math.cos(a0) * r1, cv + math.sin(a0) * r1),
+               (math.cos(a1) * r1, cv + math.sin(a1) * r1), (math.cos(a1) * r0, cv + math.sin(a1) * r0)]
+        return panel(glass, petal_ccw(pts), m, depth, colour)
+    heart = [(math.cos(2 * math.pi * k / sectors) * big * 0.2,
+              cv + math.sin(2 * math.pi * k / sectors) * big * 0.2) for k in range(sectors)]
+    panel(glass, heart, m, 0.8, "far_glass_white")
+    gap = 0.09
+    for k in range(sectors):
+        a0 = 2 * math.pi * (k + gap) / sectors
+        a1 = 2 * math.pi * (k + 1 - gap) / sectors
+        am = (a0 + a1) / 2
+        # A pointed petal.
+        petal = [(math.cos(a0) * big * 0.27, cv + math.sin(a0) * big * 0.27),
+                 (math.cos(am) * big * 0.66, cv + math.sin(am) * big * 0.66),
+                 (math.cos(a1) * big * 0.27, cv + math.sin(a1) * big * 0.27)]
+        panel(glass, petal_ccw(petal), m, 0.7,
+              "far_glass_teal" if k % 2 else "far_glass_white")
+        for half in (0, 1):
+            b0 = 2 * math.pi * (k + half * 0.5 + gap * 0.5) / sectors
+            b1 = 2 * math.pi * (k + half * 0.5 + 0.5 - gap * 0.5) / sectors
+            ring_cell(big * 0.72, big * 0.97, b0, b1,
+                      ["far_glass_gold", "far_glass_teal", "glass_cyan", "far_glass_teal"][(2 * k + half) % 4])
+    # Four lancets under the rose.
+    lw = width * 0.15
+    for k in range(4):
+        u = (k - 1.5) * width * 0.21
+        out = arch_outline(lw, cv - big - height * 0.08, n_arc=3)
+        panel(glass, [(u + a, height * 0.05 + b) for a, b in out], m, 0.7,
+              "far_glass_teal" if k in (1, 2) else "glass_cyan")
+    window_frame(stone, width, height, 3.2, m, proud=1.6)
+
+
+def petal_ccw(pts):
+    """`pts` reordered counter-clockwise (seen from the front, u right, v up)."""
+    area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(pts, pts[1:] + pts[:1]))
+    return pts if area > 0 else list(reversed(pts))
+
+
+def gate(stone, glass, win, x, y_face, w, h):
+    """The terrace's great gate: a tall pointed arch glowing gold, a stone frame,
+    and lamps lining the stair down to the rim."""
+    m = placed(x, y_face, 0.0)
+    outline = arch_outline(w, h, n_arc=5)
+    f = glass.faces.new([glass.verts.new(m @ Vector((u, -0.4, v))) for u, v in outline])
+    palette.tag(glass, [f], "far_glass_gold")
+    inner = arch_outline(w * 0.55, h * 0.72, n_arc=4)
+    f = glass.faces.new([glass.verts.new(m @ Vector((u, -0.6, v))) for u, v in inner])
+    palette.tag(glass, [f], "far_glass_white")
+    window_frame(stone, w, h, 2.4, m, proud=2.2)
+
+
+def stair(stone, win, x, y0, y1, w):
+    """The processional way from the gate to the rim: a pale road with a gold
+    kerb and warm lamps along it."""
+    road = [stone.verts.new(p) for p in ((x - w / 2, y1, 0.25), (x + w / 2, y1, 0.25),
+                                          (x + w / 2, y0, 0.25), (x - w / 2, y0, 0.25))]
+    palette.tag(stone, [stone.faces.new(road)], "far_stone_light")
     for side in (-1, 1):
-        prof = ([(hw, ARCADE_H), (hw + 26, ARCADE_H), (hw + 26, 82), (hw, 96)] if side > 0 else
-                [(-hw - 26, ARCADE_H), (-hw, ARCADE_H), (-hw, 96), (-hw - 26, 82)])
-        shade3(stone, extrude(stone, prof, "y", y0 + 16, y1 - 10), STONE)
-    # Transept.
-    tr = extrude(stone, [(-8, ARCADE_H), (30, ARCADE_H), (30, 116), (11, 140), (-8, 116)],
-                 "x", -84, 84)
-    shade3(stone, tr, STONE)
-    # Apse: a polygonal end with a conical roof.
-    apse = prism(stone, (0, y1), 26, 26, ARCADE_H, 112, 10, math.pi / 10, top=False)
-    shade3(stone, apse, STONE)
-    shade3(stone, pyramid(stone, (0, y1), 28, 112, 40, 10, math.pi / 10), SPIRE)
-    # The crossing flèche.
-    base, tip = FLECHE
-    fl = prism(stone, (0, 11), 9.5, 9, base, base + 22, 8, math.pi / 8, top=False)
-    fl += prism(stone, (0, 11), 11, 11, base + 22, base + 25, 8, math.pi / 8)
-    shade3(stone, fl, STONE)
-    shade3(stone, pyramid(stone, (0, 11), 10, base + 25, tip - base - 25, 8, math.pi / 8), SPIRE)
-    for k in range(8):
-        a = math.pi / 8 + k * math.pi / 4
-        pinnacle(stone, math.cos(a) * 12, 11 + math.sin(a) * 12, base + 22, 20, 1.1)
-    # Flying buttresses: piers on the aisles' outer walls with pinnacles, and
-    # slanted arms up to the nave wall.
-    for side in (-1, 1):
-        for y in BUTTRESS_YS:
-            px = side * (hw + 29)
-            pier = oriented_box(stone, (px, y, (ARCADE_H + 96) / 2), (5.0, 4.0, 96 - ARCADE_H),
-                                0.0, bottom=False)
-            shade3(stone, pier, STONE)
-            pinnacle(stone, px, y, 96, 24, 2.2)
-            arm = (extrude(stone, [(hw + 26, 84), (hw + 29, 90), (hw, 122), (hw, 115)], "y",
-                           y - 1.4, y + 1.4) if side > 0 else
-                   extrude(stone, [(-hw - 29, 90), (-hw - 26, 84), (-hw, 115), (-hw, 122)], "y",
-                           y - 1.4, y + 1.4))
-            shade3(stone, arm, STONE)
-    # Pinnacles along the nave's eaves.
+        kerb = box(stone, (x + side * w / 2 - 0.8, y1, 0.0), (x + side * w / 2 + 0.8, y0, 1.6))
+        shade3(stone, kerb, GOLD)
+        n = 6
+        for k in range(n):
+            ly = y1 + (y0 - y1) * (k + 0.5) / n
+            post = box(stone, (x + side * (w / 2 + 2.0) - 0.5, ly - 0.5, 0.0),
+                       (x + side * (w / 2 + 2.0) + 0.5, ly + 0.5, 5.0))
+            shade3(stone, post, CSTONE)
+            lamp = box(win, (x + side * (w / 2 + 2.0) - 1.4, ly - 1.4, 5.0),
+                       (x + side * (w / 2 + 2.0) + 1.4, ly + 1.4, 8.0))
+            palette.tag(win, lamp, WARM[1])
+
+
+def terrace(stone, glass, win, rng):
+    """The great terrace, the cake's first layer: an 18-sided walled platform
+    with two rows of arcade windows, a gold string course, a parapet, corner
+    turrets and the gate in its front face."""
+    cx, cy, r, top = TERRACE
+    n = TERRACE_SIDES
+    a0 = -math.pi / 2 - math.pi / n     # a face centred on the front
+    drum(stone, win, cx, cy, r, 0.0, top, n, 2, 4, a0, win_size=(3.6, 7.5))
+    for i in range(0, n, 2):
+        a = a0 + 2 * math.pi * i / n
+        tx, ty = cx + math.cos(a) * r * 1.02, cy + math.sin(a) * r * 1.02
+        if not front_facing(a, 0.6):
+            continue
+        turret(stone, win, tx, ty, 0.0, top + 22.0 + rng.uniform(-3, 6), 6.5, 30.0, rng,
+               sides=8, rows=2, win_size=(2.6, 4.6))
+    face_y = cy - r * math.cos(math.pi / n)
+    gate(stone, glass, win, cx, face_y - 0.1, *GATE)
+    stair(stone, win, cx, face_y - 2.5, -PLAT_R + 6.0, 13.0)
+
+
+def hall(stone, glass, rng):
+    """The great hall on the terrace: a tall block with a steep violet roof and
+    the rose window, the castle's glowing heart, on its gabled facade; the
+    flanking square towers carry tall teal lancets."""
+    z0 = TERRACE[3]
+    hw, top, peak = HALL_HW, HALL_TOP, HALL_PEAK
+    body = extrude(stone, [(-hw, z0), (hw, z0), (hw, top), (0.0, peak), (-hw, top)], "y",
+                   HALL_FRONT, HALL_BACK)
+    walls = [f for f in body if abs(f.normal.z) < 0.3]
+    roofs = [f for f in body if f.normal.z >= 0.3]
+    shade3(stone, walls, CSTONE)
+    shade3(stone, roofs, ROOF)
+    # A gold-edged gable frame proud of the facade, and its pinnacle.
+    gable = extrude(stone, [(-hw - 3, top - 6), (-hw, top - 6), (0, peak - 4), (hw, top - 6),
+                            (hw + 3, top - 6), (0, peak + 5)], "y", HALL_FRONT - 2.5,
+                    HALL_FRONT + 1.0)
+    shade3(stone, gable, GOLD)
+    w, h, sill = ROSE
+    rose_window(glass["nave"], stone, 0.0, HALL_FRONT, sill, w, h)
+    # Warm windows up the facade beside the rose.
     for side in (-1, 1):
         for k in range(6):
-            pinnacle(stone, side * (hw + 1.5), y0 + 14 + k * 20, top, 18, 1.3)
+            warm_window(glass["windows"], side * 39.5, HALL_FRONT, z0 + 10.0 + k * 15.5, 3.4, 7.0)
+    # The facade's flanking towers with their lancets.
+    fx, fy, fhw, ftop, lancet = FLANKS
+    for side in (-1, 1):
+        x = side * fx
+        faces = prism(stone, (x, fy), fhw * 1.414, fhw * 1.414, z0, ftop, 4, math.pi / 4,
+                      top=False)
+        shade3(stone, faces, CSTONE)
+        band = prism(stone, (x, fy), fhw * 1.5, fhw * 1.56, ftop - 3.0, ftop, 4, math.pi / 4)
+        shade3(stone, band, GOLD)
+        bel = prism(stone, (x, fy), fhw * 0.95, fhw * 0.9, ftop, ftop + 24.0, 8, math.pi / 8,
+                    top=False)
+        shade3(stone, bel, CSTONE)
+        shade3(stone, cone_roof(stone, x, fy, ftop + 24.0, fhw * 0.98, 70.0, 8,
+                                (side * 2.5, 1.5), math.pi / 8), ROOF)
+        star_tip(glass["windows"], x + side * 2.5, fy + 1.5, ftop + 24.0 + 70.0 + 3.0, 4.5)
+        window_row(glass["windows"], x, fy, fhw * 0.95, 8, math.pi / 8, ftop + 8.0, 3.0, 7.0)
+        for k in range(4):
+            a = math.pi / 4 + k * math.pi / 2
+            pinnacle(stone, x + math.cos(a) * fhw * 1.3, fy + math.sin(a) * fhw * 1.3, ftop,
+                     fhw * 2.4, fhw * 0.2)
+        lw, lh, lsill, rows, cols = lancet
+        glass_window(stone, glass["towers"], x, fy - fhw, lsill, lw, lh, rows, cols,
+                     5 + side, frame=1.6, jewels=LANCET_JEWELS, lead_colour="gun_brass")
+    # Pinnacles along the hall's eaves.
+    for side in (-1, 1):
+        for k in range(5):
+            pinnacle(stone, side * (hw + 1.0), HALL_FRONT + 14 + k * 18, top, 16, 1.2)
 
 
-def arcade(stone, warm):
-    """The lower arcade: a curtain wall round the cathedral with two rows of
-    warm lit arched windows on the side facing the arena, a balcony on top and
-    a row of thin pinnacles."""
-    n = ARCADE_SEGMENTS
-    r0, r1 = ARCADE_R, ARCADE_R + 4.0
-    a0 = math.pi / n
-    base_o = ring_verts(stone, (0, 0), r1, 0.0, n, a0)
-    top_o = ring_verts(stone, (0, 0), r1, ARCADE_H, n, a0)
-    lip_o = ring_verts(stone, (0, 0), r1 + 3.0, ARCADE_H, n, a0)
-    lip_t = ring_verts(stone, (0, 0), r1 + 3.0, ARCADE_H + 3.0, n, a0)
-    in_t = ring_verts(stone, (0, 0), r0, ARCADE_H + 3.0, n, a0)
-    faces = shapes.bridge(stone, base_o, top_o)
-    faces += [stone.faces.new((top_o[i], top_o[(i + 1) % n], lip_o[(i + 1) % n], lip_o[i]))
-              for i in range(n)]
-    faces += shapes.bridge(stone, lip_o, lip_t)
-    faces += [stone.faces.new((lip_t[i], lip_t[(i + 1) % n], in_t[(i + 1) % n], in_t[i]))
-              for i in range(n)]
-    shade3(stone, faces, STONE)
-    face_r = r1 * math.cos(math.pi / n)
-    for i in range(n):
-        a = a0 + 2 * math.pi * (i + 0.5) / n
-        if math.sin(a) > 0.35:
-            continue  # the back: no windows
-        x, y = math.cos(a) * face_r, math.sin(a) * face_r
-        yaw = a + math.pi / 2
-        warm_window(warm, x, y, 4.0, 4.6, 14.0, yaw)
-        warm_window(warm, x, y, 21.0, 3.4, 6.5, yaw)
-    for i in range(n):
-        a = a0 + 2 * math.pi * i / n
-        pier = oriented_box(stone, (math.cos(a) * (r1 + 0.9), math.sin(a) * (r1 + 0.9),
-                                    ARCADE_H / 2), (2.6, 2.6, ARCADE_H), a, bottom=False)
-        shade3(stone, pier, STONE)
-        if i % 2 == 0:
-            pinnacle(stone, math.cos(a) * (r1 + 1.5), math.sin(a) * (r1 + 1.5), ARCADE_H + 3.0,
-                     13.0 + 6.0 * ((i // 2) % 3 == 0), 1.0)
+def keep(stone, glass, win, rng):
+    """The keep behind the hall: three drums stacked like a wedding cake, each
+    ringed with turrets, crowned by the tallest cone and its needle."""
+    x, y = KEEP
+    for k, (r, z0, z1, sides, rows) in enumerate(KEEP_DRUMS):
+        a0 = rng.uniform(0.0, 1.0)
+        drum(stone, win, x, y, r, z0, z1, sides, rows, 2 if r > 20 else 1, a0,
+             win_size=(3.2, 6.0) if k < 2 else (2.6, 5.0))
+        # Turrets clinging to the drum's rim.
+        turrets = [(200.0, 340.0, 55.0, 125.0), (215.0, 325.0, 90.0), (245.0, 295.0)][k]
+        for deg in turrets:
+            a = math.radians(deg)
+            tr = [6.2, 4.6, 3.4][k]
+            tx, ty = x + math.cos(a) * (r + tr * 0.4), y + math.sin(a) * (r + tr * 0.4)
+            t_top = z1 + [26.0, 18.0, 12.0][k] + rng.uniform(-3.0, 4.0)
+            turret(stone, win, tx, ty, z1 - [58.0, 36.0, 22.0][k], t_top, tr,
+                   [34.0, 26.0, 18.0][k], rng, sides=8 if tr > 4 else 6, rows=2,
+                   win_size=(2.4, 4.2), hang=True)
+    r, _, z1, sides, _ = KEEP_DRUMS[-1]
+    shade3(stone, cone_roof(stone, x, y, z1 + 3.2, r * 1.02, KEEP_SPIRE, 8, (1.5, 2.0)), ROOF)
+    star_tip(win, x + 1.5, y + 2.0, z1 + 3.2 + KEEP_SPIRE + 4.0, 7.0)
 
 
-def ring_walkway(bm, lamps):
-    """The floating ring walkway round the cathedral: a deck with a parapet,
-    carried on six bridges from the arcade, lit by warm lamps along its rim."""
-    sides = 72
-    r0, r1 = RING_R
-    z0, z1 = RING_Z - 2.2, RING_Z + 2.2
-    inner_lo = ring_verts(bm, (0, 0), r0, z0, sides)
-    inner_hi = ring_verts(bm, (0, 0), r0, z1, sides)
-    outer_lo = ring_verts(bm, (0, 0), r1, z0, sides)
-    outer_hi = ring_verts(bm, (0, 0), r1, z1, sides)
-    rail = ring_verts(bm, (0, 0), r1, z1 + 2.4, sides)
-    rail_in = ring_verts(bm, (0, 0), r1 - 1.0, z1 + 2.4, sides)
-    rail_foot = ring_verts(bm, (0, 0), r1 - 1.0, z1, sides)
-    faces = shapes.bridge(bm, outer_lo, outer_hi)
-    faces += shapes.bridge(bm, inner_hi, inner_lo)
-    faces += shapes.bridge(bm, outer_hi, rail)
-    faces += shapes.bridge(bm, rail, rail_in)
-    faces += shapes.bridge(bm, rail_in, rail_foot)
-    for i in range(sides):
-        j = (i + 1) % sides
-        faces.append(bm.faces.new((inner_hi[i], inner_hi[j], rail_foot[j], rail_foot[i])))
-        faces.append(bm.faces.new((outer_lo[i], outer_lo[j], inner_lo[j], inner_lo[i])))
-    shade3(bm, faces, STONE)
-    for i in range(0, sides, 2):
-        a = 2 * math.pi * (i + 0.5) / sides
-        m = (Matrix.Translation((math.cos(a) * (r1 + 0.1), math.sin(a) * (r1 + 0.1), z0 + 0.8))
-             @ Matrix.Rotation(a + math.pi / 2, 4, "Z"))
-        quad = [lamps.verts.new(m @ Vector(p))
-                for p in ((-1.6, 0, 0), (1.6, 0, 0), (1.6, 0, 2.2), (-1.6, 0, 2.2))]
-        palette.tag(lamps, [lamps.faces.new(quad)], WARM[1])
-    for deg in (0.0, 60.0, 120.0, 180.0, 215.0, 325.0):
+def town(stone, win, rng):
+    """The town round the rim: rows of little houses facing out, with turrets
+    among them, thickest across the front and thinning behind."""
+    placed_at = []
+
+    def clear(x, y, r):
+        if math.hypot(x - TERRACE[0], y - TERRACE[1]) < TERRACE[2] + r + 4.0:
+            return False
+        if abs(x) < 22.0 and y < 0.0:
+            return False  # the processional way
+        if abs(x) > 140.0 and any(abs(y - by) < r + 7.0 for _, _, by, _ in BRIDGES):
+            return False  # under the bridges
+        for tx, ty, *_ in TOWERS:
+            for sx in (-1, 1):
+                if math.hypot(x - sx * tx, y - ty) < 14.0 + r:
+                    return False
+        return all(math.hypot(x - px, y - py) > pr + r + 1.5 for px, py, pr in placed_at)
+
+    rows = [(PLAT_R - 17.0, 40), (PLAT_R - 38.0, 30)]
+    for ring_r, count in rows:
+        for i in range(count):
+            a = 2 * math.pi * (i + rng.uniform(-0.3, 0.3)) / count
+            if math.sin(a) > 0.55 and rng.random() < 0.6:
+                continue  # sparser behind
+            rr = ring_r + rng.uniform(-4.0, 4.0)
+            x, y = math.cos(a) * rr, math.sin(a) * rr
+            if not clear(x, y, 8.0):
+                continue
+            placed_at.append((x, y, 8.0))
+            if rng.random() < 0.24 and not (abs(x) < 50.0 and y < 0.0):
+                h = rng.uniform(26.0, 52.0)
+                turret(stone, win, x, y, 0.0, h, rng.uniform(4.0, 6.0), rng.uniform(16.0, 26.0),
+                       rng, sides=6, rows=2, win_size=(2.6, 4.4))
+            else:
+                house(stone, win, x, y, a, rng)
+
+
+def arch_bridge(stone, win, x0, x1, y, z, width, arches, depth):
+    """An arcaded bridge along x from x0 to x1 at deck height z: a deck with a
+    gold rail over a row of pointed arches."""
+    lo, hi = min(x0, x1), max(x0, x1)
+    span = (hi - lo) / arches
+    prof = [(lo, z + 2.5), (lo, z - depth)]
+    for k in range(arches):
+        a, b = lo + k * span, lo + (k + 1) * span
+        pier = span * 0.16
+        prof += [(a + pier, z - depth), (a + pier, z - depth * 0.45),
+                 ((a + b) / 2, z - 2.6), (b - pier, z - depth * 0.45), (b - pier, z - depth)]
+    prof += [(hi, z - depth), (hi, z + 2.5)]
+    faces = extrude(stone, [(p[0], p[1]) for p in prof], "y", y - width / 2, y + width / 2,
+                    bottom=True)
+    shade3(stone, faces, CSTONE)
+    rail = box(stone, (lo, y - width / 2 - 0.4, z + 2.5), (hi, y + width / 2 + 0.4, z + 3.6))
+    shade3(stone, rail, GOLD)
+    for k in range(arches + 1):
+        lx = lo + k * span
+        lamp = box(win, (lx - 1.2, y - width / 2 - 1.4, z + 3.6), (lx + 1.2, y - width / 2 + 0.2,
+                                                                   z + 6.4))
+        palette.tag(win, lamp, WARM[1])
+
+
+def satellite_cluster(stone, win, c, z, radius, kind, rng):
+    """A little castle on a satellite rock: a tall tower and a few houses
+    ("town"), or one bridge tower ("tower")."""
+    cx, cy = c
+    if kind == "tower":
+        turret(stone, win, cx, cy, z, z + 96.0, 10.0, 44.0, rng, rows=5)
+        for k in range(2):
+            a = math.radians(250.0 + 50.0 * k)
+            house(stone, win, cx + math.cos(a) * radius * 0.6, cy + math.sin(a) * radius * 0.6,
+                  a, rng, z=z)
+        return
+    turret(stone, win, cx + radius * 0.1, cy + radius * 0.15, z, z + 70.0, 8.0, 36.0, rng, rows=4)
+    for k, deg in enumerate((200.0, 330.0, 20.0)):
         a = math.radians(deg)
-        mid = (ARCADE_R + r0) / 2.0
-        length = r0 - ARCADE_R + 2.0
-        spoke = oriented_box(bm, (math.cos(a) * mid, math.sin(a) * mid, RING_Z - 1.0),
-                             (length, 6.0, 3.0), a)
-        shade3(bm, spoke, STONE)
-        # A pinnacle where the bridge meets the ring.
-        pinnacle(bm, math.cos(a) * r1, math.sin(a) * r1, z1, 20.0, 1.4)
+        turret(stone, win, cx + math.cos(a) * radius * 0.55, cy + math.sin(a) * radius * 0.55, z,
+               z + rng.uniform(30.0, 46.0), 4.8, 20.0, rng, sides=6, rows=2, win_size=(2.4, 4.0))
+    for k in range(6):
+        a = math.radians(215.0 + k * 22.0)
+        rr = radius * rng.uniform(0.55, 0.78)
+        house(stone, win, cx + math.cos(a) * rr, cy + math.sin(a) * rr, a, rng, z=z)
 
 
 def build_station(root):
-    """The cathedral station (T10, T01, T02): a massive dark gothic cathedral of
-    slate-blue stone bristling with spires and pinnacles at every height, with
-    buttresses and tall pointed stained-glass windows set flush in its walls
-    (a huge jewel-toned great window in the middle), a lower arcade of warm
-    windows, a ring walkway round it, and a big jagged rock underside with
-    satellite crags, pouring waterfalls from its rim."""
-    # Base: the floating rock with a grass rim round a stone plaza, and the
-    # satellite crags under the ring.
+    """The castle station (M3-C4): the starlit citadel on its floating rock."""
+    rng = shapes.rng(2026)
     bm = palette.new_bmesh()
-    cols = [(0.22, 5, 0.09, 0.2), (0.45, 9, 0.08, 0.18), (0.66, 13, 0.07, 0.15),
-            (0.86, 17, 0.06, 0.12)]
-    rim = floating_rock(bm, (0.0, 0.0), PLAT_R, ROCK_DEPTH, seed=101, sides=40, cols=cols,
-                        plaza=PLAT_R - 12.0, shadow=0.3)
+    cols = [(0.2, 6, 0.08, 0.22), (0.42, 10, 0.075, 0.2), (0.62, 14, 0.065, 0.17),
+            (0.8, 18, 0.055, 0.13), (0.93, 22, 0.04, 0.08)]
+    rim = floating_rock(bm, (0.0, 0.0), PLAT_R, ROCK_DEPTH, seed=101, sides=64, cols=cols,
+                        plaza=PLAT_R - 10.0, shadow=0.25, crag=True, cone=CASTLE_CONE,
+                        top="foliage_shadow")
     sat_rims = []
-    for deg, dist, z, r, d, s in SATELLITES:
-        a = math.radians(deg)
-        c = (math.cos(a) * dist, math.sin(a) * dist)
-        sat_rims.append((c, z, floating_rock(bm, c, r, d, seed=s, sides=12, top_z=z, shadow=0.3)))
+    for x, y, z, r, d, s, _ in SATELLITES:
+        sat_rims.append(floating_rock(bm, (x, y), r, d, seed=s, sides=14, top_z=z, shadow=0.25,
+                                      crag=True, top="foliage_shadow"))
     made_part("Base", bm, root)
 
     stone = palette.new_bmesh()
     glass = {g: palette.new_bmesh() for g in ("nave", "towers", "side", "windows")}
-    nave(stone, glass)
-    for k, (x, y, z0, z1, hw, spire, shape, window) in enumerate(TOWERS):
-        for side in (-1, 1):
-            tower(stone, glass, side * x, y, z0, z1, hw, spire, shape, window, 11 + 2 * k + side)
-    arcade(stone, glass["windows"])
-    ring_walkway(stone, glass["windows"])
-    # The crystal over the door (T10): a tall blue-white diamond with its lamp.
-    w, h, sill = GREAT_WINDOW
-    cy = -(ARCADE_R + 16.0)
-    res = bmesh.ops.create_cone(glass["nave"], cap_ends=False, segments=4, radius1=0.0,
-                                radius2=5.5, depth=28.0,
-                                matrix=Matrix.Translation((0.0, cy, 17.0)))
-    low = faces_of(res["verts"])
-    res = bmesh.ops.create_cone(glass["nave"], cap_ends=False, segments=4, radius1=5.5,
-                                radius2=0.0, depth=20.0,
-                                matrix=Matrix.Translation((0.0, cy, 41.0)))
-    high = faces_of(res["verts"])
-    shade(glass["nave"], low + high, "far_glass_white", shadow="crystal_blue", threshold=-0.1)
-    made_part("Cathedral", stone, root)
+    win = glass["windows"]
+    terrace(stone, glass["nave"], win, rng)
+    hall(stone, glass, rng)
+    keep(stone, glass, win, rng)
+    for (x, y, z0, z1, r, roof_h, sides, rows) in TOWERS:
+        for side in ((1,) if x == 0.0 else (-1, 1)):
+            k = 0.94 if side < 0 else 1.0
+            turret(stone, win, side * x, y + (3.0 if side < 0 else 0.0), z0, z0 + (z1 - z0) * k,
+                   r, roof_h * (1.0 if side > 0 else 1.06), rng, sides, rows,
+                   bartizans=2 if r >= 8.0 and y < 70.0 else 0)
+    town(stone, win, rng)
+    # Bridges from the great side towers out to the tower rocks.
+    for (x0, x1, y, z) in BRIDGES:
+        arch_bridge(stone, win, x0, x1, y, z, 9.0, 4, 34.0)
+    for (x, y, z, r, d, s, kind) in SATELLITES:
+        satellite_cluster(stone, win, (x, y), z, r, kind, rng)
+    made_part("Castle", stone, root)
     names = {"nave": "GlassNave", "towers": "GlassTowers", "side": "GlassSide",
              "windows": "GlassWindows"}
     for g, name in names.items():
-        made_part(name, glass[g], root)
+        if len(glass[g].faces):
+            made_part(name, glass[g], root)
+        else:
+            glass[g].free()
 
-    # Glow points: the great window, the crystal and each wing tower's window.
-    y0 = NAVE_Y[0]
-    scene.make_attach("GlowNave", root, (0.0, y0 - 6.0, sill + h * 0.55))
-    scene.make_attach("GlowCrystal", root, (0.0, cy - 3.0, 31.0))
-    wing = TOWERS[1]
+    # Glow points: the rose window, the gate and the flanking lancets; the
+    # golden aura round the hall and the keep's crown.
+    w, h, sill = ROSE
+    scene.make_attach("GlowNave", root, (0.0, HALL_FRONT - 8.0, sill + h * 0.55))
+    face_y = TERRACE[1] - TERRACE[2] * math.cos(math.pi / TERRACE_SIDES)
+    scene.make_attach("GlowDoor", root, (0.0, face_y - 6.0, GATE[1] * 0.5))
+    fx, fy, fhw, _, (lw, lh, lsill, _, _) = FLANKS
     for side, name in ((-1, "Left"), (1, "Right")):
-        _, ww, wh, wsill, _, _ = wing[7]
-        scene.make_attach(f"GlowTower{name}", root,
-                          (side * wing[0], wing[1] - wing[4] - 6.0, wsill + wh * 0.5))
+        scene.make_attach(f"GlowTower{name}", root, (side * fx, fy - fhw - 5.0, lsill + lh * 0.5))
+    scene.make_attach("AuraHall", root, (0.0, -10.0, 120.0))
+    scene.make_attach("AuraKeep", root, (KEEP[0], KEEP[1] + 10.0, 262.0))
 
-    # Waterfalls pouring off the rim and the satellite crags.
+    # Waterfalls off the rim and the satellites.
     k = 1
     for deg, width, length in STATION_FALLS:
         waterfall_from_rim(root, k, rim, deg, width, length, inset=3.0)
         k += 1
-    for i, width, length in SATELLITE_FALLS:
-        c, z, srim = sat_rims[i]
-        a = math.degrees(math.atan2(c[1], c[0]))
-        waterfall_from_rim(root, k, srim, a, width, length, centre=c, z=z, inset=1.5)
+    for i, deg, width, length in SATELLITE_FALLS:
+        x, y, z = SATELLITES[i][:3]
+        waterfall_from_rim(root, k, sat_rims[i], deg, width, length, centre=(x, y), z=z,
+                           inset=1.5)
         k += 1
     scene.make_attach("Platform", root, (0.0, 0.0, 0.0))
     lowest = max([ROCK_DEPTH] + [l + 1.0 for _, _, l in STATION_FALLS]
-                 + [-SATELLITES[i][2] + l + 1.0 for i, _, l in SATELLITE_FALLS])
+                 + [-SATELLITES[i][2] + l + 1.0 for i, _, _, l in SATELLITE_FALLS]
+                 + [-z + d for _, _, z, _, d, _, _ in SATELLITES])
     lift_children(root, lowest)
 
 
@@ -1090,5 +1372,5 @@ ASSETS = [
     Asset("far_islet", "far_island", build_far_islet, "tiny floating pebble with a grass top"),
     Asset("planet", "planet", build_planet, "soft lavender ringed gas giant, radius 90 m"),
     Asset("ship", "ship", build_ship, "small starship with an engine streak, about 20 m"),
-    Asset("station", "station", build_station, "gothic cathedral station on a floating rock"),
+    Asset("station", "station", build_station, "the starlit citadel: a castle city on a floating rock"),
 ]
