@@ -26,6 +26,14 @@ pieced_wait_quiet() {
 
 cargo() {
   pieced_wait_quiet
+  # A full disk corrupts half-linked test binaries; refuse early instead.
+  _pieced_free_kb=$(df -k "$HOME" | awk 'NR==2 {print $4}')
+  if [ "${_pieced_free_kb:-0}" -lt 3000000 ]; then
+    echo "cargo: under 3 GB free on disk; not building. Report to the orchestrator (don't prune)." >&2
+    unset _pieced_free_kb
+    return 1
+  fi
+  unset _pieced_free_kb
   _pieced_root="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$_pieced_root" ]; then
     find "$_pieced_root/src" "$_pieced_root/tests" -name '*.rs' -exec touch {} + 2>/dev/null
