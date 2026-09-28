@@ -26,7 +26,13 @@ use std::fmt::Write;
 pub(super) fn build(app: &mut App) {
     app.add_systems(
         Update,
-        (controls_clicks, drop_stale_capture, refresh_controls, chip_looks).chain(),
+        (
+            controls_clicks,
+            drop_stale_capture,
+            refresh_controls,
+            chip_looks,
+        )
+            .chain(),
     );
 }
 
@@ -57,96 +63,92 @@ pub struct ControlsStatus;
 const LEFT: usize = 9;
 
 pub(super) fn spawn_card(root: &mut ChildSpawnerCommands) {
-    root.spawn((
-        ControlsCard,
-        Name::new("Controls"),
-        card(900.0),
-    ))
-    .with_children(|c| {
-        c.spawn(Node {
-            flex_direction: FlexDirection::Row,
-            justify_content: JustifyContent::SpaceBetween,
-            align_items: AlignItems::Center,
-            margin: UiRect::bottom(px(6)),
-            ..default()
-        })
-        .with_children(|header| {
-            header.spawn((
-                Text::new("CONTROLS"),
-                TextFont::from_font_size(32.0),
-                TextColor(TEXT),
-                TextShadow {
-                    offset: Vec2::new(0.0, 2.5),
-                    color: INK,
-                },
-                LetterSpacing::Px(2.5),
-            ));
-            header
-                .spawn(Node {
-                    flex_direction: FlexDirection::Row,
-                    column_gap: px(12),
-                    ..default()
-                })
-                .with_children(|buttons| {
-                    buttons
-                        .spawn(Node {
-                            width: px(260),
-                            ..default()
-                        })
-                        .with_child((
-                            ControlsButton::Reset,
-                            cartoon_button("RESET TO DEFAULTS", false, 46.0, 20.0, None),
-                        ));
-                    buttons
-                        .spawn(Node {
-                            width: px(130),
-                            ..default()
-                        })
-                        .with_child((
-                            ControlsButton::Back,
-                            cartoon_button("BACK", false, 46.0, 20.0, None),
-                        ));
-                });
-        });
-        c.spawn(Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: px(40),
-            ..default()
-        })
-        .with_children(|cols| {
-            for (title, actions) in [
-                ("MOVE AND FIGHT", &Action::ALL[..LEFT]),
-                ("BUILD AND RUN", &Action::ALL[LEFT..]),
-            ] {
-                cols.spawn(Node {
-                    flex_direction: FlexDirection::Column,
-                    flex_basis: px(0),
-                    flex_grow: 1.0,
-                    row_gap: px(4),
-                    ..default()
-                })
-                .with_children(|col| {
-                    col.spawn((
-                        Node {
-                            margin: UiRect::new(px(0), px(0), px(10), px(4)),
-                            ..default()
-                        },
-                        children![caps(title, 14.0, ACCENT)],
-                    ));
-                    for action in actions {
-                        spawn_row(col, *action);
-                    }
-                });
-            }
-        });
-        c.spawn((
-            Node {
-                margin: UiRect::top(px(12)),
+    root.spawn((ControlsCard, Name::new("Controls"), card(900.0)))
+        .with_children(|c| {
+            c.spawn(Node {
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                align_items: AlignItems::Center,
+                margin: UiRect::bottom(px(6)),
                 ..default()
-            },
-            children![(ControlsStatus, text("", 13.0, dim(0.7)))],
-        ));
-    });
+            })
+            .with_children(|header| {
+                header.spawn((
+                    Text::new("CONTROLS"),
+                    TextFont::from_font_size(32.0),
+                    TextColor(TEXT),
+                    TextShadow {
+                        offset: Vec2::new(0.0, 2.5),
+                        color: INK,
+                    },
+                    LetterSpacing::Px(2.5),
+                ));
+                header
+                    .spawn(Node {
+                        flex_direction: FlexDirection::Row,
+                        column_gap: px(12),
+                        ..default()
+                    })
+                    .with_children(|buttons| {
+                        buttons
+                            .spawn(Node {
+                                width: px(260),
+                                ..default()
+                            })
+                            .with_child((
+                                ControlsButton::Reset,
+                                cartoon_button("RESET TO DEFAULTS", false, 46.0, 20.0, None),
+                            ));
+                        buttons
+                            .spawn(Node {
+                                width: px(130),
+                                ..default()
+                            })
+                            .with_child((
+                                ControlsButton::Back,
+                                cartoon_button("BACK", false, 46.0, 20.0, None),
+                            ));
+                    });
+            });
+            c.spawn(Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: px(40),
+                ..default()
+            })
+            .with_children(|cols| {
+                for (title, actions) in [
+                    ("MOVE AND FIGHT", &Action::ALL[..LEFT]),
+                    ("BUILD AND RUN", &Action::ALL[LEFT..]),
+                ] {
+                    cols.spawn(Node {
+                        flex_direction: FlexDirection::Column,
+                        flex_basis: px(0),
+                        flex_grow: 1.0,
+                        row_gap: px(4),
+                        ..default()
+                    })
+                    .with_children(|col| {
+                        col.spawn((
+                            Node {
+                                margin: UiRect::new(px(0), px(0), px(10), px(4)),
+                                ..default()
+                            },
+                            children![caps(title, 14.0, ACCENT)],
+                        ));
+                        for action in actions {
+                            spawn_row(col, *action);
+                        }
+                    });
+                }
+            });
+            c.spawn((
+                Node {
+                    margin: UiRect::top(px(12)),
+                    ..default()
+                },
+                children![(ControlsStatus, text("", 13.0, dim(0.7)))],
+            ));
+        });
 }
 
 fn spawn_row(col: &mut ChildSpawnerCommands, action: Action) {

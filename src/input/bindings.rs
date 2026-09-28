@@ -360,9 +360,9 @@ impl Binding {
         match self.canonical() {
             Binding::Key(key) if CMD_KEYS.contains(&key) => Err(BindError::Cmd),
             Binding::Key(KeyCode::Escape) => Err(BindError::Reserved("Esc pauses")),
-            Binding::Key(KeyCode::F3 | KeyCode::F4) => {
-                Err(BindError::Reserved("F3 and F4 are the stats and tuning keys"))
-            }
+            Binding::Key(KeyCode::F3 | KeyCode::F4) => Err(BindError::Reserved(
+                "F3 and F4 are the stats and tuning keys",
+            )),
             b if b.id().is_some() => Ok(()),
             _ => Err(BindError::Unsupported),
         }
@@ -395,10 +395,7 @@ impl BindError {
 /// `settings.json` as `{ "jump": "Space", "fire": "MouseLeft", ... }`; a
 /// missing or unknown entry falls back to its default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(
-    from = "BTreeMap<String, String>",
-    into = "BTreeMap<String, String>"
-)]
+#[serde(from = "BTreeMap<String, String>", into = "BTreeMap<String, String>")]
 pub struct Bindings([Binding; Action::COUNT]);
 
 impl Default for Bindings {
@@ -558,7 +555,11 @@ pub fn captured_input(
 }
 
 /// Applies a capture to `bindings`: how it went.
-pub fn apply_capture(bindings: &mut Bindings, action: Action, captured: Captured) -> CaptureOutcome {
+pub fn apply_capture(
+    bindings: &mut Bindings,
+    action: Action,
+    captured: Captured,
+) -> CaptureOutcome {
     match captured {
         Captured::Cancel => CaptureOutcome::Cancelled(action),
         Captured::CmdCombo(_) => CaptureOutcome::Refused(action, BindError::Cmd),

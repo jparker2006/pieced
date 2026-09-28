@@ -901,8 +901,7 @@ fn animate_viewmodel(
     let dt = time.delta_secs();
     // The pause menu shows over the world alone, the gun put away (T12); so
     // does the main menu's orbit.
-    let paused =
-        app_state.is_some_and(|s| matches!(s.get(), AppState::Paused | AppState::Menu));
+    let paused = app_state.is_some_and(|s| matches!(s.get(), AppState::Paused | AppState::Menu));
     let Some(player) = player else {
         for (part, _, mut vis) in &mut parts {
             if *part == VmPart::Rig {

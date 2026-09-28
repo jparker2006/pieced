@@ -34,7 +34,7 @@ use pieced::{
     sim::Sim,
     tuning::Tuning,
     waves::{
-        EndRun, PoolGrunt, Run, RunPhase, RunSummary, WavesClientPlugin,
+        EndRun, PoolGrunt, RestartRun, Run, RunPhase, RunSeed, RunSummary, WavesClientPlugin,
         modes::{ModeSwitch, StartMode},
         ui::{ResultsButton, WavesUiPlugin},
     },
@@ -172,7 +172,11 @@ fn assert_idle(sim: &mut Sim) {
         grunts,
         "every knight parked"
     );
-    assert_eq!(pieces(sim), building::initial_cover().len(), "initial cover");
+    assert_eq!(
+        pieces(sim),
+        building::initial_cover().len(),
+        "initial cover"
+    );
     let p = sim.player();
     let spawn = sim
         .world()
@@ -223,11 +227,13 @@ fn boot_opens_the_main_menu_over_an_idle_island() {
 
 #[test]
 fn flags_and_scenarios_skip_the_menu() {
-    let args = |a: &[&str]| {
-        GameOptions::from_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>())
-    };
+    let args =
+        |a: &[&str]| GameOptions::from_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
     assert_eq!(args(&["pieced"]).boot_target(), AppState::Menu);
-    assert_eq!(args(&["pieced", "--waves"]).boot_target(), AppState::Playing);
+    assert_eq!(
+        args(&["pieced", "--waves"]).boot_target(),
+        AppState::Playing
+    );
     assert_eq!(
         args(&["pieced", "--practice"]).boot_target(),
         AppState::Playing
@@ -303,7 +309,11 @@ fn switching_modes_resets_the_arena_knights_dummy_and_player() {
     building::clear_pieces(sim.world_mut());
     let p = sim.player();
     sim.world_mut().get_mut::<Health>(p).unwrap().hp = 40.0;
-    sim.world_mut().get_mut::<Transform>(p).unwrap().translation.x += 5.0;
+    sim.world_mut()
+        .get_mut::<Transform>(p)
+        .unwrap()
+        .translation
+        .x += 5.0;
     assert_eq!(pieces(&mut sim), 0);
 
     // Quit to menu (straight there: the results path is tested below).
@@ -364,6 +374,52 @@ fn a_game_started_in_practice_makes_the_waves_pools_on_demand() {
         sim.tick();
     }
     assert!(count::<(With<PoolGrunt>, Without<Parked>)>(&mut sim) > 0);
+}
+
+/// The seeds of: the first menu run, its Go again, then a menu run after
+/// quitting to the menu.
+fn seed_sequence(run_seed: u64) -> [u64; 3] {
+    let mut sim = menu_game();
+    sim.world_mut().insert_resource(RunSeed(run_seed));
+    click(&mut sim, MainMenuButton::Waves);
+    updates(&mut sim, 3);
+    let first = sim.world().resource::<Run>().seed;
+    sim.world_mut().write_message(RestartRun);
+    updates(&mut sim, 2);
+    let again = sim.world().resource::<Run>().seed;
+    sim.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Menu);
+    updates(&mut sim, 2);
+    click(&mut sim, MainMenuButton::Waves);
+    updates(&mut sim, 3);
+    [first, again, sim.world().resource::<Run>().seed]
+}
+
+#[test]
+fn launches_get_fresh_seeds_and_seed_replays_exactly() {
+    let args =
+        |a: &[&str]| GameOptions::from_args(&a.iter().map(|s| s.to_string()).collect::<Vec<_>>());
+    // Without `--seed`, every launch draws a new first seed (entropy)...
+    let seeds: Vec<u64> = (0..4).map(|_| args(&["pieced"]).run_seed()).collect();
+    for (i, a) in seeds.iter().enumerate() {
+        for b in &seeds[i + 1..] {
+            assert_ne!(a, b, "two launches, one seed: {seeds:?}");
+        }
+    }
+    // ...and `--seed N` always replays N.
+    assert_eq!(args(&["pieced", "--seed", "42"]).run_seed(), 42);
+    assert_eq!(args(&["pieced", "--seed", "42"]).run_seed(), 42);
+
+    // The run seed drives every run: the menu's first run is exactly it, Go
+    // again and later menu runs get new seeds, and the same run seed replays
+    // the same sequence.
+    let replay = seed_sequence(42);
+    assert_eq!(replay[0], 42);
+    assert!(replay[1] != 42 && replay[2] != 42 && replay[1] != replay[2]);
+    assert_eq!(seed_sequence(42), replay, "`--seed` replays exactly");
+    let other = seed_sequence(args(&["pieced"]).run_seed());
+    assert_ne!(other, replay);
 }
 
 // ---------------------------------------------------------------------------

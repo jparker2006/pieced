@@ -47,13 +47,7 @@ fn intent_for(bindings: &Bindings, held: &[Binding]) -> PlayerIntent {
         }
     }
     let mut intent = PlayerIntent::default();
-    bound_buttons_to_intent(
-        &keys,
-        &mouse,
-        bindings,
-        EditContext::default(),
-        &mut intent,
-    );
+    bound_buttons_to_intent(&keys, &mouse, bindings, EditContext::default(), &mut intent);
     intent
 }
 
@@ -223,7 +217,10 @@ fn every_action_rebinds_to_a_new_key_and_leaves_the_old_one() {
             assert!(!start_pressed(&b, old), "Enter no longer starts");
             continue;
         }
-        assert!(does(action, &intent_for(&b, &[new])), "{action:?} on {new:?}");
+        assert!(
+            does(action, &intent_for(&b, &[new])),
+            "{action:?} on {new:?}"
+        );
         assert!(
             !does(action, &intent_for(&b, &[old])),
             "{action:?} left {old:?}"
@@ -388,12 +385,18 @@ fn bindings_persist_through_settings_json_and_load_or_default() {
     )
     .unwrap();
     let partial = Tuning::load_or_default(&path);
-    assert_eq!(partial.bindings.get(Action::Jump), Binding::Key(KeyCode::KeyK));
+    assert_eq!(
+        partial.bindings.get(Action::Jump),
+        Binding::Key(KeyCode::KeyK)
+    );
     assert_eq!(
         partial.bindings.get(Action::Crouch),
         Binding::Key(KeyCode::KeyC)
     );
-    assert_eq!(partial.bindings.get(Action::Edit), Binding::Key(KeyCode::KeyG));
+    assert_eq!(
+        partial.bindings.get(Action::Edit),
+        Binding::Key(KeyCode::KeyG)
+    );
     // An older file without the section loads D43.
     std::fs::write(&path, r#"{"look":{"fov_deg":80.0}}"#).unwrap();
     assert_eq!(Tuning::load_or_default(&path).bindings, Bindings::default());

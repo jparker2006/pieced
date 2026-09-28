@@ -489,7 +489,10 @@ fn the_results_card_shows_every_field_and_new_best_only_when_earned() {
         "Quit to menu"
     );
     assert_eq!(sim.world().resource::<Messages<AppExit>>().len(), 0);
-    assert!(!sim.world().contains_resource::<Run>(), "the run is put away");
+    assert!(
+        !sim.world().contains_resource::<Run>(),
+        "the run is put away"
+    );
 }
 
 #[test]

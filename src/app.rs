@@ -260,6 +260,14 @@ impl GameOptions {
         }
     }
 
+    /// The first Waves run's seed: `--seed N` replays run N exactly;
+    /// otherwise a fresh seed from OS entropy and the clock, so every launch
+    /// plays new runs (the fixed `SimRng` would repeat the same first run).
+    /// Later runs (the menu's, Go again) draw their seeds from this one.
+    pub fn run_seed(&self) -> u64 {
+        self.seed.unwrap_or_else(entropy_seed)
+    }
+
     /// Where the native game goes after `Boot`: the main menu, unless a
     /// scenario or `--waves`/`--practice` starts play straight away.
     pub fn boot_target(&self) -> AppState {
@@ -281,6 +289,21 @@ impl GameOptions {
     }
 }
 
+/// A seed nobody chose: the standard library's per-process OS randomness
+/// (`RandomState`), mixed with the wall clock and a call counter.
+pub fn entropy_seed() -> u64 {
+    use std::hash::{BuildHasher, Hasher};
+    static CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    h.write_u128(now);
+    h.write_u64(CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+    h.write_u32(std::process::id());
+    h.finish()
+}
+
 /// The mode the native game is built in without a flag. It opens on the main
 /// menu (chunk 5), which starts Waves or Practice in place; Waves at startup
 /// means the grunt pool and the potions are created and warmed during Boot.
@@ -292,6 +315,7 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     options.apply_graphics_overrides(&mut tuning.graphics);
     let mode = options.game_mode();
     let boot_target = BootTarget(options.boot_target());
+    let run_seed = RunSeed(options.run_seed());
     let scenario = options.scenario.map(ScenarioRun::new).transpose()?;
     let windowed = options.windowed || !tuning.graphics.fullscreen;
     let window = Window {
@@ -337,9 +361,9 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     // Waves runs keep the personal best and the run log in `userdata/`.
     .insert_resource(RunStore::user())
     .insert_resource(bevy::winit::WinitSettings::continuous());
-    if let Some(seed) = options.seed {
-        app.insert_resource(RunSeed(seed));
-    }
+    // Always a run seed in the native game: `--seed`, or fresh entropy.
+    // Headless tests don't come through here, so they stay deterministic.
+    app.insert_resource(run_seed);
     if let Some(knobs) =
         crate::perf_knobs::PerfKnobs::from_args(&std::env::args().collect::<Vec<_>>())
     {

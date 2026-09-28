@@ -205,7 +205,14 @@ fn begin_run(world: &mut World) {
         Some(seed) => seed,
         None => {
             let first = world.get_resource::<RunSeed>().map_or_else(
-                || world.resource::<SimRng>().0.clone().fork(WAVES_SALT).next_u64(),
+                || {
+                    world
+                        .resource::<SimRng>()
+                        .0
+                        .clone()
+                        .fork(WAVES_SALT)
+                        .next_u64()
+                },
                 |s| s.0,
             );
             world.resource_mut::<ModeSwitch>().seeds = Some(Rng::new(first).fork(MENU_SALT));
