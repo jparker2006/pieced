@@ -97,3 +97,24 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
     - Wave tests freeze the brains to check landing spots (D83: the seed fixes where, when and how fast knights land).
   - Tests: `tests/grunt.rs` (10) plus 22 unit tests; the full suite has 0 failures, and clippy and fmt are clean.
   - **Known:** where grunts walk after landing can drift slightly between two runs with the same seed. The likely source is physics-query ordering; the wave itself replays exactly.
+- 2026-09-27: **chunk 4 merged** (`7547463`): the castle and sky, built to D94's `M3-C4`.
+  - `far.py` rebuilds the station as C4's castle city:
+    - a columnar crag rock with waterfalls;
+    - a town of cone-roofed turrets around the rim;
+    - the great terrace and glowing gate;
+    - the hall with a gold-and-teal rose window;
+    - the keep stacked like a wedding cake;
+    - star-tipped spires and hundreds of warm windows in one part;
+    - bridges and satellite castle rocks.
+  - `src/far/magic.rs` adds the rotating rune ring, instanced lanterns (a swarm plus rising streams), gold embers, drifting motes (≤ 64), seeded shooting stars, galaxy twinkles and aurora ribbons. All are pure functions of the sky clock, warmed during Boot.
+  - The far budget test is raised to 90k triangles, 18 batches and 64 halos.
+  - Offscreen review renders are in `docs/evidence/m3/castle/`. The builder stopped at the usage limit before reporting, so the orchestrator reviewed the renders against C4: the rune ring, the lantern swarms and streams, the stained-glass hall, the aurora and the shooting stars all read.
+  - Branch verification: 479 tests passing; clippy and fmt clean; `build-art --check` byte-identical (64 assets).
+- 2026-09-27: **chunk 1B merged** (`b3a4c24`): the wand and orbs.
+  - Holding fire starts a 0.4 s wind-up (`WandWindup` cue, wand glow); releasing fire cancels it. The orb leaves the wand tip.
+  - Orbs are pooled and sphere-cast each tick: 12 damage (18 to the head) to the player, 12 chip damage to pieces, and they pass through knights.
+  - The restart recycles orbs into the pool.
+  - Orb look, sounds (fwoom, near-miss whoosh, the bonk when you're hit), the off-screen warning and the red damage arrow.
+  - The wand model (`wand.glb`).
+  - After merging main, the grunt tests use a player the orbs can't kill (they watch movement and tokens for minutes of real fire), and orbs may break pieces.
+- 2026-09-27: **chunk 1 is complete on `main` (`b3a4c24`).** 501 tests pass, 0 failed; clippy and fmt are clean; `build-art --check` matches (65 assets). The release `pieced-play` for **play-test 1** is building.
