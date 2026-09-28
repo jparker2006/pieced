@@ -27,7 +27,7 @@ use pieced::{
     waves::{
         EDGE_INSET, EndRun, FIRST_SPAWN_DELAY, PARK_SPOT, PersonalBest, PoolGrunt, PotionSlot,
         RestartRun, Run, RunEnd, RunPhase, RunSeed, RunStore, RunSummary,
-        SPAWN_MIN_PLAYER_DISTANCE, SPAWN_STAGGER, SkipBreak, VICTORY_HOP_SECONDS, VoidKill,
+        SPAWN_MIN_PLAYER_DISTANCE, SkipBreak, VICTORY_HOP_SECONDS, VoidKill,
     },
 };
 use std::path::{Path, PathBuf};
@@ -135,14 +135,14 @@ fn is_parked(sim: &Sim, e: Entity) -> bool {
         && sim.feet(e).distance(PARK_SPOT) < 1e-3
 }
 
-/// Ticks until the whole wave (or the first eight of it) is in play,
-/// returning the tick each grunt poofed in at.
+/// Ticks until the whole wave (or the first eight of it) has landed from its
+/// ships, returning the tick each grunt landed at.
 fn run_until_wave_in(sim: &mut Sim) -> Vec<u64> {
     let t = tuning(sim).waves;
     let size = t.wave_size(run(sim).wave).min(t.max_alive) as usize;
     let mut arrivals = Vec::new();
     let mut seen = 0;
-    for _ in 0..600 {
+    for _ in 0..3600 {
         sim.tick();
         let now = in_play(sim).len();
         for _ in seen..now {
@@ -153,7 +153,7 @@ fn run_until_wave_in(sim: &mut Sim) -> Vec<u64> {
             return arrivals;
         }
     }
-    panic!("wave never finished poofing in ({seen} of {size})");
+    panic!("wave never finished landing ({seen} of {size})");
 }
 
 /// Downs `grunt` the way combat does: dead, `Downed`, and a killing
@@ -224,11 +224,11 @@ fn eliminate_player(sim: &mut Sim) {
     assert!(run(sim).is_ended(), "one life: the run is over");
 }
 
-/// The wave's spawn points and speeds, in poof-in order.
+/// The wave's landing spots and speeds, in landing order.
 fn wave_signature(sim: &mut Sim) -> Vec<(Vec3, f32)> {
     let size = tuning(sim).waves.wave_size(run(sim).wave).min(8) as usize;
     let mut order: Vec<Entity> = Vec::new();
-    for _ in 0..600 {
+    for _ in 0..3600 {
         sim.tick();
         for e in in_play(sim) {
             if !order.contains(&e) {
@@ -260,15 +260,21 @@ fn aim_at(sim: &mut Sim, point: Vec3) {
     sim.set_look(player, look.yaw, look.pitch);
 }
 
-/// Walks up to `grunt` (2 m inward of it) and pumps it at point blank until it
-/// goes down: the spec's "one close pump".
+/// Walks up to `grunt` (2 m from it, along the island edge, so the shove
+/// can't knock it into the void) and pumps it at point blank until it goes
+/// down: the spec's "one close pump".
 fn pump_down(sim: &mut Sim, grunt: Entity) -> u32 {
     let player = sim.player();
     sim.player_intent().select = Some(ActiveTool::Weapon(WeaponKind::Pump));
     for shot in 1..=3 {
         let at = sim.feet(grunt);
-        let inward = (-at).with_y(0.0).normalize_or(Vec3::Z);
-        place(sim, player, at + inward * 2.0);
+        // Toward the middle of the nearest side: the shove goes that way.
+        let along = if at.x.abs() >= at.z.abs() {
+            Vec3::new(0.0, 0.0, -at.z.signum())
+        } else {
+            Vec3::new(-at.x.signum(), 0.0, 0.0)
+        };
+        place(sim, player, at - along * 2.0);
         sim.run_seconds(1.0);
         let at = sim.feet(grunt);
         aim_at(sim, at + Vec3::Y * 1.0);
@@ -332,17 +338,13 @@ fn the_pool_starts_with_eight_parked_grunts_that_stay_put() {
 }
 
 #[test]
-fn wave_one_poofs_in_three_grunts_at_the_edge_away_from_the_player() {
+fn wave_one_lands_three_grunts_at_the_edge_away_from_the_player() {
     let mut sim = Sim::waves(3);
     // Brains frozen, so the knights stand where they landed.
     sim.world_mut().insert_resource(GalleryFreeze);
     sim.record::<GameCue>();
     let arrivals = run_until_wave_in(&mut sim);
     assert_eq!(arrivals.len(), 3);
-    let stagger = (SPAWN_STAGGER * 60.0).round() as u64;
-    for pair in arrivals.windows(2) {
-        assert_eq!(pair[1] - pair[0], stagger, "staggered {SPAWN_STAGGER} s");
-    }
     let player = sim.player();
     let player_feet = sim.feet(player);
     let layout = sim.world().resource::<ArenaLayout>().clone();
@@ -376,7 +378,7 @@ fn wave_one_poofs_in_three_grunts_at_the_edge_away_from_the_player() {
         speeds.push(stats.speed);
         assert!(
             cues.contains(&GameCue::Respawned { who: g }),
-            "{g} poofed in with the respawn cue"
+            "{g} landed with the respawn cue"
         );
         assert_eq!(sim.get::<PoolGrunt>(g).wave, 1);
     }
@@ -442,7 +444,8 @@ fn waves_grow_by_two_with_never_more_than_eight_in_play() {
         let r = run(&sim);
         assert_eq!((r.wave, r.left()), (wave, size), "wave {wave} starts whole");
         // Left alone, the wave fills the island up to the cap and waits.
-        sim.run_seconds(FIRST_SPAWN_DELAY + SPAWN_STAGGER * 12.0);
+        run_until_wave_in(&mut sim);
+        sim.run_seconds(FIRST_SPAWN_DELAY + 10.0);
         let first = size.min(t.max_alive);
         assert_eq!(in_play(&mut sim).len() as u32, first, "wave {wave}");
         assert_eq!(run(&sim).remaining, size - first);
@@ -926,7 +929,7 @@ fn going_again_restarts_everything_in_place_with_a_new_seed() {
     assert!(sim.world().get::<Downed>(player).is_none());
     assert!(sim.feet(player).xz().distance(spawn.xz()) < 0.05);
 
-    // The player is back in control, and the new wave poofs in.
+    // The player is back in control, and the new wave lands.
     sim.player_intent().move_axis = Vec2::Y;
     sim.run_seconds(0.5);
     assert!(

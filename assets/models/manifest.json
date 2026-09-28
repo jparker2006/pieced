@@ -68,6 +68,10 @@
     "file": "cone_plank_tent_crack2.glb"
   },
   {
+    "name": "dropship",
+    "file": "dropship.glb"
+  },
+  {
     "name": "far_island_a",
     "file": "far_island_a.glb"
   },

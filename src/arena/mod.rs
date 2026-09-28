@@ -269,11 +269,57 @@ pub fn in_dummy_strafe_zone(layout: &ArenaLayout, point: Vec2) -> bool {
 /// Height of the invisible boundary walls.
 pub const BOUNDARY_HEIGHT: f32 = 40.0;
 
+/// Marks the invisible boundary walls (the barrier's collision). They stop the
+/// player; a knight being shoved ignores them and can be knocked through into
+/// the void (D78, `movement::VoidFall`).
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct ArenaBoundary;
+
+/// The floating island's rim (the edge of its grassy top, past the barrier),
+/// for the void fling: how far a knight knocked through the barrier must fly
+/// to clear the margin. Built once from the island's outline (the same one the
+/// scenery draws), headless.
+#[derive(Resource, Debug, Clone)]
+pub struct IslandRim {
+    outline: Vec<visuals::EdgeSample>,
+}
+
+impl Default for IslandRim {
+    fn default() -> Self {
+        Self {
+            outline: visuals::outline(),
+        }
+    }
+}
+
+impl IslandRim {
+    /// Step of the march to the rim (m) and the farthest it looks.
+    const STEP: f32 = 0.25;
+    const REACH: f32 = 60.0;
+
+    /// Whether a ground point is on the island's top (inside its rim).
+    pub fn on_island(&self, p: Vec3) -> bool {
+        visuals::inside_rim(&self.outline, p.xz()) > 0.0
+    }
+
+    /// Distance (m) from `from` along the horizontal `direction` to the point
+    /// where the island's top ends (0 if `from` is already off it).
+    pub fn distance_along(&self, from: Vec3, direction: Vec3) -> f32 {
+        let dir = direction.with_y(0.0).normalize_or(Vec3::X);
+        let mut d = 0.0;
+        while d < Self::REACH && self.on_island(from + dir * d) {
+            d += Self::STEP;
+        }
+        d
+    }
+}
+
 pub struct ArenaPlugin;
 
 impl Plugin for ArenaPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ArenaLayout>()
+            .init_resource::<IslandRim>()
             .add_systems(Startup, spawn_arena_collision);
     }
 }
@@ -306,6 +352,7 @@ fn spawn_arena_collision(mut commands: Commands) {
         commands.spawn((
             Name::new("Boundary collision"),
             ArenaCollision,
+            ArenaBoundary,
             RigidBody::Static,
             Collider::cuboid(sx, BOUNDARY_HEIGHT, sz),
             world,

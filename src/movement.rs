@@ -17,10 +17,11 @@
 //! hitboxes (theirs or anyone else's).
 
 use crate::{
-    arena::ArenaLayout,
+    arena::{ArenaBoundary, ArenaLayout, IslandRim},
     player::{BODY_BOTTOM, BODY_RADIUS, BODY_TOP, HEAD_CENTER},
     shared::{
         ActiveTool, Character, EyeHeight, GameCue, Hitbox, Layer, LookAngles, PlayerIntent, SimSet,
+        SimTick,
     },
     tuning::Tuning,
 };
@@ -173,6 +174,58 @@ impl Default for Motor {
 pub struct Knockback {
     /// m/s, horizontal.
     pub velocity: Vec3,
+    /// Who shoved it last (credited if the shove knocks it into the void).
+    pub source: Option<Entity>,
+}
+
+/// A knight knocked through the barrier off the island (D78). The barrier
+/// stops the player only: a character with [`Knockback`] slides through it,
+/// and once its feet cross the barrier line it leaves the island top. The
+/// barrier's magic spits it out in a cartoon fling ([`fling_velocity`]) that
+/// clears the island's grassy margin, and from then on movement only
+/// integrates its flight under gravity (no collision, no bounds, no controls)
+/// until the wave director takes it back. `waves::void` counts it as an
+/// elimination once it is [`VOID_DEPTH`] below the island top.
+#[derive(Component, Debug, Clone, Copy, PartialEq)]
+pub struct VoidFall {
+    /// Who knocked it off (the last [`Knockback::source`]).
+    pub by: Option<Entity>,
+    /// Tick it left the island.
+    pub tick: u64,
+    /// Where it crossed the barrier line, and its horizontal flight direction.
+    pub from: Vec3,
+    pub direction: Vec3,
+}
+
+/// A knight in the void counts as eliminated this far below the island top (m).
+pub const VOID_DEPTH: f32 = 3.0;
+/// The island top's height: the ground under the arena (m).
+pub const ISLAND_TOP: f32 = 0.0;
+/// A knight falling in the void stops being moved this far down (m).
+pub const VOID_FLOOR: f32 = -200.0;
+/// Upward speed of the void fling (m/s): a cartoon hop out over the edge.
+pub const FLING_POP: f32 = 7.0;
+/// The fling carries a knight at least this far past the island's rim (m)
+/// before it drops below the top, so it never falls through the margin.
+pub const RIM_CLEARANCE: f32 = 1.5;
+
+/// The fling for a knight crossing the barrier line at `from`, moving
+/// horizontally at `knock` (m/s): along its shove (or `outward` if it has
+/// none), fast enough to clear `rim_distance` (m ahead, to the island's rim)
+/// plus [`RIM_CLEARANCE`] while it rises and falls back to the island top
+/// under `gravity`, and never slower than the shove.
+pub fn fling_velocity(knock: Vec3, outward: Vec3, rim_distance: f32, gravity: f32) -> Vec3 {
+    let dir = flat(knock)
+        .try_normalize()
+        .unwrap_or(flat(outward).normalize_or(Vec3::X));
+    let air = 2.0 * FLING_POP / gravity.max(1.0);
+    let needed = (rim_distance.max(0.0) + RIM_CLEARANCE) / air;
+    dir * flat(knock).length().max(needed) + Vec3::Y * FLING_POP
+}
+
+/// Whether feet at `feet` are past the barrier line (off the island top).
+pub fn past_barrier(feet: Vec3) -> bool {
+    feet.x.abs() > crate::shared::ARENA_HALF || feet.z.abs() > crate::shared::ARENA_HALF
 }
 
 /// Knockback speed decays by `exp(-KNOCKBACK_DECAY · dt)` each tick (1/s).
@@ -278,7 +331,7 @@ struct Ground {
 /// Collision queries for one tick, shared by every character.
 struct Mover<'a, 'w, 's> {
     mas: &'a MoveAndSlide<'w, 's>,
-    filter: SpatialQueryFilter,
+    filter: &'a SpatialQueryFilter,
     /// Building pieces only: the colliders that can appear on top of a character.
     pieces: SpatialQueryFilter,
     config: MoveAndSlideConfig,
@@ -288,7 +341,30 @@ struct Mover<'a, 'w, 's> {
     walkable_cos: f32,
 }
 
-impl Mover<'_, '_, '_> {
+impl<'a, 'w, 's> Mover<'a, 'w, 's> {
+    fn new(
+        mas: &'a MoveAndSlide<'w, 's>,
+        filter: &'a SpatialQueryFilter,
+        t: &MovementTuning,
+    ) -> Self {
+        Self {
+            mas,
+            filter,
+            pieces: SpatialQueryFilter::from_mask(Layer::Piece),
+            config: MoveAndSlideConfig {
+                penetration_rejection_threshold: MAX_DEPENETRATION,
+                ..default()
+            },
+            depenetration: DepenetrationConfig {
+                penetration_rejection_threshold: MAX_DEPENETRATION,
+                ..default()
+            },
+            skin: MoveAndSlideConfig::default().skin_width * mas.length_unit.0,
+            radius: t.radius.max(0.05),
+            walkable_cos: t.max_slope_deg.to_radians().cos(),
+        }
+    }
+
     fn walkable(&self, normal: Vec3) -> bool {
         normal.y >= self.walkable_cos
     }
@@ -299,7 +375,7 @@ impl Mover<'_, '_, '_> {
             center,
             Quat::IDENTITY,
             &self.depenetration,
-            &self.filter,
+            self.filter,
         )
     }
 
@@ -339,7 +415,7 @@ impl Mover<'_, '_, '_> {
         }
         let top = center + Vec3::Y * MAX_LIFT;
         if !query
-            .shape_intersections(shape, top, Quat::IDENTITY, &self.filter)
+            .shape_intersections(shape, top, Quat::IDENTITY, self.filter)
             .is_empty()
         {
             return None;
@@ -362,7 +438,7 @@ impl Mover<'_, '_, '_> {
                 down,
                 2.0 * FACE_PROBE,
                 true,
-                &self.filter,
+                self.filter,
                 &|entity| self.mas.colliders.contains(entity),
             )
             .is_some_and(|hit| hit.normal.dot(normal) > 0.999)
@@ -378,7 +454,7 @@ impl Mover<'_, '_, '_> {
                 Quat::IDENTITY,
                 movement,
                 self.skin,
-                &self.filter,
+                self.filter,
             )
             .map(|hit| (hit.distance, hit.normal1))
     }
@@ -394,7 +470,7 @@ impl Mover<'_, '_, '_> {
             Quat::IDENTITY,
             Vec3::NEG_Y * distance,
             self.skin,
-            &self.filter,
+            self.filter,
         )?;
         let ground = |normal| Ground {
             drop: hit.distance,
@@ -419,7 +495,7 @@ impl Mover<'_, '_, '_> {
             Dir3::NEG_Y,
             2.0 * EDGE_PROBE_HEIGHT,
             true,
-            &self.filter,
+            self.filter,
             // Solid colliders only, like move-and-slide itself (no sensors).
             &|entity| self.mas.colliders.contains(entity),
         )?;
@@ -450,7 +526,7 @@ impl Mover<'_, '_, '_> {
             velocity,
             dt,
             &config,
-            &self.filter,
+            self.filter,
             |hit| {
                 let n = hit.normal.as_vec3();
                 let v = *hit.velocity;
@@ -573,13 +649,26 @@ fn flat(v: Vec3) -> Vec3 {
     Vec3::new(v.x, 0.0, v.z)
 }
 
+/// The characters' collision filters, kept across ticks: the normal one (world
+/// and pieces) and the knocked one, which also ignores the arena's boundary
+/// walls (the barrier stops the player only, D78).
+#[derive(Default)]
+struct CharacterFilters {
+    knocked: Option<SpatialQueryFilter>,
+    boundaries: usize,
+}
+
 fn move_characters(
     mut commands: Commands,
     time: Res<Time>,
+    tick: Res<SimTick>,
     tuning: Res<Tuning>,
     layout: Res<ArenaLayout>,
+    rim: Option<Res<IslandRim>>,
     mas: MoveAndSlide,
     mut capsules: Local<Capsules>,
+    mut filters: Local<CharacterFilters>,
+    boundaries: Query<Entity, With<ArenaBoundary>>,
     mut characters: Query<
         (
             Entity,
@@ -590,6 +679,7 @@ fn move_characters(
             &mut EyeHeight,
             Option<&ActiveTool>,
             Option<&mut Knockback>,
+            Has<VoidFall>,
         ),
         // A parked (pooled, out-of-play) grunt stays exactly where it was put.
         (With<Character>, Without<crate::grunt::Parked>),
@@ -603,28 +693,48 @@ fn move_characters(
         return;
     }
     capsules.refresh(t);
-    let mover = Mover {
-        mas: &mas,
-        filter: SpatialQueryFilter::from_mask([Layer::World, Layer::Piece]),
-        pieces: SpatialQueryFilter::from_mask(Layer::Piece),
-        config: MoveAndSlideConfig {
-            penetration_rejection_threshold: MAX_DEPENETRATION,
-            ..default()
-        },
-        depenetration: DepenetrationConfig {
-            penetration_rejection_threshold: MAX_DEPENETRATION,
-            ..default()
-        },
-        skin: MoveAndSlideConfig::default().skin_width * mas.length_unit.0,
-        radius: t.radius.max(0.05),
-        walkable_cos: t.max_slope_deg.to_radians().cos(),
-    };
+    let solid = SpatialQueryFilter::from_mask([Layer::World, Layer::Piece]);
+    let walls = boundaries.iter().count();
+    if filters.knocked.is_none() || filters.boundaries != walls {
+        filters.knocked = Some(solid.clone().with_excluded_entities(boundaries.iter()));
+        filters.boundaries = walls;
+    }
+    let knocked_filter = filters.knocked.as_ref().unwrap_or(&solid);
+    let normal_mover = Mover::new(&mas, &solid, t);
+    let knocked_mover = Mover::new(&mas, knocked_filter, t);
     let accel_time = t.accel_time.max(1e-3);
     let decel = t.run_speed.max(0.1) / t.stop_time.max(1e-3);
 
-    for (entity, intent, look, mut transform, mut motor, mut eye, tool, knockback) in
+    for (entity, intent, look, mut transform, mut motor, mut eye, tool, knockback, falling) in
         &mut characters
     {
+        if falling {
+            // Flung into the void: a ballistic arc under gravity, nothing else
+            // (until it's far out of sight below the island).
+            if transform.translation.y < VOID_FLOOR {
+                motor.velocity = Vec3::ZERO;
+                continue;
+            }
+            let v0 = motor.velocity;
+            let v1 = v0 - Vec3::Y * t.gravity * dt;
+            let feet = transform.translation + (v0 + v1) * 0.5 * dt;
+            motor.velocity = v1;
+            motor.grounded = false;
+            motor.sliding = false;
+            if feet.is_finite() {
+                transform.translation = feet;
+            }
+            continue;
+        }
+        // A shoved knight slides through the barrier (only the player is held).
+        let knocked = knockback.is_some();
+        let knock_velocity = knockback.as_ref().map_or(Vec3::ZERO, |k| k.velocity);
+        let knocked_by = knockback.as_ref().and_then(|k| k.source);
+        let mover = if knocked {
+            &knocked_mover
+        } else {
+            &normal_mover
+        };
         let mut feet = transform.translation;
         if !feet.is_finite() || feet.y < KILL_HEIGHT {
             feet = Vec3::new(
@@ -878,10 +988,44 @@ fn move_characters(
             next_velocity.y = 0.0;
         }
 
-        // 11. Arena bounds.
+        // 11. Arena bounds. A knight shoved past the barrier line leaves the
+        //     island top: the void fling (D78). While a shove lasts the bounds
+        //     don't hold it; once it's spent they pull it back in.
         let mut new_feet = new_center - Vec3::Y * half;
-        let clamped_x = new_feet.x.clamp(layout.bounds_min.x, layout.bounds_max.x);
-        let clamped_z = new_feet.z.clamp(layout.bounds_min.y, layout.bounds_max.y);
+        if knocked && past_barrier(new_feet) {
+            let outward = if new_feet.x.abs() >= new_feet.z.abs() {
+                Vec3::X * new_feet.x.signum()
+            } else {
+                Vec3::Z * new_feet.z.signum()
+            };
+            let heading = flat(knock_velocity).try_normalize().unwrap_or(outward);
+            let rim_distance = rim
+                .as_deref()
+                .map_or(0.0, |rim| rim.distance_along(new_feet, heading));
+            motor.velocity = fling_velocity(knock_velocity, outward, rim_distance, t.gravity);
+            motor.grounded = false;
+            motor.sliding = false;
+            transform.translation = new_feet;
+            commands
+                .entity(entity)
+                .remove::<Knockback>()
+                .insert(VoidFall {
+                    by: knocked_by,
+                    tick: tick.0,
+                    from: new_feet,
+                    direction: heading,
+                });
+            cues.write(GameCue::VoidFall { who: entity });
+            continue;
+        }
+        let (lo, hi) = if knocked {
+            let barrier = Vec2::splat(crate::shared::ARENA_HALF);
+            (-barrier, barrier)
+        } else {
+            (layout.bounds_min, layout.bounds_max)
+        };
+        let clamped_x = new_feet.x.clamp(lo.x, hi.x);
+        let clamped_z = new_feet.z.clamp(lo.y, hi.y);
         if clamped_x != new_feet.x {
             next_velocity.x = 0.0;
         }

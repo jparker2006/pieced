@@ -613,6 +613,11 @@ pub enum GameCue {
         potion: Entity,
         at: Vec3,
     },
+    /// A knight was knocked through the barrier and off the island (D78): the
+    /// cartoon yelp and spin as it's flung into the void.
+    VoidFall {
+        who: Entity,
+    },
 }
 
 // ---------------------------------------------------------------------------

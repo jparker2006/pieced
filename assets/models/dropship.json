@@ -1,0 +1,86 @@
+{
+  "name": "dropship",
+  "kind": "dropship",
+  "source": "art/blender/assets/dropship.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 1632,
+  "triangle_budget": 2000,
+  "bounds": {
+    "min": [
+      -7.95,
+      -2.9,
+      -8.2072
+    ],
+    "max": [
+      7.95,
+      3.9,
+      8.4
+    ]
+  },
+  "parts": {
+    "Crystal": {
+      "parent": "dropship",
+      "bounds": {
+        "min": [
+          -0.7165,
+          -2.9,
+          -0.7313
+        ],
+        "max": [
+          0.7165,
+          -0.3,
+          0.7313
+        ]
+      },
+      "triangles": 24,
+      "colors": [
+        "crystal_violet",
+        "glass_violet"
+      ]
+    },
+    "Hull": {
+      "parent": "dropship",
+      "bounds": {
+        "min": [
+          -7.95,
+          -1.65,
+          -8.2072
+        ],
+        "max": [
+          7.95,
+          3.9,
+          8.4
+        ]
+      },
+      "triangles": 1608,
+      "colors": [
+        "crystal_blue",
+        "crystal_violet",
+        "ghost_red",
+        "glass_violet",
+        "glass_yellow",
+        "gun_brass",
+        "gun_brass_light",
+        "gun_iron",
+        "knight_purple",
+        "knight_steel"
+      ]
+    }
+  },
+  "attach": {
+    "Beam": {
+      "parent": "dropship",
+      "position": [
+        0.0,
+        -2.9,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    }
+  }
+}

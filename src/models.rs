@@ -128,6 +128,8 @@ pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "station",
     // The grunt's crystal wand (M3; src/arena/visuals/wand.rs).
     "wand",
+    // The knights' drop ship (M3 chunk 3; src/waves/ships_visuals.rs).
+    "dropship",
 ];
 
 /// `assets/models/manifest.json`, as compiled in.

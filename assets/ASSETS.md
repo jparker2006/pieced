@@ -35,6 +35,8 @@ from `art/palette.json`, sampled from the target images by
 | `models/knight_hat.json` | `art/blender/assets/knight.py` | Sidecar |
 | `models/wand.glb` | `art/blender/assets/wand.py` | The grunt's crystal wand (M3), 0.53 m: brass pommel, dark-wood shaft, brass ferrule cup and a faceted orange-red `Crystal`; origin at the grip, `Tip` at the crystal's point (248 tris) |
 | `models/wand.json` | `art/blender/assets/wand.py` | Sidecar: `Tip` |
+| `models/dropship.glb` | `art/blender/assets/dropship.py` | The knights' drop ship (M3, D82), about 16 m long and 15 m across: a steel hull with a purple band, swept purple wings with red tips, a blue canopy, twin iron engines, and a big violet `Crystal` in a brass socket underneath; origin mid-hull (1632 tris) |
+| `models/dropship.json` | `art/blender/assets/dropship.py` | Sidecar: `Beam` (the crystal's tip, where the beam starts) |
 | `models/gloves.glb` | `art/blender/assets/gloves.py` | White four-finger cartoon gloves (`GloveR`, `GloveL`) with dark sleeves; each pivots on its grip frame |
 | `models/gloves.json` | `art/blender/assets/gloves.py` | Sidecar |
 | `models/pump.glb` | `art/blender/assets/guns.py` | Pump viewmodel: bell muzzle, sliding `PumpGrip`, violet `Crystal` in spinning gold `Rings`, `Shard` shell |
