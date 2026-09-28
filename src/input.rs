@@ -86,7 +86,17 @@ impl Plugin for InputAdapterPlugin {
                 device_to_intent
                     .after(cursor_lock)
                     .run_if(in_state(AppState::Playing))
-                    .run_if(not(resource_exists::<ScenarioRun>)),
+                    .run_if(not(resource_exists::<ScenarioRun>))
+                    // A finished Waves run ignores the controls.
+                    .run_if(not(crate::waves::run_over)),
+            )
+            .add_systems(
+                PreUpdate,
+                run_keys
+                    .after(cursor_lock)
+                    .run_if(in_state(AppState::Playing))
+                    .run_if(not(resource_exists::<ScenarioRun>))
+                    .run_if(crate::waves::run_over),
             );
     }
 }
@@ -180,6 +190,14 @@ fn device_to_intent(
         return;
     }
     intent.look_delta += tuning.look.look_delta(motion.delta, ads.0, tool.is_build());
+}
+
+/// UI keys of a Waves run (not `PlayerIntent`): Enter on the results line
+/// starts a new run in place.
+fn run_keys(keys: Res<ButtonInput<KeyCode>>, mut restart: MessageWriter<crate::waves::RestartRun>) {
+    if keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter]) {
+        restart.write(crate::waves::RestartRun);
+    }
 }
 
 /// Maps held keys and trackpad buttons onto `intent` (docs/SPEC.md → Controls):

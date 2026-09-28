@@ -24,6 +24,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct Grunt;
 
+/// A pooled grunt that is out of play: no AI, no movement (movement skips it),
+/// hidden while also `Downed`. The wave director parks every pool member
+/// between spawns and freezes the survivors with it when the run ends.
+#[derive(Component, Debug, Default, Clone, Copy)]
+pub struct Parked;
+
 /// Spec defaults (docs/M3-SPEC.md → The grunt). Presentation-free; every
 /// number here is tunable by up to ±50% from Jake's play-tests.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

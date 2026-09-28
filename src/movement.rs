@@ -164,6 +164,30 @@ impl Default for Motor {
     }
 }
 
+/// A horizontal shove from outside the character's own controls (the pump's
+/// knockback on knights, D78). Movement slides the character along it with its
+/// own collision each tick, so a shove never passes through walls or pieces,
+/// and decays it at [`KNOCKBACK_DECAY`] until it is spent (then removes it).
+/// Written by combat; the player never gets one.
+#[derive(Component, Debug, Default, Clone, Copy, PartialEq)]
+pub struct Knockback {
+    /// m/s, horizontal.
+    pub velocity: Vec3,
+}
+
+/// Knockback speed decays by `exp(-KNOCKBACK_DECAY · dt)` each tick (1/s).
+pub const KNOCKBACK_DECAY: f32 = 7.0;
+/// Knockback slower than this (m/s) is spent.
+const KNOCKBACK_STOP: f32 = 0.05;
+
+/// The launch speed (m/s) that carries an unobstructed character `travel`
+/// metres before its knockback is spent.
+pub fn knockback_speed(travel: f32) -> f32 {
+    let dt = crate::shared::TICK_SECONDS;
+    // Per-tick travel v·dt decaying by f each tick sums to v·dt / (1 − f).
+    travel.max(0.0) * (1.0 - (-KNOCKBACK_DECAY * dt).exp()) / dt
+}
+
 pub struct MovementPlugin;
 
 impl Plugin for MovementPlugin {
@@ -550,6 +574,7 @@ fn flat(v: Vec3) -> Vec3 {
 }
 
 fn move_characters(
+    mut commands: Commands,
     time: Res<Time>,
     tuning: Res<Tuning>,
     layout: Res<ArenaLayout>,
@@ -564,8 +589,10 @@ fn move_characters(
             &mut Motor,
             &mut EyeHeight,
             Option<&ActiveTool>,
+            Option<&mut Knockback>,
         ),
-        With<Character>,
+        // A parked (pooled, out-of-play) grunt stays exactly where it was put.
+        (With<Character>, Without<crate::grunt::Parked>),
     >,
     mut cues: MessageWriter<GameCue>,
 ) {
@@ -595,7 +622,9 @@ fn move_characters(
     let accel_time = t.accel_time.max(1e-3);
     let decel = t.run_speed.max(0.1) / t.stop_time.max(1e-3);
 
-    for (entity, intent, look, mut transform, mut motor, mut eye, tool) in &mut characters {
+    for (entity, intent, look, mut transform, mut motor, mut eye, tool, knockback) in
+        &mut characters
+    {
         let mut feet = transform.translation;
         if !feet.is_finite() || feet.y < KILL_HEIGHT {
             feet = Vec3::new(
@@ -784,6 +813,22 @@ fn move_characters(
         {
             new_center = stepped;
             slid = stepped_velocity;
+        }
+        // Knockback slides on top of the character's own move, with the same
+        // collision, and decays.
+        if let Some(mut knockback) = knockback {
+            let shove = flat(knockback.velocity);
+            if shove.length_squared() > KNOCKBACK_STOP * KNOCKBACK_STOP {
+                let (pushed, pushed_velocity, _) =
+                    mover.slide(shape, new_center, shove, dt_duration, ground);
+                new_center = pushed;
+                knockback.velocity = flat(pushed_velocity) * (-KNOCKBACK_DECAY * dt).exp();
+            } else {
+                knockback.velocity = Vec3::ZERO;
+            }
+            if knockback.velocity.length() < KNOCKBACK_STOP {
+                commands.entity(entity).remove::<Knockback>();
+            }
         }
         // Carry over what collisions took away from the move velocity (landing,
         // bumping a ceiling, sliding along a wall) onto the end-of-tick velocity.
