@@ -99,9 +99,13 @@ impl GunTuning {
             fire_interval: 0.9,
             damage: 10.0,
             headshot_multiplier: 1.5,
-            falloff_start: 8.0,
-            falloff_end: 15.0,
-            falloff_min: 0.3,
+            // Play-test 2 ("the pump should hit a little harder"): full damage
+            // to 10 m (was 8), falloff to 18 m (was 15), floor 40% (was 30%).
+            // The point-blank maximum (100) is unchanged, so G6's "no pump
+            // kill from full" still holds.
+            falloff_start: 10.0,
+            falloff_end: 18.0,
+            falloff_min: 0.4,
             range: 40.0,
             magazine: 5,
             reload_time: 0.5,
