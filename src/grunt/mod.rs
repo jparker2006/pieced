@@ -16,7 +16,31 @@
 //!
 //! Owned by slice A (the brain). The orchestrator owns [`GruntTuning`]'s spec
 //! defaults and [`GruntStats::for_wave`] (the scaling contract).
+//!
+//! - [`brain`]: perception, decisions, attack tokens, movement, aim and fire;
+//! - [`nav`]: the A* over the build grid;
+//! - [`aim`]: the lead-and-error aim model;
+//! - [`spots`]: standing-spot scoring.
+//!
+//! **Spawning and pooling** (for the wave director): [`spawn_grunt`] makes a
+//! grunt; a pooled grunt is parked with the [`Parked`] marker (the brain skips
+//! it and clears its intent) and reactivated by removing `Parked`, calling
+//! [`GruntBrain::reset`], resetting its `Health`, `Wand` and stats, and moving it.
 
+pub mod aim;
+pub mod brain;
+pub mod nav;
+pub mod spots;
+
+pub use brain::{
+    AttackTokens, GruntBrain, GruntMode, GruntNavStats, GruntRng, PlayerTrack, ShotTarget, Spot,
+};
+
+use crate::{
+    orb::Wand,
+    player,
+    shared::{Health, LookAngles, SimSet},
+};
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -24,11 +48,35 @@ use serde::{Deserialize, Serialize};
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct Grunt;
 
-/// A pooled grunt that is out of play: no AI, no movement (movement skips it),
-/// hidden while also `Downed`. The wave director parks every pool member
+/// A pooled grunt that is out of play: no AI (the brain skips it and clears
+/// its intent, and the attack tokens drop it), no movement (movement skips
+/// it), hidden while also `Downed`. The wave director parks every pool member
 /// between spawns and freezes the survivors with it when the run ends.
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct Parked;
+
+/// Spawns a grunt with its feet at `feet`: a character with `stats.hp` and no
+/// shield, the [`Grunt`] marker, a [`GruntBrain`] (seeded from the sim RNG as
+/// it's added), its `stats` and a [`Wand`] firing every `stats.fire_interval`.
+pub fn spawn_grunt(
+    commands: &mut Commands,
+    feet: Vec3,
+    look: LookAngles,
+    stats: GruntStats,
+) -> Entity {
+    player::spawn_character(
+        commands,
+        feet,
+        look,
+        Health::full(stats.hp, 0.0),
+        (
+            Grunt,
+            GruntBrain::default(),
+            stats,
+            Wand::new(stats.fire_interval),
+        ),
+    )
+}
 
 /// Spec defaults (docs/M3-SPEC.md → The grunt). Presentation-free; every
 /// number here is tunable by up to ±50% from Jake's play-tests.
@@ -138,11 +186,31 @@ impl GruntStats {
     }
 }
 
-/// Grunt behaviour. Slice A fills it in; until then it only registers types.
+/// Grunt behaviour: the brain's loops, in [`SimSet::Control`].
 pub struct GruntPlugin;
 
 impl Plugin for GruntPlugin {
-    fn build(&self, _app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.init_resource::<AttackTokens>()
+            .init_resource::<GruntNavStats>()
+            .init_resource::<PlayerTrack>()
+            .init_resource::<GruntRng>()
+            .init_resource::<brain::GruntProps>()
+            .add_observer(brain::seed_brain)
+            .add_systems(
+                FixedUpdate,
+                (
+                    brain::track_player,
+                    brain::watch_pieces,
+                    brain::perceive,
+                    brain::decide,
+                    brain::allocate_tokens,
+                    brain::drive,
+                )
+                    .chain()
+                    .in_set(SimSet::Control),
+            );
+    }
 }
 
 #[cfg(test)]

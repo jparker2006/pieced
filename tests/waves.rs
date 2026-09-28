@@ -11,8 +11,8 @@ use pieced::{
     grunt::{Grunt, GruntStats, Parked},
     orb::Orb,
     shared::{
-        ActiveTool, Character, EyeHeight, Facing, GameCue, GridCell, Health, PlayerIntent,
-        ShotFired, WeaponKind,
+        ActiveTool, Character, EyeHeight, Facing, GalleryFreeze, GameCue, GridCell, Health,
+        PlayerIntent, ShotFired, WeaponKind,
     },
     sim::Sim,
     tuning::Tuning,
@@ -85,6 +85,9 @@ fn run_until_wave_in(sim: &mut Sim) -> Vec<u64> {
 /// The wave's spawn points and speeds, in poof-in order.
 fn wave_signature(seed: u64) -> Vec<(Vec3, f32)> {
     let mut sim = Sim::waves(seed);
+    // Brains frozen: the seed decides where and how fast knights land (D83);
+    // where they walk next depends on the player.
+    sim.world_mut().insert_resource(GalleryFreeze);
     let mut order: Vec<Entity> = Vec::new();
     for _ in 0..600 {
         sim.tick();
@@ -168,6 +171,8 @@ fn the_pool_starts_with_eight_parked_grunts_that_stay_put() {
 #[test]
 fn wave_one_poofs_in_three_grunts_at_the_edge_away_from_the_player() {
     let mut sim = Sim::waves(3);
+    // Brains frozen, so the knights stand where they landed.
+    sim.world_mut().insert_resource(GalleryFreeze);
     sim.record::<GameCue>();
     let arrivals = run_until_wave_in(&mut sim);
     assert_eq!(arrivals.len(), 3);
