@@ -14,7 +14,7 @@ Every number here names its source (session folder or test), the commit, and the
 | W3 Fair knights | | |
 | W4 Ships and the void | **PASS** (`fb039a3`) | `tests/ships.rs` (10), `tests/void.rs` (7), 6 unit tests; the branch's full suite, clippy, fmt and `build-art --check` are clean on top of `e1d5b9d`. Play-test 3: fun 4, about right, no unfair deaths |
 | W5 Castle and sky | **PASS** (`fb039a3`) | The castle follows D94's `M3-C4`; the orchestrator reviewed the renders against C4 before merging. Sky motion and far budget tests pass (`tests/far.rs`: ≤ 90k triangles, ≤ 18 batches, ≤ 64 halos). Jake's scores, quoted: "5 and 5" (spawn vista, castle up) |
-| W6 Menu and controls | | |
+| W6 Menu and controls | **PASS** (`c3f6379`) | `tests/menu.rs` (15), `tests/bindings.rs` (10), updated `tests/waves_ui.rs`; the branch's full suite on top of `c2d4eed` had 609 passing, 0 failed (15 ignored); clippy and fmt clean. The ignored `tests/hud_offscreen.rs` review render covers the main menu and the Controls page (T12 style) |
 | W7 Performance (wave ≥ 6, battery, Low Power Mode) | | |
 | W8 Launch (warm < 5 s ×3; Play → controllable < 1 s) | | |
 | W9 Fun verdict (fun ≥ 4, no unfair deaths) | | |
@@ -180,3 +180,10 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - **Launch:** new `PIECED_BOOT` phases (app_built, plugins_ready, startup_start, startup_end). Sound synthesis (76 ms) moved to a thread. **The release build now strips symbols** (190 → about 115 MB), accepted by the orchestrator: faster to load, at the cost of function names in panic backtraces. Startup measures about 110 ms headless, so the ~3.2 s before the window is probably binary load or renderer init; the new phases will say which.
   - Pacing knobs `latency=1|2|3` and `pipelined=on` (defaults unchanged).
   - **Open options:** 6 far materials are touched every frame; one entity per sound; the orb spark pool saturates; damage-number text restyles; knight line of sight is checked at 60 Hz; A* allocates per plan.
+- 2026-09-28: **chunk 5 merged** (`c3f6379`).
+  - **The main menu:** the logo over the orbiting island; Waves (with the best run), Practice, Settings and Quit. Modes start in place, resetting cover, knights, the dummy and the player.
+  - **Quit to menu** from pause, which ends a live run through the results first, and from the results card. `--waves`, `--practice` and scenarios skip the menu.
+  - **The Controls page:** every action rebinds to a key or click; Esc cancels; a conflict swaps; Reset restores D43; Cmd, Cmd combos, Esc and F3/F4 are refused. Bindings save in `settings.json` and survive `load_or_default`. Hints show the bound key.
+  - **Launch timing:** `PIECED_LAUNCH_MS` marks the clickable menu (`menu_ready`); `PIECED_PLAY_MS <ms> <mode>` prints each mode start and is logged under `plays`.
+  - **Fresh seeds:** without `--seed`, each launch seeds from OS entropy and the clock.
+- 2026-09-28: **play-test 5 launched** (release `pieced-play` from `c3f6379`, 126 MB after stripping). The first launch at 11:13 on battery recorded 0 s of play (session `20260928-181344`). Relaunched at 14:24 on AC (5%, charging).
