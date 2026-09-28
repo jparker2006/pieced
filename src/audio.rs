@@ -14,6 +14,7 @@
 
 pub mod bank;
 pub mod synth;
+pub mod wand;
 
 use crate::{
     building::Piece,
@@ -141,6 +142,15 @@ pub enum Sfx {
     Land,
     /// Swish.
     Slide,
+    /// A knight's orb leaving his wand: a flame "fwoom" (spatial).
+    OrbCast,
+    /// An orb passing within 3 m of the player: a doppler whoosh (spatial).
+    OrbWhoosh,
+    /// An orb hitting the player: a crunchy bonk.
+    OrbBonk,
+    /// A knight off-screen starting his wind-up: a rising charge from his
+    /// direction (D76's off-screen warning).
+    WandWarning,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,7 +162,7 @@ pub enum SfxCategory {
 }
 
 impl Sfx {
-    pub const ALL: [Sfx; 23] = [
+    pub const ALL: [Sfx; 27] = [
         Sfx::RifleShot,
         Sfx::PumpShot,
         Sfx::PumpRack,
@@ -176,6 +186,10 @@ impl Sfx {
         Sfx::Jump,
         Sfx::Land,
         Sfx::Slide,
+        Sfx::OrbCast,
+        Sfx::OrbWhoosh,
+        Sfx::OrbBonk,
+        Sfx::WandWarning,
     ];
 
     /// The cue for a piece event: walls are brick (clunk, crack, crumble); floors
@@ -223,6 +237,10 @@ impl Sfx {
             Sfx::Jump => bank::jump(),
             Sfx::Land => bank::land(),
             Sfx::Slide => bank::slide(),
+            Sfx::OrbCast => bank::orb_cast(),
+            Sfx::OrbWhoosh => bank::orb_whoosh(),
+            Sfx::OrbBonk => bank::orb_bonk(),
+            Sfx::WandWarning => bank::wand_warning(),
         }
     }
 
@@ -267,6 +285,10 @@ impl Sfx {
             Jump => bank::JUMP,
             Land => bank::LAND,
             Slide => bank::SLIDE,
+            OrbCast => bank::ORB_CAST,
+            OrbWhoosh => bank::ORB_WHOOSH,
+            OrbBonk => bank::ORB_BONK,
+            WandWarning => bank::WAND_WARNING,
         }
     }
 
@@ -279,6 +301,8 @@ impl Sfx {
             BrickPlace | PlankPlace | BrickCrack | PlankCrack | BrickBreak | PlankBreak
             | Rejected => SfxCategory::Building,
             Footstep | Jump | Land | Slide => SfxCategory::Movement,
+            // The knights' casts sit with the guns (the weapons volume).
+            OrbCast | OrbWhoosh | OrbBonk | WandWarning => SfxCategory::Weapons,
         }
     }
 
@@ -292,9 +316,11 @@ impl Sfx {
     /// |---|---|
     /// | headshot, shield break, elimination | −13 |
     /// | body hit, shield hit | −14 |
-    /// | pump cast | −15 |
+    /// | pump cast, orb bonk (hitting you), off-screen wand warning | −15 |
     /// | piece breaks | −16 |
+    /// | orb whoosh | −17 |
     /// | rifle cast, piece places and cracks | −18 |
+    /// | orb cast (a knight's fwoom) | −19 |
     /// | pump rack, reload, rejected | −20 |
     /// | pump shell | −21 |
     /// | weapon switch | −22 |
@@ -306,9 +332,11 @@ impl Sfx {
         match self {
             HeadshotDing | ShieldBreak | Elimination => -13.0,
             HitTick | ShieldHit => -14.0,
-            PumpShot => -15.0,
+            PumpShot | OrbBonk | WandWarning => -15.0,
             BrickBreak | PlankBreak => -16.0,
+            OrbWhoosh => -17.0,
             RifleShot | BrickPlace | PlankPlace | BrickCrack | PlankCrack => -18.0,
+            OrbCast => -19.0,
             PumpRack | RifleMagOut | RifleMagIn | Rejected => -20.0,
             PumpShell => -21.0,
             WeaponSwitch | Land | Slide => -22.0,
@@ -323,8 +351,12 @@ impl Sfx {
         synth::db_to_gain(self.mix_db() - self.spec().rms_db).min(1.0)
     }
 
-    /// Voice-stealing priority: higher survives. Hit confirmation matters most.
+    /// Voice-stealing priority: higher survives. Hit confirmation matters most,
+    /// with the fairness cues (being hit, the off-screen warning) beside it.
     pub fn priority(self) -> u8 {
+        if matches!(self, Sfx::OrbBonk | Sfx::WandWarning) {
+            return 3;
+        }
         match self.category() {
             SfxCategory::Hits => 3,
             SfxCategory::Weapons | SfxCategory::Building => 2,
@@ -430,6 +462,7 @@ impl Plugin for GameAudioPlugin {
                 )
                     .chain(),
             );
+        wand::build(app);
     }
 }
 
@@ -634,7 +667,8 @@ fn queue_cue_sounds(
             // An edit clicks into place.
             GameCue::PieceEdited { who, .. } => (who, Sfx::WeaponSwitch),
             GameCue::AdsChanged { .. } | GameCue::Respawned { .. } => continue,
-            // Wand sounds come with the orb slice (M3 chunk 1).
+            // The wand's cast and off-screen warning need the view and the
+            // wand tip: `wand::queue_wand_sounds` plays them.
             GameCue::WandWindup { .. } | GameCue::OrbFired { .. } => continue,
         };
         let own = Some(who) == player;

@@ -16,7 +16,8 @@ use pieced::{
         brain::sight, spawn_grunt,
     },
     shared::{
-        ActiveTool, EyeHeight, Facing, GridCell, LookAngles, PlayerIntent, PreviousFeet, WeaponKind,
+        ActiveTool, EyeHeight, Facing, GridCell, Health, LookAngles, PlayerIntent, PreviousFeet,
+        WeaponKind,
     },
     sim::Sim,
     tuning::Tuning,
@@ -25,6 +26,16 @@ use pieced::{
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// A Waves sim without the wave director, with a player the orbs can't kill:
+/// these tests watch where grunts go and when they shoot, which needs the
+/// player alive for minutes of real orb fire.
+fn lab(seed: u64) -> Sim {
+    let mut sim = Sim::grunt_lab(seed);
+    let p = sim.player();
+    *sim.world_mut().get_mut::<Health>(p).unwrap() = Health::full(1.0e9, 0.0);
+    sim
+}
 
 fn spawn(sim: &mut Sim, feet: Vec3, wave: u32) -> Entity {
     let stats = GruntStats::for_wave(wave, &sim.world().resource::<Tuning>().grunt);
@@ -142,7 +153,7 @@ fn box_in(sim: &mut Sim, x: i32, z: i32) -> Vec<Entity> {
 
 #[test]
 fn a_grunt_approaches_to_mid_range_then_strafes_and_shoots() {
-    let mut sim = Sim::grunt_lab(1);
+    let mut sim = lab(1);
     clear_pieces(sim.world_mut());
     put_player(&mut sim, Vec3::ZERO);
     let g = spawn(&mut sim, Vec3::new(-20.0, 0.0, -21.0), 1);
@@ -180,7 +191,7 @@ fn a_grunt_approaches_to_mid_range_then_strafes_and_shoots() {
 
 #[test]
 fn eight_grunts_spread_out_around_the_player() {
-    let mut sim = Sim::grunt_lab(3);
+    let mut sim = lab(3);
     clear_pieces(sim.world_mut());
     put_player(&mut sim, Vec3::ZERO);
     let starts = [
@@ -227,7 +238,7 @@ fn eight_grunts_spread_out_around_the_player() {
 
 #[test]
 fn a_grunt_climbs_a_ramp_to_a_player_on_a_floor_one_level_up() {
-    let mut sim = Sim::grunt_lab(5);
+    let mut sim = lab(5);
     clear_pieces(sim.world_mut());
     // A two-cell platform one level up, with a ramp rising north onto it.
     place(&mut sim, PieceSlot::floor(GridCell::new(6, 5, 1)));
@@ -260,7 +271,7 @@ fn a_grunt_climbs_a_ramp_to_a_player_on_a_floor_one_level_up() {
 
 #[test]
 fn a_boxed_in_player_gets_their_walls_shot() {
-    let mut sim = Sim::grunt_lab(7);
+    let mut sim = lab(7);
     clear_pieces(sim.world_mut());
     let walls = box_in(&mut sim, 6, 6);
     let centre = cell(6, 6, 0);
@@ -298,7 +309,7 @@ fn a_boxed_in_player_gets_their_walls_shot() {
 #[test]
 fn the_first_shot_waits_for_the_reaction_delay_after_line_of_sight() {
     // In the open: sight is gained the moment it lands.
-    let mut sim = Sim::grunt_lab(11);
+    let mut sim = lab(11);
     clear_pieces(sim.world_mut());
     put_player(&mut sim, Vec3::ZERO);
     let reaction = GruntStats::for_wave(1, &sim.world().resource::<Tuning>().grunt).reaction;
@@ -321,7 +332,7 @@ fn the_first_shot_waits_for_the_reaction_delay_after_line_of_sight() {
     );
 
     // Boxed in, then the box vanishes: the player shot still waits.
-    let mut sim = Sim::grunt_lab(12);
+    let mut sim = lab(12);
     clear_pieces(sim.world_mut());
     let centre = cell(6, 6, 0);
     box_in(&mut sim, 6, 6);
@@ -361,7 +372,7 @@ fn script_player(sim: &mut Sim, t: u32) {
 
 #[test]
 fn grunts_never_hold_fire_without_line_of_sight_and_never_build() {
-    let mut sim = Sim::grunt_lab(21);
+    let mut sim = lab(21);
     // The initial cover stays; add a few more walls near the player.
     place(
         &mut sim,
@@ -424,7 +435,7 @@ fn grunts_never_hold_fire_without_line_of_sight_and_never_build() {
 
 #[test]
 fn at_most_three_grunts_hold_attack_tokens() {
-    let mut sim = Sim::grunt_lab(31);
+    let mut sim = lab(31);
     clear_pieces(sim.world_mut());
     put_player(&mut sim, Vec3::ZERO);
     let grunts: Vec<Entity> = (0..8)
@@ -458,7 +469,7 @@ fn at_most_three_grunts_hold_attack_tokens() {
 
 #[test]
 fn no_grunt_gets_stuck_over_two_minutes_among_pieces() {
-    let mut sim = Sim::grunt_lab(41);
+    let mut sim = lab(41);
     // The initial cover, plus a walled platform with a ramp, a wall run and a box.
     place(&mut sim, PieceSlot::floor(GridCell::new(8, 2, 1)));
     place(&mut sim, PieceSlot::floor(GridCell::new(9, 2, 1)));
@@ -529,15 +540,15 @@ fn no_grunt_gets_stuck_over_two_minutes_among_pieces() {
         stats.plans > 20,
         "they re-plan as the player moves: {stats:?}"
     );
-    assert_eq!(
-        sim.world().resource::<PieceMap>().len(),
-        pieces_before,
+    // Orbs chip and break pieces, but grunts never add one.
+    assert!(
+        sim.world().resource::<PieceMap>().len() <= pieces_before,
         "grunts build nothing"
     );
 }
 
 fn approach_speed(wave: u32) -> (f32, f32) {
-    let mut sim = Sim::grunt_lab(51);
+    let mut sim = lab(51);
     clear_pieces(sim.world_mut());
     put_player(&mut sim, Vec3::new(0.0, 0.0, 22.0));
     let g = spawn(&mut sim, Vec3::new(0.0, 0.0, -22.0), wave);
@@ -565,7 +576,7 @@ fn grunts_move_at_their_wave_speed_and_never_as_fast_as_a_sprint() {
 
 #[test]
 fn a_parked_grunt_idles_and_a_reset_one_comes_back() {
-    let mut sim = Sim::grunt_lab(61);
+    let mut sim = lab(61);
     clear_pieces(sim.world_mut());
     put_player(&mut sim, Vec3::ZERO);
     let g = spawn(&mut sim, Vec3::new(0.0, 0.0, -20.0), 1);

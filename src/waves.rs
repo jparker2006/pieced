@@ -18,7 +18,7 @@ use crate::{
     dummy::look_toward,
     grunt::{self, AttackTokens, GruntBrain, GruntRng, GruntStats, Parked},
     movement::{Knockback, Motor},
-    orb::{Orb, Wand},
+    orb::Wand,
     rng::{Rng, SimRng},
     shared::{
         Ads, AppState, Character, EyeHeight, GameCue, GameMode, Health, Layer, LookAngles, Player,
@@ -538,14 +538,8 @@ fn restart_run(world: &mut World) {
     if !requested {
         return;
     }
-    // Orbs in flight vanish (despawned, like pieces).
-    let orbs: Vec<Entity> = world
-        .query_filtered::<Entity, With<Orb>>()
-        .iter(world)
-        .collect();
-    for orb in orbs {
-        world.despawn(orb);
-    }
+    // Orbs in flight vanish back into their fixed pool.
+    crate::orb::recycle_all_orbs(world);
     if let Err(e) = world.run_system_cached(reset_characters) {
         error!("waves: restart failed: {e}");
         return;

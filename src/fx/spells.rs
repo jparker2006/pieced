@@ -1816,7 +1816,11 @@ fn emit_spells(
     }
 
     for hit in damage.read() {
-        if hit.target_kind != DamageTarget::Character || hit.amount <= 0.0 {
+        // Hits on the player himself (knights' orbs, M3) show no impact at
+        // his own chest: it would fill the screen. The damage arrow, the
+        // bonk and the bars say it instead.
+        if hit.target_kind != DamageTarget::Character || hit.amount <= 0.0 || Some(hit.target) == me
+        {
             continue;
         }
         let kind = if hit.shield_broke {
@@ -1861,6 +1865,10 @@ fn emit_spells(
     }
 
     for elimination in eliminated.read() {
+        // The player has no knight hat to drop (M3: knights can down him).
+        if Some(elimination.victim) == me {
+            continue;
+        }
         let feet = elimination.position;
         fx.poof(feet);
         let Some(hats) = hats.as_mut() else {

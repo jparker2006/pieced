@@ -181,6 +181,8 @@ pub mod cartoon {
     pub const TRUNK: Color = rgb(0xB6, 0x75, 0x45);
     pub const TRUNK_SHADOW: Color = rgb(0x7E, 0x54, 0x3D);
     pub const TUFT: Color = rgb(0x6D, 0xA9, 0x3D);
+    pub const WAND_CRYSTAL: Color = rgb(0xF2, 0x50, 0x2A);
+    pub const WAND_CRYSTAL_LIGHT: Color = rgb(0xFF, 0xA5, 0x4C);
     pub const WATERFALL_BLUE: Color = rgb(0x90, 0xCA, 0xFD);
 
     /// Every colour by its `art/palette.json` name.
@@ -285,6 +287,8 @@ pub mod cartoon {
         ("trunk", TRUNK),
         ("trunk_shadow", TRUNK_SHADOW),
         ("tuft", TUFT),
+        ("wand_crystal", WAND_CRYSTAL),
+        ("wand_crystal_light", WAND_CRYSTAL_LIGHT),
         ("waterfall_blue", WATERFALL_BLUE),
     ];
 

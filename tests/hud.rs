@@ -316,6 +316,8 @@ fn the_hit_tick_is_crisp_and_distinct_from_the_gunshot() {
 fn sound_categories_and_priorities_protect_hit_feedback() {
     for sfx in Sfx::ALL {
         let expected = match sfx.category() {
+            // Being hit, and the off-screen warning, are fairness cues (M3).
+            _ if matches!(sfx, Sfx::OrbBonk | Sfx::WandWarning) => 3,
             SfxCategory::Hits => 3,
             SfxCategory::Movement => 1,
             _ => 2,

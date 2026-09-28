@@ -126,6 +126,8 @@ pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "planet",
     "ship",
     "station",
+    // The grunt's crystal wand (M3; src/arena/visuals/wand.rs).
+    "wand",
 ];
 
 /// `assets/models/manifest.json`, as compiled in.
