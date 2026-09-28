@@ -534,13 +534,24 @@ struct PlayRequest {
     when: f64,
 }
 
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub(crate) struct PlayQueue {
     pending: Vec<PlayRequest>,
     /// Counter for deterministic pitch variation.
     variation: u32,
     /// Next round-robin take per [`Sfx`].
     takes: [u32; Sfx::ALL.len()],
+}
+
+// More cues than `Default` covers for arrays (32).
+impl Default for PlayQueue {
+    fn default() -> Self {
+        Self {
+            pending: Vec::new(),
+            variation: 0,
+            takes: [0; Sfx::ALL.len()],
+        }
+    }
 }
 
 impl PlayQueue {

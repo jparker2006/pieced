@@ -47,7 +47,7 @@ pub const SHIPS_GATE_TIMEOUT: u32 = 600;
 /// The beam's radius on the ground (m): wide enough for all three lanes.
 pub const BEAM_RADIUS: f32 = 3.3;
 /// ...and where it leaves the crystal (m).
-pub const BEAM_TOP_RADIUS: f32 = 0.45;
+pub const BEAM_TOP_RADIUS: f32 = 0.7;
 /// The rune circle's radius (m), and how fast it turns (rad/s).
 pub const CIRCLE_RADIUS: f32 = 3.4;
 pub const CIRCLE_SPIN: f32 = 0.5;

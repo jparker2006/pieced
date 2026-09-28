@@ -447,7 +447,6 @@ pub struct WavesClientPlugin;
 
 impl Plugin for WavesClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins(ships_visuals::ShipsVisualsPlugin);
         ui::death::build(app);
     }
 }

@@ -76,8 +76,9 @@ pub const RETRY_SECONDS: f32 = 0.5;
 pub const LANE_SPACING: f32 = 2.2;
 /// Lane offsets along the edge (m).
 pub const LANES: [f32; MAX_ABOARD] = [0.0, LANE_SPACING, -LANE_SPACING];
-/// The beam leaves the hull crystal this far below the ship's origin (m).
-pub const CRYSTAL_DROP: f32 = 1.6;
+/// The beam leaves the hull crystal this far below the ship's origin (m): the
+/// `dropship` model's `Beam` attach point.
+pub const CRYSTAL_DROP: f32 = 2.9;
 /// A knight starts down the beam with its feet this far below the crystal (m).
 pub const BEAM_ENTRY: f32 = 2.2;
 /// The seeded sideways spread of launch points about the dock (m).
@@ -627,7 +628,7 @@ mod tests {
         let s = Sortie::new(0, 0, 13.0, 0.0, 2);
         let spot = s.drop_point().lane(1);
         let top = s.in_beam(1, spot, s.beam_start(1)).unwrap();
-        assert!(top.y > 8.0, "starts up under the ship: {top}");
+        assert!(top.y > 7.0, "starts up under the ship: {top}");
         let near_end = s.in_beam(1, spot, s.landing(1) - 0.01).unwrap();
         assert!(near_end.distance(spot) < 0.05);
         assert_eq!(s.in_beam(1, spot, s.landing(1)), None);

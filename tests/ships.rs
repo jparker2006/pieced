@@ -547,3 +547,20 @@ fn the_run_ending_sends_the_ships_home_empty() {
     );
     assert_eq!(ships(&sim).live(), 0, "and the ships fly home");
 }
+
+// ---------------------------------------------------------------------------
+// The model
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_beam_leaves_the_models_hull_crystal_within_budget() {
+    let side = pieced::models::Sidecar::parse(include_str!("../assets/models/dropship.json"))
+        .expect("the dropship sidecar parses");
+    let beam = side.attach("Beam").expect("a Beam attach point").position();
+    assert!(
+        beam.distance(Vec3::NEG_Y * pieced::waves::ships::CRYSTAL_DROP) < 0.01,
+        "the model's Beam point {beam} is CRYSTAL_DROP below its origin"
+    );
+    assert!(side.part("Crystal").is_some(), "a Crystal part to glow");
+    assert!(side.triangles <= 2000, "{} triangles", side.triangles);
+}
