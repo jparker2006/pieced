@@ -2173,7 +2173,9 @@ fn simulate_spells(
         }
         if !spark.shown {
             spark.shown = true;
-            mesh.0 = spark.mesh.clone();
+            if mesh.0 != spark.mesh {
+                mesh.0 = spark.mesh.clone();
+            }
             spark.tag = u32::MAX;
         }
         let intensity = glow_intensity(spark);
@@ -2199,7 +2201,9 @@ fn simulate_spells(
         }
         if !spark.shown {
             spark.shown = true;
-            mesh.0 = spark.mesh.clone();
+            if mesh.0 != spark.mesh {
+                mesh.0 = spark.mesh.clone();
+            }
             let want = spark
                 .material
                 .clone()

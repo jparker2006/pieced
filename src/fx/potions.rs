@@ -641,7 +641,9 @@ fn animate_potions(
         };
         if spark.fresh {
             spark.fresh = false;
-            if let Some(mut mesh) = mesh {
+            if let Some(mut mesh) = mesh
+                && mesh.0 != spark.mesh
+            {
                 mesh.0 = spark.mesh.clone();
             }
         } else if !spark.p.step(dt) {

@@ -13,6 +13,22 @@
 //! `skyrot=off` (field only; the sky slice reads it) and `blobs=off`.
 //! `outline=mod` also adds `bevy_mod_outline`'s plugin at startup, so its fixed
 //! cost is only paid when it is being measured.
+//!
+//! Milestone 3 knobs (read by [`crate::app::game_app`] before the window and
+//! the renderer are built; for A/B play sessions, never on by default):
+//! - `latency=1|2|3`: the window's `desired_maximum_frame_latency` (default 1:
+//!   two Metal drawables). `latency=2` lets one slow frame be absorbed by a
+//!   third drawable instead of missing a vblank, at the cost of up to one
+//!   more frame of display latency.
+//! - `pipelined=on`: Bevy's pipelined rendering (the render world of frame N
+//!   runs on another thread while the main world simulates N+1). More CPU
+//!   headroom per frame, one more frame of latency; the session log's render
+//!   buckets read zero under it (they assume one thread).
+//! - `gpu=on`: Bevy's `RenderDiagnosticsPlugin`, whose pass timestamps work
+//!   on Apple-silicon Metal (wgpu reports `TIMESTAMP_QUERY` at stage
+//!   boundaries). The session log's `gpu_ms` column is the sum of the
+//!   top-level passes' latest GPU time; it lags the frame by a few frames and
+//!   the plugin allocates each frame, so it stays behind this knob.
 
 use crate::{look::OutlineBackend, tuning::Tuning, viewmodel::ViewmodelCamera};
 use bevy::{pbr::DistanceFog, prelude::*};
@@ -36,6 +52,12 @@ pub struct PerfKnobs {
     pub blobs: Option<bool>,
     /// FXAA on the final 3D image (`fxaa=on|off`).
     pub fxaa: Option<bool>,
+    /// `desired_maximum_frame_latency` for the window (`latency=N`).
+    pub latency: Option<u32>,
+    /// Keep Bevy's pipelined rendering (`pipelined=on`).
+    pub pipelined: Option<bool>,
+    /// GPU pass timing into the session log (`gpu=on`).
+    pub gpu: Option<bool>,
 }
 
 impl PerfKnobs {
@@ -77,6 +99,9 @@ impl PerfKnobs {
                 "skyrot" => knobs.skyrot = Some(on),
                 "blobs" => knobs.blobs = Some(on),
                 "fxaa" => knobs.fxaa = Some(on),
+                "latency" => knobs.latency = value.parse().ok().filter(|n| (1..=3).contains(n)),
+                "pipelined" => knobs.pipelined = Some(on),
+                "gpu" => knobs.gpu = Some(on),
                 other => eprintln!("unknown knob '{other}'"),
             }
         }
@@ -166,6 +191,20 @@ mod tests {
         assert_eq!(PerfKnobs::parse("msaa=4,fxaa").fxaa, Some(true));
         assert_eq!(PerfKnobs::parse("outline=wobbly").outline, None);
         assert_eq!(PerfKnobs::parse("particles=lots").particles, None);
+    }
+
+    #[test]
+    fn parses_milestone_3_pacing_knobs() {
+        let k = PerfKnobs::parse("latency=2,pipelined,gpu=on");
+        assert_eq!(k.latency, Some(2));
+        assert_eq!(k.pipelined, Some(true));
+        assert_eq!(k.gpu, Some(true));
+        // Out of range or unparsable latencies are ignored.
+        assert_eq!(PerfKnobs::parse("latency=0").latency, None);
+        assert_eq!(PerfKnobs::parse("latency=9").latency, None);
+        assert_eq!(PerfKnobs::parse("latency=fast").latency, None);
+        assert_eq!(PerfKnobs::parse("gpu=off").gpu, Some(false));
+        assert_eq!(PerfKnobs::parse("").pipelined, None);
     }
 
     #[test]

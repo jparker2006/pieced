@@ -171,10 +171,21 @@ impl ParticlePool {
     }
 }
 
+/// The particle and debris pools.
 #[derive(Resource)]
-struct FxPools {
+pub struct FxPools {
     particles: ParticlePool,
     debris: ParticlePool,
+}
+
+impl FxPools {
+    /// Live particles and live debris chunks (for the session log).
+    pub fn live(&self) -> (usize, usize) {
+        (
+            self.particles.slots.live_count(),
+            self.debris.slots.live_count(),
+        )
+    }
 }
 
 #[derive(Resource)]
@@ -723,8 +734,12 @@ fn simulate_fx(
             };
             if slot.fresh {
                 slot.fresh = false;
-                mesh.0 = slot.mesh.clone();
-                if let Paint::Solid(handle) = &slot.paint {
+                if mesh.0 != slot.mesh {
+                    mesh.0 = slot.mesh.clone();
+                }
+                if let Paint::Solid(handle) = &slot.paint
+                    && material.0 != *handle
+                {
                     material.0 = handle.clone();
                 }
                 vis.set_if_neq(Visibility::Visible);
