@@ -328,3 +328,4 @@ Every number here names its run folder, the commit, and the power and Low Power 
   - **S3–S7:** no native re-runs. They rely on the go-window-1 native results, headless tests on the final commit, and each launch's printed time.
 
   These leftovers are step 1 of Milestone 3 (D70). The M3 plan is Round 8 of `docs/design/DESIGN-GRILL.md`.
+- 2026-09-27: **M3 chunk 0 merged** (`3f9a213`): every native session now logs frames and prints an S2 verdict (D86). Jake's first logged session (16:19, battery with Low Power Mode on, `3f9a213`) was 127 s, so **N/A for S2**. Its frames were slow under background build load; see the M3 report. The cold launch took 3.27 s.

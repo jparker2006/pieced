@@ -114,6 +114,7 @@ fn battery_lpm(t_ms: f64) -> PowerSample {
         source: "Battery Power".into(),
         battery: "-InternalBattery-0 80%; discharging".into(),
         low_power_mode: Some(true),
+        load: None,
     }
 }
 

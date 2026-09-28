@@ -180,6 +180,9 @@ pub struct PowerSample {
     pub source: String,
     pub battery: String,
     pub low_power_mode: Option<bool>,
+    /// System load averages (1, 5, 15 min) at the sample: background work
+    /// (builds, tests, Blender) shows up here and explains slow sessions.
+    pub load: Option<[f64; 3]>,
 }
 
 impl PowerSample {
@@ -189,6 +192,7 @@ impl PowerSample {
             source: state.source,
             battery: state.battery,
             low_power_mode: state.low_power_mode,
+            load: crate::telemetry::load_average(),
         }
     }
 

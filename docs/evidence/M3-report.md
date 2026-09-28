@@ -66,3 +66,12 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - **Launch findings (read from the code):** Bevy 0.19 builds render pipelines one at a time on macOS, and pipelined rendering is off, so the 33 warm-up sites compile back to back on the main thread. After a rebuild, Metal's shader cache misses. That fits the cold launches of 8.7, 10.7 and ~12 s against warm launches of 1.1–2.6 s. The next cold launch's `PIECED_BOOT` line will confirm it (a big gap before `warmup=`); if it does, the fix is fewer pipeline variants.
   - Every fresh copy of `pieced-play` counts as cold on its first launch.
 - 2026-09-27: **disk:** it fell to 2.4 GB during the parallel builds. Old gate binaries, a stale set of test binaries (chunk 0's `build.rs` had given its worktree a second set of about 6 GB) and stale incremental caches were deleted, bringing it back to 8.3 GB.
+- 2026-09-27 16:19–16:21: **Jake's first logged session** (release `pieced-play` from `3f9a213`, the M2 sandbox, on battery at 83%, Low Power Mode on; session `userdata/sessions/20260927-231906`).
+  - Verdict, quoted: "Its super fun and looks great! Keep building".
+  - **Launch:** 3,271 ms **cold** (the first launch of a new binary), under 5 s even cold. The window appeared at 2,446 ms; after that, island +308 ms, knight +339 ms, far +85 ms, warm-up +33 ms, playing at 3,246 ms. The first 2.4 s come before the window exists, not from shader warm-up.
+  - **S2: N/A** (127 s of play, under 300 s). The frames were also poor: mean 20.25 ms, p50 16.94, p95 34.1, 1,313 frames > 25 ms, 72.0% < 18 ms. It was steady through play and pause: about 20% of frames missed a vblank (≈ 33 ms) in every 10 s bucket.
+  - **Not a clean measurement:** `cargo`/`rustc` were paused, but builder test binaries (including offscreen GPU renders) and headless Blender kept running.
+  - **Fix:** `scripts/quiet.sh stop|cont` pauses every build process (cargo, rustc, test binaries in the cache, headless Blender), and new cargo and `build-art` commands wait while it's on. Power samples now record the load average. The next session will separate game cost from background load.
+- 2026-09-27: **disk hit 0.9 GB** mid-build (the grunt slice stopped).
+  - Incremental caches (5.9 GB) and stale test binaries were deleted, back to 11 GB.
+  - `scripts/env.sh` now sets `CARGO_INCREMENTAL=0`.
