@@ -329,3 +329,4 @@ Every number here names its run folder, the commit, and the power and Low Power 
 
   These leftovers are step 1 of Milestone 3 (D70). The M3 plan is Round 8 of `docs/design/DESIGN-GRILL.md`.
 - 2026-09-27: **M3 chunk 0 merged** (`3f9a213`): every native session now logs frames and prints an S2 verdict (D86). Jake's first logged session (16:19, battery with Low Power Mode on, `3f9a213`) was 127 s, so **N/A for S2**. Its frames were slow under background build load; see the M3 report. The cold launch took 3.27 s.
+- 2026-09-28: **M3 closed (D95).** M2's S2 and S3 are **still open**, carried with M3's W7 and W8 into the AAA milestone. M2's headless gates (S4, S5, S6, S9, S10 and S7's test, clippy and fmt) re-ran green on `5524b1a`: 610 passing, 0 failed.

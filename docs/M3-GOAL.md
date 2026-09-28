@@ -1,6 +1,6 @@
 # Goal brief: Pieced Milestone 3 "Waves"
 
-**Status:** READY. Jake agreed the plan in grill rounds 8 and 9 (D52–D93) on 2026-09-27. Launch with the launcher line at the bottom.
+**Status:** CLOSED 2026-09-28 by Jake (D95): 8 gates PASS; W0, W7 and W8 carried into the AAA milestone. See `docs/evidence/M3-report.md`. Was: READY. Jake agreed the plan in grill rounds 8 and 9 (D52–D93) on 2026-09-27. Launch with the launcher line at the bottom.
 
 The **contract is `docs/M3-SPEC.md`**. This brief says how to execute it, what "done" means, and when to stop and ask Jake.
 

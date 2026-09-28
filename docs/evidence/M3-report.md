@@ -1,6 +1,6 @@
 # Milestone 3 "Waves": report
 
-**Status:** IN PROGRESS. The goal launched 2026-09-27. The contract is `docs/M3-SPEC.md`, and the brief is `docs/M3-GOAL.md`.
+**Status:** CLOSED by Jake on 2026-09-28 (D95): "wrap up and close it". The goal launched 2026-09-27. Eight gates PASS. W0, W7 and W8 are **CARRIED** into the next milestone (the AAA look-and-feel pass), not passed. The contract is `docs/M3-SPEC.md`, and the brief is `docs/M3-GOAL.md`.
 
 Every number here names its source (session folder or test), the commit, and the power and Low Power Mode state. Failures and reruns are recorded, not deleted.
 
@@ -8,17 +8,17 @@ Every number here names its source (session folder or test), the commit, and the
 
 | Gate | Status | Evidence |
 |---|---|---|
-| W0 M2 closed | | |
+| W0 M2 closed | **CARRIED** (D95) | M2's S2 (battery performance) and S3 (3 warm launches in a row) still need a qualifying session; they move with W7 and W8. M2's other gates re-run green headless on `5524b1a` as part of W10 |
 | W1 First grunt wave | **PASS** (`b3a4c24`) | Chunk 1 tests: `tests/grunt.rs` (10), `tests/orb.rs`, `tests/waves.rs` (7), `tests/knockback.rs` (5), with 501 passing on the merge. Play-test 1: fun 4, about right, no unfair deaths; Jake: "that was so much fun!" |
 | W2 Endless waves | **PASS** (`5086a57`) | Chunk 2 tests: `tests/waves.rs` (19), `tests/potions.rs` (5), `tests/waves_ui.rs` (11) and unit tests; 544 passing on the 2B branch, which contains main. Play-test 2: fun 4, about right, no unfair deaths |
-| W3 Fair knights | | |
+| W3 Fair knights | **PASS** (`5524b1a`) | `tests/fairness.rs`: 20 seeded runs, waves 1–10 (240 knights landed, max 8 at once). 2,327 orbs, 373 hits on the player, 2,810 wind-ups (1,918 off-screen, all warned), 91,177 orb segments checked. **Every rule 0 violations**: no-LOS 0, early first wind-up 0, > 3 shooters 0, unwarned off-screen 0, missing arrow 0, through a piece 0, stuck 0, **unfair hits 0, unfair deaths 0**. The suite found and fixed a real bug: an orb could leave the wand tip without a clear line while the eye saw the player (`confirm_shots`) |
 | W4 Ships and the void | **PASS** (`fb039a3`) | `tests/ships.rs` (10), `tests/void.rs` (7), 6 unit tests; the branch's full suite, clippy, fmt and `build-art --check` are clean on top of `e1d5b9d`. Play-test 3: fun 4, about right, no unfair deaths |
 | W5 Castle and sky | **PASS** (`fb039a3`) | The castle follows D94's `M3-C4`; the orchestrator reviewed the renders against C4 before merging. Sky motion and far budget tests pass (`tests/far.rs`: ≤ 90k triangles, ≤ 18 batches, ≤ 64 halos). Jake's scores, quoted: "5 and 5" (spawn vista, castle up) |
 | W6 Menu and controls | **PASS** (`c3f6379`) | `tests/menu.rs` (15), `tests/bindings.rs` (10), updated `tests/waves_ui.rs`; the branch's full suite on top of `c2d4eed` had 609 passing, 0 failed (15 ignored); clippy and fmt clean. The ignored `tests/hud_offscreen.rs` review render covers the main menu and the Controls page (T12 style) |
-| W7 Performance (wave ≥ 6, battery, Low Power Mode) | | |
-| W8 Launch (warm < 5 s ×3; Play → controllable < 1 s) | | |
+| W7 Performance (wave ≥ 6, battery, Low Power Mode) | **CARRIED** (D95) | Not met. No qualifying session yet, and the sessions so far miss the bar (e.g. `20260928-163647`: battery + Low Power Mode, 250 s, mean 16.98 ms, 278 frames > 25 ms, 94.3% < 18). The first attributed spike report (`20260928-212450`) puts 86% of spikes in `acquire`: the GPU is behind. Carried into the AAA milestone, which starts with a GPU budget |
+| W8 Launch (warm < 5 s ×3; Play → controllable < 1 s) | **CARRIED** (D95) | Play → controllable **passes** (36 ms, `20260928-212450`). Warm launches of 4,139 ms (`fb039a3`) and 4,570 ms (`c3f6379`, to a clickable menu) are under 5 s, but no 3 in a row have been logged. The knight rig (+1.3 s) and pre-window load are the first things to trim |
 | W9 Fun verdict (fun ≥ 4, no unfair deaths) | **PASS** (`c3f6379`) | Play-test 5, quoted: "done playing, 4.5, about right, no unfair deaths, that was actually so much fun." Every play-test is recorded above: 4, 4, 4, castle 5/5, 4.5, with no unfair deaths in any |
-| W10 No regressions | | |
+| W10 No regressions | **PASS** (`5524b1a`) | `cargo test --locked --no-fail-fast`: **610 passed, 0 failed**, 15 ignored (every M1 and M2 test, including S4 motion, S5 hitbox fit, S6 spell timing and S10 building). Clippy `-D warnings` and `fmt --check` clean. `scripts/build-art.sh --check`: 66 assets byte-identical. `scripts/test_sessions.py` OK |
 
 ## Castle concept
 
@@ -191,3 +191,10 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - **Launch:** 4,570 ms **warm** to a clickable menu (app built 721 ms, window 2,002 ms, knight rig +1.3 s, menu 4,570 ms). Play → controllable took 36 ms.
   - **First attributed spike report** (`scripts/sessions.py --spikes`): 2,121 frames > 25 ms, 81.8% < 18 ms, not on battery. **86% of the spikes are `acquire`**, waiting for the swapchain drawable, so **the GPU is behind**, not gameplay CPU (fixed 4%, prepare 6%). Orb and damage frames are slightly over-represented (lift 1.7–1.8).
   - **Caveat:** from about 14:28 the fairness suite compiled and ran at low priority beside the game, so this session's frame numbers are pessimistic. The attribution still points at GPU cost, which matters for W7 and for the look pass.
+- 2026-09-28: **W3 merged** (`5524b1a`): the fairness suite (see the gate table). The builder stopped when the app quit; the orchestrator committed its wand-tip fix and ran the suite (46 s, 0 violations).
+- 2026-09-28: **W10 on `5524b1a`**: 610 passing, 0 failed; clippy, fmt, `build-art --check` (66 assets) and the Python tests clean.
+- 2026-09-28: **Milestone 3 closed by Jake (D95).** After play-test 5 he asked whether this was a good stopping point, because he wants to start making the game "play and feel like a AAA game, and then from there we'll add more progression". He chose to wrap up and close: "wrap up and close it".
+  - **Passed:** W1, W2, W3, W4, W5, W6, W9, W10.
+  - **Carried into the AAA milestone:** W7 (60 fps on battery with Low Power Mode, to wave 6), W8 (3 warm launches in a row < 5 s) and W0 (M2's S2/S3, which ride on the same sessions).
+  - **Reason:** the attribution shows the GPU is the bottleneck, and the AAA pass rebuilds the look anyway, so a GPU budget belongs at its start.
+  - **Tools in place for that milestone:** the session log with spike attribution (`scripts/sessions.py --spikes`), `--launches`, quiet mode and `scripts/cargo.sh`.

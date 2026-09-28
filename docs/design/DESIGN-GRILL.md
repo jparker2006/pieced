@@ -202,6 +202,14 @@ Questions only the spec needs and Round 8 doesn't answer. Context from reading t
 |---|---|---|
 | D94 | **The castle target is `concepts/M3-C4-citadel-mix.png` (Q93).** | C3's starlit citadel is the base: a vast dark-indigo castle city on a jagged floating rock with waterfalls, star-tipped needle spires, a great stained-glass hall glowing gold and teal, hundreds of warm windows and swarms of lanterns, under a night galaxy with teal-violet aurora ribbons and shooting stars. From C2: a taller centre stacked like a wedding cake of cone-roofed towers, a **glowing golden ring of runes orbiting the castle**, streams of lanterns rising into the sky, and a warm golden aura. C4 was generated from C3 and C2 to show the mix, and it's the W5 target. C3's aurora glow on the galaxy joins D64's sky list. Jake, on seeing C4: "perfect WOW. make it that but 100x in the 3d". The castle must look as spectacular in game as C4, with at least two art-review rounds before he scores it (W5). |
 
+## Round 10: closing Milestone 3, 2026-09-28
+
+After play-test 5 (fun 4.5, no unfair deaths), Jake asked: "What state is this work? Are we at a good stopping point? I want to start making this play and feel like a AAA game, and then from there we'll add more progression, because as of now it's just so fun."
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D95 | **Waves closes with three gates carried (Jake: "wrap up and close it").** | <ul><li>M3 closes with W1–W6, W9 and W10 PASS.</li><li>**W7** (60 fps on battery with Low Power Mode to wave 6), **W8** (3 warm launches in a row < 5 s) and **W0** (M2's S2/S3) are **carried** into the next milestone, not passed.</li><li>That milestone is the **AAA look-and-feel pass**, and it starts with a GPU budget: the first spike report puts 86% of slow frames on the GPU.</li><li>Story and real progression come after it (Jake's order: AAA look and feel, then progression).</li></ul> |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**
@@ -209,7 +217,8 @@ Questions only the spec needs and Round 8 doesn't answer. Context from reading t
   - Remaining for M2: S2 (from a logged battery play session, D53), the launch check, and closing the report (`docs/evidence/M2-report.md`).
   - `pieced-play` (`~/Library/Caches/pieced-target/pieced-play`) is built from `bb9c33a`.
 - **Done (2026-09-27):** Round 9 (D71–D93) is settled, and `docs/M3-SPEC.md`, `docs/M3-GOAL.md` and `docs/evidence/M3-report.md` are written. The castle target is `concepts/M3-C4-citadel-mix.png` (D94).
-- **Next:** Jake launches M3 with the launcher line at the bottom of `docs/M3-GOAL.md`, ideally from a new session opened in `outputs/pieced`.
+- **M3 closed (2026-09-28, D95).** See `docs/evidence/M3-report.md`: 8 gates PASS; W0, W7 and W8 are carried.
+- **Next:** grill the AAA look-and-feel milestone (M4). It starts with a GPU budget from the session spike reports and carries W0, W7 and W8. Story and progression come after it.
 - **Images (castle concepts, D67):** use Codex CLI, one image at a time:
   ```
   codex exec --skip-git-repo-check --ephemeral -m gpt-5.5 -s workspace-write -C docs/design/concepts [-i ref.png --] "<prompt>" < /dev/null
