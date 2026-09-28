@@ -35,13 +35,7 @@ fn temp_dir(name: &str) -> PathBuf {
 }
 
 fn row(frame: u64, t_ms: f64, dt_ms: f64, state: FrameState) -> SessionFrame {
-    SessionFrame {
-        frame,
-        t_ms,
-        dt_ms,
-        state,
-        occluded: false,
-    }
+    SessionFrame::plain(frame, t_ms, dt_ms, state)
 }
 
 /// Frames every `dt` ms from `from` (exclusive) to `to` (inclusive) in `state`.
@@ -446,11 +440,15 @@ fn writer_streams_the_csv_and_writes_a_passing_session_json() {
     // The CSV: a header and one line per frame, with the state label.
     let csv = std::fs::read_to_string(dir.join("frames.csv")).unwrap();
     let lines: Vec<&str> = csv.lines().collect();
-    assert_eq!(lines[0], "frame,t_ms,dt_ms,state,occluded");
+    assert!(lines[0].starts_with("frame,t_ms,dt_ms,state,occluded,"));
+    assert_eq!(lines[0], pieced::session::csv_header());
     assert_eq!(lines.len(), rows.len() + 1);
-    assert!(lines[1].ends_with(",boot,0"));
-    assert!(lines.iter().any(|l| l.ends_with(",paused,0")));
-    assert!(lines.last().unwrap().ends_with(",playing,0"));
+    let state_of = |l: &str| l.split(',').skip(3).take(2).collect::<Vec<_>>().join(",");
+    assert_eq!(state_of(lines[1]), "boot,0");
+    assert!(lines.iter().any(|l| state_of(l) == "paused,0"));
+    assert_eq!(state_of(lines.last().unwrap()), "playing,0");
+    let columns = lines[0].split(',').count();
+    assert!(lines.iter().all(|l| l.split(',').count() == columns));
 
     // The final JSON.
     let doc = read_json(&dir.join("session.json"));

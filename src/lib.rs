@@ -28,6 +28,7 @@ pub mod orb;
 pub mod palette;
 pub mod perf_knobs;
 pub mod player;
+pub mod profile;
 pub mod render;
 pub mod rng;
 pub mod scenario;

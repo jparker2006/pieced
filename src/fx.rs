@@ -171,10 +171,21 @@ impl ParticlePool {
     }
 }
 
+/// The particle and debris pools.
 #[derive(Resource)]
-struct FxPools {
+pub struct FxPools {
     particles: ParticlePool,
     debris: ParticlePool,
+}
+
+impl FxPools {
+    /// Live particles and live debris chunks (for the session log).
+    pub fn live(&self) -> (usize, usize) {
+        (
+            self.particles.slots.live_count(),
+            self.debris.slots.live_count(),
+        )
+    }
 }
 
 #[derive(Resource)]

@@ -495,9 +495,9 @@ impl Plugin for GameAudioPlugin {
     }
 }
 
-/// A playing sound effect.
+/// A playing sound effect (public so the session log can count voices).
 #[derive(Component, Debug, Clone, Copy)]
-struct Voice {
+pub struct Voice {
     priority: u8,
     started: f64,
     /// Volume before master volume (so master changes apply live).
