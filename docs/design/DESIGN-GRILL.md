@@ -258,6 +258,14 @@ The goal, from Jake: make Pieced "play and feel like a AAA game". Story and real
 | D117 | **The gameplay line (Q115).** | M4 changes **no gameplay numbers**: TTK, movement, grunt stats, hitboxes, building and the wave counts all stay. Death animations, flinches and chunks are visual only, and hitboxes never follow them. The one addition is D115's starting wave. The ±50% tuning rule covers only feel numbers (hitstop, kick, camera nudges, music and effect levels). Anything else goes to Jake. |
 | D118 | **Agents (Jake's note).** | The orchestrator may create or update project agent definitions in `.claude/agents/` (such as `pieced-builder`) when the work needs them. |
 
+**The target board (D112), generated 2026-09-28.**
+- `concepts/M4-V1`–`M4-V8` were made one at a time with Codex, each using an in-game render as its reference (the M3 castle views and the M2 S1 round-3 captures).
+- **Known liberties** (the captures keep the real game where they differ):
+  - V1's hotbar shows made-up items;
+  - V6's pump lost its bell muzzle;
+  - V7's "17 knights incoming" should read 15 for wave 7.
+- **Waiting on Jake's approval** before the spec's board is final.
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**
@@ -266,7 +274,11 @@ The goal, from Jake: make Pieced "play and feel like a AAA game". Story and real
   - `pieced-play` (`~/Library/Caches/pieced-target/pieced-play`) is built from `bb9c33a`.
 - **Done (2026-09-27):** Round 9 (D71–D93) is settled, and `docs/M3-SPEC.md`, `docs/M3-GOAL.md` and `docs/evidence/M3-report.md` are written. The castle target is `concepts/M3-C4-citadel-mix.png` (D94).
 - **M3 closed (2026-09-28, D95).** See `docs/evidence/M3-report.md`: 8 gates PASS; W0, W7 and W8 are carried.
-- **Next:** grill the AAA look-and-feel milestone (M4). It starts with a GPU budget from the session spike reports and carries W0, W7 and W8. Story and progression come after it.
+- **M4 grilled (2026-09-28, Round 11, D96–D118).**
+  - `docs/M4-SPEC.md`, `docs/M4-GOAL.md` and `docs/evidence/M4-report.md` are written.
+  - The target board is `concepts/M4-V1`–`M4-V8`.
+  - The agents are `pieced-builder` (updated for M4) and the new `pieced-art-reviewer`.
+- **Next:** Jake launches M4 with the launcher at the bottom of `docs/M4-GOAL.md`. Story and progression come after M4.
 - **Images (castle concepts, D67):** use Codex CLI, one image at a time:
   ```
   codex exec --skip-git-repo-check --ephemeral -m gpt-5.5 -s workspace-write -C docs/design/concepts [-i ref.png --] "<prompt>" < /dev/null
