@@ -7,7 +7,7 @@
 //!
 //! Client only. Chunk 2 replaces it with the wave HUD and the results screen.
 
-use super::{CLEARED_PAUSE, Run, RunPhase};
+use super::{Run, RunPhase};
 use crate::{
     hud::style::{PANEL, RIM, TEXT, ink, text},
     shared::{SimTick, TICK_SECONDS},
@@ -47,11 +47,11 @@ pub fn banner_line(run: &Run, tick: u64) -> Option<String> {
                 run.wave
             ))
         }
-        RunPhase::Cleared { tick: at }
-            if (tick.saturating_sub(at) as f32) * TICK_SECONDS < CLEARED_PAUSE =>
-        {
-            Some(format!("Wave {} cleared!", run.wave))
-        }
+        RunPhase::Break { ends_tick } => Some(format!(
+            "Wave {} cleared! Next wave in {:.0}",
+            run.wave,
+            (ends_tick.saturating_sub(tick) as f32 * TICK_SECONDS).ceil()
+        )),
         _ => None,
     }
 }
@@ -129,8 +129,10 @@ mod tests {
             banner_line(&run, 10).as_deref(),
             Some("Wave 1 \u{2014} 2 eliminations \u{2014} press Enter to go again")
         );
-        run.phase = RunPhase::Cleared { tick: 100 };
-        assert_eq!(banner_line(&run, 101).as_deref(), Some("Wave 1 cleared!"));
-        assert_eq!(banner_line(&run, 100 + 60 * 60), None);
+        run.phase = RunPhase::Break { ends_tick: 700 };
+        assert_eq!(
+            banner_line(&run, 101).as_deref(),
+            Some("Wave 1 cleared! Next wave in 10")
+        );
     }
 }

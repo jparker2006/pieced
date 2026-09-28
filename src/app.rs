@@ -29,7 +29,7 @@ use crate::{
     telemetry::TelemetryPlugin,
     tuning::Tuning,
     viewmodel::ViewmodelPlugin,
-    waves::{WavesPlugin, ui::WavesUiPlugin},
+    waves::{RunSeed, RunStore, WavesClientPlugin, WavesPlugin, ui::WavesUiPlugin},
 };
 use avian3d::prelude::*;
 use bevy::{
@@ -117,6 +117,7 @@ impl PluginGroup for ClientPlugins {
             .add(HudPlugin)
             .add(MenuPlugin)
             .add(WavesUiPlugin)
+            .add(WavesClientPlugin)
             .add(ScenarioPlugin)
             .add(BootPlugin)
             .add(NativeWindowPlugin)
@@ -199,6 +200,8 @@ pub struct GameOptions {
     pub frame_cap: Option<u32>,
     /// `--waves` / `--practice`: the game mode. Scenarios always run Practice.
     pub mode: Option<GameMode>,
+    /// `--seed N`: the first Waves run's seed (D83: replay a run).
+    pub seed: Option<u64>,
 }
 
 impl GameOptions {
@@ -220,6 +223,11 @@ impl GameOptions {
             } else {
                 None
             },
+            seed: args
+                .iter()
+                .position(|a| a == "--seed")
+                .and_then(|i| args.get(i + 1))
+                .and_then(|v| v.parse().ok()),
         }
     }
 
@@ -294,7 +302,12 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     .add_plugins(ClientPlugins)
     .insert_resource(tuning)
     .insert_resource(mode)
+    // Waves runs keep the personal best and the run log in `userdata/`.
+    .insert_resource(RunStore::user())
     .insert_resource(bevy::winit::WinitSettings::continuous());
+    if let Some(seed) = options.seed {
+        app.insert_resource(RunSeed(seed));
+    }
     if let Some(knobs) =
         crate::perf_knobs::PerfKnobs::from_args(&std::env::args().collect::<Vec<_>>())
     {

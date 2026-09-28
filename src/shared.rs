@@ -601,6 +601,18 @@ pub enum GameCue {
     OrbFired {
         who: Entity,
     },
+    /// A downed knight dropped a shield potion (`potion` is its pool slot,
+    /// `waves::PotionSlot`), lying at `at` (D80).
+    PotionDropped {
+        potion: Entity,
+        at: Vec3,
+    },
+    /// `who` walked over a potion and drank it (D80).
+    PotionPicked {
+        who: Entity,
+        potion: Entity,
+        at: Vec3,
+    },
 }
 
 // ---------------------------------------------------------------------------
