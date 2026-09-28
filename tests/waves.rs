@@ -9,7 +9,7 @@ use pieced::{
     combat::Downed,
     dummy::{Dummy, look_toward},
     grunt::{Grunt, GruntStats, Parked},
-    orb::Orb,
+    orb::{Orb, OrbSlot, PARKED},
     shared::{
         ActiveTool, Character, EyeHeight, Facing, GameCue, GridCell, Health, PlayerIntent,
         ShotFired, WeaponKind,
@@ -27,6 +27,24 @@ fn count<C: Component>(sim: &mut Sim) -> usize {
         .query_filtered::<Entity, With<C>>()
         .iter(sim.world())
         .count()
+}
+
+/// Puts an orb in flight on an idle pool slot (far below the island, where
+/// it hits nothing).
+fn launch_orb(sim: &mut Sim, shooter: Entity, velocity: Vec3) {
+    let slot = sim
+        .world_mut()
+        .query_filtered::<Entity, (With<OrbSlot>, Without<Orb>)>()
+        .iter(sim.world())
+        .next()
+        .expect("an idle orb slot");
+    sim.world_mut().entity_mut(slot).insert(Orb {
+        shooter,
+        velocity,
+        travelled: 0.0,
+        previous: PARKED,
+        launched: 0,
+    });
 }
 
 fn run(sim: &Sim) -> Run {
@@ -277,11 +295,7 @@ fn the_players_death_ends_the_run_and_enter_restarts_it_in_place() {
         PieceSlot::wall(GridCell::new(1, 1, 0), Facing::North),
     )
     .expect("wall placed");
-    sim.world_mut().spawn(Orb {
-        shooter: player,
-        velocity: Vec3::X * 30.0,
-        travelled: 0.0,
-    });
+    launch_orb(&mut sim, player, Vec3::X * 30.0);
     place(&mut sim, player, Vec3::new(-4.0, 0.0, 0.0));
     sim.run_seconds(0.2);
 
@@ -380,11 +394,7 @@ fn restarting_ten_times_leaks_nothing() {
             PieceSlot::floor(GridCell::new(1 + x, 1, 0)),
         )
         .expect("floor placed");
-        sim.world_mut().spawn(Orb {
-            shooter: player,
-            velocity: Vec3::X,
-            travelled: 0.0,
-        });
+        launch_orb(&mut sim, player, Vec3::X);
         sim.world_mut()
             .get_mut::<Health>(player)
             .unwrap()
