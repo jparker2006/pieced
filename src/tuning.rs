@@ -40,11 +40,25 @@ impl Tuning {
     }
 
     /// Loads persisted settings, falling back to defaults on any problem.
+    ///
+    /// Only what the Settings menu edits is taken from the file (look, audio,
+    /// graphics, HUD, feedback and aim friction). Designer numbers (movement,
+    /// building, combat, the dummy) always come from the code: every section is
+    /// saved, so otherwise the first save froze them and later tuning never
+    /// reached the game.
     pub fn load_or_default(path: &std::path::Path) -> Self {
-        std::fs::read_to_string(path)
+        let mut t: Self = std::fs::read_to_string(path)
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let d = Self::default();
+        let friction = (t.combat.aim_friction, t.combat.aim_friction_strength);
+        t.movement = d.movement;
+        t.building = d.building;
+        t.combat = d.combat;
+        (t.combat.aim_friction, t.combat.aim_friction_strength) = friction;
+        t.dummy = d.dummy;
+        t
     }
 
     /// Saves settings atomically (write then rename).
@@ -77,6 +91,24 @@ mod tests {
         let partial = Tuning::load_or_default(&path);
         assert_eq!(partial.look.fov_deg, 80.0);
         assert_eq!(partial.movement, crate::movement::MovementTuning::default());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn designer_numbers_come_from_the_code_not_the_file() {
+        let dir = std::env::temp_dir().join(format!("pieced-tuning-d-{}", std::process::id()));
+        let path = dir.join("settings.json");
+        let mut t = Tuning::default();
+        t.combat.pump.damage = 1.0;
+        t.combat.aim_friction = true;
+        t.movement.run_speed = 1.0;
+        t.look.sensitivity = 0.009;
+        t.save(&path).unwrap();
+        let loaded = Tuning::load_or_default(&path);
+        assert_eq!(loaded.combat.pump, crate::combat::GunTuning::pump());
+        assert_eq!(loaded.movement, crate::movement::MovementTuning::default());
+        assert!(loaded.combat.aim_friction, "a menu setting survives");
+        assert_eq!(loaded.look.sensitivity, 0.009);
         let _ = std::fs::remove_dir_all(dir);
     }
 }

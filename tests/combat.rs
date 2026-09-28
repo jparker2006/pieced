@@ -265,10 +265,11 @@ fn pump_pattern_is_identical_every_shot() {
 #[test]
 fn pump_falloff_numbers_match_the_spec() {
     let t = GunTuning::pump();
-    assert_eq!(t.falloff(8.0), 1.0);
-    assert!((t.falloff(15.0) - 0.3).abs() < 1e-6);
-    assert!((t.falloff(11.5) - 0.65).abs() < 1e-5);
-    assert!((t.falloff(30.0) - 0.3).abs() < 1e-6);
+    // Play-test 2 tuning: full to 10 m, 40% from 18 m.
+    assert_eq!(t.falloff(10.0), 1.0);
+    assert!((t.falloff(18.0) - 0.4).abs() < 1e-6);
+    assert!((t.falloff(14.0) - 0.7).abs() < 1e-5);
+    assert!((t.falloff(30.0) - 0.4).abs() < 1e-6);
     let r = GunTuning::rifle();
     assert_eq!(r.damage_at(15.0, false), 28.0);
     assert!((r.damage_at(50.0, false) - 28.0 * 0.7).abs() < 1e-4);
@@ -303,17 +304,18 @@ fn pump_shot_at(range: f32) -> (f32, f32, Vec<f32>) {
 }
 
 #[test]
-fn pump_does_full_damage_at_8m_and_falls_off_by_15m() {
+fn pump_does_full_damage_at_8m_and_falls_off_by_18m() {
     let (dealt, expected, body) = pump_shot_at(8.0);
     assert!(body.len() >= 4, "most of the pattern lands at 8 m");
     assert!(body.iter().all(|d| (*d - 10.0).abs() < 1e-4), "{body:?}");
     assert!((dealt - expected).abs() < 1e-3, "{dealt} vs {expected}");
 
-    let (dealt, expected, body) = pump_shot_at(15.0);
+    // Play-test 2 tuning: the falloff reaches its 40% floor at 18 m.
+    let (dealt, expected, body) = pump_shot_at(18.0);
     assert!(!body.is_empty());
     assert!(
-        body.iter().all(|d| (3.0..3.5).contains(d)),
-        "about 30% per pellet at 15 m: {body:?}"
+        body.iter().all(|d| (4.0..4.5).contains(d)),
+        "about 40% per pellet at 18 m: {body:?}"
     );
     assert!((dealt - expected).abs() < 1e-3, "{dealt} vs {expected}");
 }
