@@ -83,3 +83,17 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - **Pump knockback:** about 4 m at point blank, stopped by walls, knights only (it skips the Practice dummy, so M1/M2 time-to-kill is unchanged).
   - Tests: `tests/waves.rs` (7), `tests/knockback.rs` (5).
   - Until slice A merges, knights stand still.
+- 2026-09-27: **all builders stopped at the account's weekly usage limit** (it resets Oct 1, 4 pm PT). Their work was saved on their branches, and the orchestrator is finishing the merges directly.
+- 2026-09-27: **chunk 1A merged** (`2cd56c1`): the grunt brain.
+  - Perception at 30 Hz; utility modes at 8 Hz (Approach, Strafe, Reposition, ShootPiece), staggered at most 2 per tick.
+  - Hand-rolled A* over (cell, level, ground/floor/ramp), capped at 2,000 expansions.
+  - Spots 10–18 m out with a spread penalty.
+  - Aim leads a lagged snapshot, with error re-rolled per shot, blending Normal → Hard by wave 15.
+  - At most 3 attack tokens; walls in the way get shot.
+  - Pool wiring: `spawn_grunt`, brain reset and reseed per activation.
+  - **Orchestrator fixes:**
+    - A floor's top stands 0.1 m above a ramp's top edge, and movement's step-up missed it at some approach phases, so a climbing grunt stalled. Grunts now hop after 0.2 s of pushing without moving; the player's movement is unchanged.
+    - Grunt tests run in `Sim::grunt_lab`, which is Waves without the wave director.
+    - Wave tests freeze the brains to check landing spots (D83: the seed fixes where, when and how fast knights land).
+  - Tests: `tests/grunt.rs` (10) plus 22 unit tests; the full suite has 0 failures, and clippy and fmt are clean.
+  - **Known:** where grunts walk after landing can drift slightly between two runs with the same seed. The likely source is physics-query ordering; the wave itself replays exactly.
