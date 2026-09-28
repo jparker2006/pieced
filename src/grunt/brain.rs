@@ -7,7 +7,10 @@
 //! - **decisions** at `decision_hz`, staggered so at most
 //!   [`DECISIONS_PER_TICK`] grunts decide (and so re-plan) in one tick: pick
 //!   or keep a standing spot, plan an A* path to it, and choose a mode;
-//! - **attack tokens**, then **movement, aim and fire** every fixed tick.
+//! - **attack tokens**, then **movement, aim and fire** every fixed tick;
+//! - after movement and building, just before the wand acts, [`confirm_shots`] checks the
+//!   wand tip still has a clear line to the target of a wind-up about to
+//!   start or an orb about to leave, and lets go of `fire` if not.
 //!
 //! Grunts always know where the player is (horde rules, D73), but they only
 //! hold `fire` with line of sight to the player, or at the piece blocking it.
@@ -26,7 +29,7 @@ use crate::{
     combat::Downed,
     dummy::look_toward,
     movement::Motor,
-    orb::Wand,
+    orb::{Wand, wand_tip},
     rng::{Rng, SimRng},
     shared::{
         EyeHeight, GalleryFreeze, GameCue, Layer, LookAngles, PieceChange, PieceChanged, PieceKind,
@@ -472,6 +475,33 @@ pub fn sight(
         visible,
         head_only: chest_hit.is_some() && head_hit.is_none(),
         blocker,
+    }
+}
+
+/// Line of sight from the wand tip at `tip` to what a shot targets (D76: the
+/// orb leaves the tip, so no orb without a clear line from it): the player's
+/// head or chest, or the targeted piece (the first thing on the line to its
+/// point is a piece, not world geometry).
+pub fn wand_clear(
+    spatial: &SpatialQuery,
+    tip: Vec3,
+    target: ShotTarget,
+    head: Vec3,
+    chest: Vec3,
+    is_piece: impl Fn(Entity) -> bool,
+) -> bool {
+    match target {
+        ShotTarget::Player => sight(spatial, tip, head, chest, is_piece).visible,
+        ShotTarget::Piece { point, .. } => {
+            let d = point - tip;
+            let Ok(dir) = Dir3::new(d) else {
+                return false;
+            };
+            let filter = SpatialQueryFilter::from_mask([Layer::World, Layer::Piece]);
+            spatial
+                .cast_ray(tip, dir, d.length() + 0.3, true, &filter)
+                .is_some_and(|h| is_piece(h.entity))
+        }
     }
 }
 
@@ -1074,10 +1104,12 @@ pub(super) fn drive(
             wish = (wish + push * 0.8).clamp_length_max(1.0);
         }
 
-        // Firing: hold the wand while the target stays in sight.
+        // Firing: hold the wand while the target stays in sight, from the
+        // eye and from the wand tip the orb leaves.
+        let tip = wand_tip(feet, look.yaw);
         let verify = |target: ShotTarget| -> Option<ShotTarget> {
             let seen = sight(&spatial, eye_pos, track.head, track.chest, is_piece);
-            match target {
+            let target = match target {
                 ShotTarget::Player => seen.visible.then_some(ShotTarget::Player),
                 // Whichever piece now blocks the line is the target.
                 ShotTarget::Piece { .. } => match seen.blocker {
@@ -1086,7 +1118,8 @@ pub(super) fn drive(
                     }
                     _ => None,
                 },
-            }
+            }?;
+            wand_clear(&spatial, tip, target, track.head, track.chest, is_piece).then_some(target)
         };
         let winding = wand.is_some_and(Wand::is_winding);
         let mut fire = false;
@@ -1230,6 +1263,57 @@ pub(super) fn drive(
         brain.jump_hold = brain.jump_hold.saturating_sub(1);
         if *intent != next {
             *intent = next;
+        }
+    }
+}
+
+/// The last check before the wand acts, after everyone has moved and built
+/// this tick (between [`SimSet::Building`](crate::shared::SimSet) and the
+/// wand in `Combat`): a grunt about to start a wind-up or release an orb needs a
+/// clear line from its wand tip, where it is now, to its target (D76: no orb
+/// without line of sight, at wind-up start and at release). Otherwise it lets
+/// go of `fire`: no wind-up starts, or the wind-up is cancelled.
+pub(super) fn confirm_shots(
+    spatial: SpatialQuery,
+    pieces: Query<(), With<Piece>>,
+    players: Query<(&Transform, &EyeHeight), (With<Player>, Without<Grunt>)>,
+    mut grunts: Query<
+        (
+            &Transform,
+            &LookAngles,
+            &GruntBrain,
+            &Wand,
+            &mut PlayerIntent,
+        ),
+        ActiveGrunt,
+    >,
+) {
+    let Some((player, eye)) = players.iter().next() else {
+        return;
+    };
+    let head = player.translation + Vec3::Y * eye.0;
+    let chest = player.translation + Vec3::Y * (eye.0 * 0.7);
+    let is_piece = |e: Entity| pieces.contains(e);
+    // The wand's step first counts its timers down by a tick.
+    let acts = |left: f32| left - TICK_SECONDS <= 1e-4;
+    for (transform, look, brain, wand, mut intent) in &mut grunts {
+        if !(intent.fire || intent.fire_pressed) {
+            continue;
+        }
+        let acting = match wand.windup {
+            Some(left) => acts(left),
+            None => acts(wand.cooldown),
+        };
+        let Some(target) = brain.shot_target() else {
+            continue;
+        };
+        if !acting {
+            continue;
+        }
+        let tip = wand_tip(transform.translation, look.yaw);
+        if !wand_clear(&spatial, tip, target, head, chest, is_piece) {
+            intent.fire = false;
+            intent.fire_pressed = false;
         }
     }
 }

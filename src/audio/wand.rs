@@ -80,6 +80,29 @@ pub struct WandWarnings {
     pub warned: u32,
 }
 
+/// The knights whose off-screen wind-up warned since the log was last
+/// cleared, in order. Only the headless fairness tests add it
+/// ([`WandWarningTracking`]), to match each warning to its wind-up; the game
+/// never does.
+#[derive(Resource, Debug, Default, Clone)]
+pub struct WandWarningLog(pub Vec<Entity>);
+
+/// The wand sounds' decisions without the sound: for headless tests, which
+/// have no sound bank or audio output (the queued sounds are dropped).
+pub struct WandWarningTracking;
+
+impl WandWarningTracking {
+    /// Adds the wand-sound logic, [`WandWarnings`] and a [`WandWarningLog`] to
+    /// a headless app (a test's simulation). Not for an app with
+    /// `GameAudioPlugin`, which already runs it.
+    pub fn install(app: &mut App) {
+        app.init_resource::<PlayQueue>()
+            .init_resource::<WandWarnings>()
+            .init_resource::<WandWarningLog>()
+            .add_systems(Update, (queue_wand_sounds, play_queued).chain());
+    }
+}
+
 pub(super) fn build(app: &mut App) {
     app.init_resource::<WandWarnings>()
         .add_systems(Update, queue_wand_sounds.before(play_queued));
@@ -106,6 +129,7 @@ fn queue_wand_sounds(
     mut impacts: MessageReader<OrbImpact>,
     mut queue: ResMut<PlayQueue>,
     mut warnings: ResMut<WandWarnings>,
+    mut log: Option<ResMut<WandWarningLog>>,
     mut whooshed: Local<HashMap<Entity, u64>>,
 ) {
     let now = time.elapsed_secs_f64();
@@ -156,6 +180,9 @@ fn queue_wand_sounds(
                 let at = view.eye + bearing * WARNING_DISTANCE.min(chest.distance(view.eye));
                 queue.push(Sfx::WandWarning, Some(at), now);
                 warnings.warned += 1;
+                if let Some(log) = log.as_mut() {
+                    log.0.push(who);
+                }
             }
             GameCue::OrbFired { who } if who != me => {
                 if let Ok((knight, look)) = knights.get(who) {
