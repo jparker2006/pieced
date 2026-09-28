@@ -634,6 +634,8 @@ fn queue_cue_sounds(
             // An edit clicks into place.
             GameCue::PieceEdited { who, .. } => (who, Sfx::WeaponSwitch),
             GameCue::AdsChanged { .. } | GameCue::Respawned { .. } => continue,
+            // Wand sounds come with the orb slice (M3 chunk 1).
+            GameCue::WandWindup { .. } | GameCue::OrbFired { .. } => continue,
         };
         let own = Some(who) == player;
         if !own && sfx.category() != SfxCategory::Movement {

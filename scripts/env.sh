@@ -14,7 +14,26 @@ unset _pieced_main _pieced_ws
 # Every worktree compiles this crate to the same artifact names in the shared cache,
 # and cargo judges freshness by mtime, so it could reuse another worktree's build.
 # Touch this checkout's sources before every cargo command so it always rebuilds them.
+# While Jake plays a logged session, scripts/quiet.sh sets this flag: wait so the
+# session measures the game, not a build.
+pieced_wait_quiet() {
+  while [ -f "$CARGO_TARGET_DIR/.quiet" ]; do
+    [ -n "${_pieced_said_quiet:-}" ] || { echo "(paused: Jake is playing; waiting for scripts/quiet.sh cont)" >&2; _pieced_said_quiet=1; }
+    sleep 10
+  done
+  unset _pieced_said_quiet
+}
+
 cargo() {
+  pieced_wait_quiet
+  # A full disk corrupts half-linked test binaries; refuse early instead.
+  _pieced_free_kb=$(df -k "$HOME" | awk 'NR==2 {print $4}')
+  if [ "${_pieced_free_kb:-0}" -lt 3000000 ]; then
+    echo "cargo: under 3 GB free on disk; not building. Report to the orchestrator (don't prune)." >&2
+    unset _pieced_free_kb
+    return 1
+  fi
+  unset _pieced_free_kb
   _pieced_root="$(git rev-parse --show-toplevel 2>/dev/null)"
   if [ -n "$_pieced_root" ]; then
     find "$_pieced_root/src" "$_pieced_root/tests" -name '*.rs' -exec touch {} + 2>/dev/null
@@ -30,5 +49,8 @@ cargo() {
     taskpolicy -c utility nice -n 10 cargo "$@"
   fi
 }
+# No incremental caches: the sources are touched before every build anyway, and
+# with several worktrees they grew to 6 GB on a disk with ~10 GB free.
+export CARGO_INCREMENTAL=0
 # Leave cores free for Jake's apps.
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"

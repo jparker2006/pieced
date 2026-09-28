@@ -9,6 +9,7 @@ use crate::{
     dummy::DummyPlugin,
     far::FarViewPlugin,
     fx::FxPlugin,
+    grunt::GruntPlugin,
     hud::HudPlugin,
     input::{InputAdapterPlugin, InputProbe, InputProbePlugin},
     look::LookPlugin,
@@ -16,17 +17,19 @@ use crate::{
     models::ModelsPlugin,
     movement::MovementPlugin,
     native::NativeWindowPlugin,
+    orb::OrbPlugin,
     player::PlayerPlugin,
     render::RenderSetupPlugin,
     rng::{Rng, SimRng},
     scenario::{ScenarioArgs, ScenarioPlugin, ScenarioRun},
     shared::{
-        AppState, DamageDealt, Eliminated, GameCue, PieceChanged, PieceHit, ShotFired, SimSet,
-        SimTick, tick_duration,
+        AppState, DamageDealt, Eliminated, GameCue, GameMode, PieceChanged, PieceHit, ShotFired,
+        SimSet, SimTick, tick_duration,
     },
     telemetry::TelemetryPlugin,
     tuning::Tuning,
     viewmodel::ViewmodelPlugin,
+    waves::{WavesPlugin, ui::WavesUiPlugin},
 };
 use avian3d::prelude::*;
 use bevy::{
@@ -50,6 +53,7 @@ impl Plugin for CorePlugin {
             .init_resource::<Tuning>()
             .init_resource::<SimTick>()
             .init_resource::<SimRng>()
+            .init_resource::<GameMode>()
             .insert_resource(Time::<Fixed>::from_duration(tick_duration()))
             .add_message::<DamageDealt>()
             .add_message::<ShotFired>()
@@ -86,6 +90,9 @@ impl PluginGroup for SimPlugins {
             .add(BuildingPlugin)
             .add(CombatPlugin)
             .add(DummyPlugin)
+            .add(GruntPlugin)
+            .add(OrbPlugin)
+            .add(WavesPlugin)
     }
 }
 
@@ -109,6 +116,7 @@ impl PluginGroup for ClientPlugins {
             .add(GameAudioPlugin)
             .add(HudPlugin)
             .add(MenuPlugin)
+            .add(WavesUiPlugin)
             .add(ScenarioPlugin)
             .add(BootPlugin)
             .add(NativeWindowPlugin)
@@ -189,6 +197,8 @@ pub struct GameOptions {
     pub no_vsync: bool,
     /// `--frame-cap N`: frame cap used without vsync (0 = uncapped).
     pub frame_cap: Option<u32>,
+    /// `--waves` / `--practice`: the game mode. Scenarios always run Practice.
+    pub mode: Option<GameMode>,
 }
 
 impl GameOptions {
@@ -203,6 +213,23 @@ impl GameOptions {
                 .position(|a| a == "--frame-cap")
                 .and_then(|i| args.get(i + 1))
                 .and_then(|v| v.parse().ok()),
+            mode: if args.iter().any(|a| a == "--practice") {
+                Some(GameMode::Practice)
+            } else if args.iter().any(|a| a == "--waves") {
+                Some(GameMode::Waves)
+            } else {
+                None
+            },
+        }
+    }
+
+    /// The mode the native game starts in: scenarios always run Practice (the
+    /// M1/M2 gate runs drive the dummy); otherwise the flag, else the default.
+    pub fn game_mode(&self) -> GameMode {
+        if self.scenario.is_some() {
+            GameMode::Practice
+        } else {
+            self.mode.unwrap_or(NATIVE_DEFAULT_MODE)
         }
     }
 
@@ -217,10 +244,15 @@ impl GameOptions {
     }
 }
 
+/// The mode the native game opens in without a flag (M3: Waves; `--practice`
+/// gives the M2 sandbox until the main menu lands in chunk 5).
+pub const NATIVE_DEFAULT_MODE: GameMode = GameMode::Waves;
+
 /// The full game.
 pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     let mut tuning = Tuning::load_or_default(&Tuning::settings_path());
     options.apply_graphics_overrides(&mut tuning.graphics);
+    let mode = options.game_mode();
     let scenario = options.scenario.map(ScenarioRun::new).transpose()?;
     let windowed = options.windowed || !tuning.graphics.fullscreen;
     let window = Window {
@@ -261,6 +293,7 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     .add_plugins(SimPlugins)
     .add_plugins(ClientPlugins)
     .insert_resource(tuning)
+    .insert_resource(mode)
     .insert_resource(bevy::winit::WinitSettings::continuous());
     if let Some(knobs) =
         crate::perf_knobs::PerfKnobs::from_args(&std::env::args().collect::<Vec<_>>())
@@ -271,6 +304,8 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     if options.input_probe {
         app.init_resource::<InputProbe>();
     }
+    // Launch kind always; the session frame log only outside scenarios.
+    app.add_plugins(crate::session::SessionPlugin::native(scenario.is_none()));
     if let Some(run) = scenario {
         app.insert_resource(run);
     }

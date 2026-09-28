@@ -34,7 +34,19 @@ impl Sim {
 
     /// Builds the simulation, enters `Playing` and runs the first update.
     pub fn with_seed(seed: u64) -> Self {
+        Self::with_mode(seed, crate::shared::GameMode::Practice)
+    }
+
+    /// A Waves-mode simulation (M3): no dummy; the run starts on the first update.
+    pub fn waves(seed: u64) -> Self {
+        Self::with_mode(seed, crate::shared::GameMode::Waves)
+    }
+
+    /// Builds the simulation in `mode` (set before `Startup`), enters `Playing`
+    /// and runs the first update.
+    pub fn with_mode(seed: u64, mode: crate::shared::GameMode) -> Self {
         let mut app = crate::app::headless_app(seed);
+        app.insert_resource(mode);
         app.world_mut()
             .resource_mut::<NextState<AppState>>()
             .set(AppState::Playing);

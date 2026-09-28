@@ -17,6 +17,8 @@ BLENDER="${BLENDER:-blender}"
 command -v "$BLENDER" >/dev/null 2>&1 || { echo "build-art: blender not found (set BLENDER)" >&2; exit 1; }
 
 run_blender() { # args after --
+  # Wait while Jake plays a logged session (scripts/quiet.sh).
+  while [ -f "${PIECED_TARGET_DIR:-$HOME/Library/Caches/pieced-target}/.quiet" ]; do sleep 10; done
   log=$(mktemp -t pieced-art)
   status=0
   taskpolicy -c utility nice -n 10 "$BLENDER" -b --factory-startup --python-exit-code 1 \

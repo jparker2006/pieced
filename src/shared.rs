@@ -13,6 +13,22 @@ pub enum AppState {
     Paused,
 }
 
+/// Which game is being played (docs/M3-SPEC.md → Scope and the seams).
+///
+/// - **Practice** is the M2 sandbox: the training dummy, no death, no waves.
+///   It's the default everywhere except the native game, so every M1/M2 test
+///   and scenario runs unchanged.
+/// - **Waves** is M3's mode: grunts, one life, waves, score.
+///
+/// Set before `Startup` (the dummy spawns only in Practice) and never changed
+/// mid-app except by the main menu (chunk 5).
+#[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GameMode {
+    Waves,
+    #[default]
+    Practice,
+}
+
 /// Collision layers. Movement collides with `World` and `Piece`; hitscan also hits
 /// `Body` and `Head` hitboxes of characters.
 #[derive(PhysicsLayer, Default, Debug, Clone, Copy, PartialEq, Eq)]
@@ -574,6 +590,15 @@ pub enum GameCue {
     },
     /// A released edit selection wasn't a valid shape: nothing changed.
     EditRejected {
+        who: Entity,
+    },
+    /// A knight's wand started its wind-up (the wand glow and the off-screen
+    /// warning sound key off this, D76).
+    WandWindup {
+        who: Entity,
+    },
+    /// A knight's wand released an orb.
+    OrbFired {
         who: Entity,
     },
 }

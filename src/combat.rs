@@ -22,6 +22,7 @@
 
 use crate::{
     building::EditMode,
+    movement::{Knockback, knockback_speed},
     rng::{Rng, SimRng},
     shared::{
         ActiveTool, Ads, Character, DamageDealt, DamageTarget, Eliminated, EyeHeight, GameCue,
@@ -472,7 +473,8 @@ fn weapon_step(
             Has<Downed>,
             Option<&EditMode>,
         ),
-        With<Character>,
+        // Knights fire their wand (`orb`), never a gun.
+        (With<Character>, Without<crate::orb::Wand>),
     >,
 ) {
     let dt = TICK_SECONDS;
@@ -657,6 +659,8 @@ struct TargetDamage {
     headshot: bool,
     point: Vec3,
     normal: Vec3,
+    /// Bullets or pellets of the shot that hit this target.
+    pellets: u32,
 }
 
 type CharacterQuery<'w, 's> = Query<
@@ -686,6 +690,15 @@ fn resolve_shots(
     mut damage: MessageWriter<DamageDealt>,
     mut piece_hits: MessageWriter<PieceHit>,
     mut eliminated: MessageWriter<Eliminated>,
+    knockable: Query<
+        (),
+        (
+            With<Character>,
+            Without<Player>,
+            Without<crate::dummy::Dummy>,
+        ),
+    >,
+    mut knockbacks: Query<&mut Knockback>,
 ) {
     let tick = tick.0;
     let static_filter = SpatialQueryFilter::from_mask([Layer::World, Layer::Piece]);
@@ -732,6 +745,7 @@ fn resolve_shots(
             if let Some(acc) = bucket.iter_mut().find(|a| a.target == hit.entity) {
                 acc.amount += amount;
                 acc.headshot |= headshot;
+                acc.pellets += 1;
             } else {
                 bucket.push(TargetDamage {
                     target: hit.entity,
@@ -739,6 +753,7 @@ fn resolve_shots(
                     headshot,
                     point,
                     normal: hit.normal,
+                    pellets: 1,
                 });
             }
         }
@@ -757,6 +772,25 @@ fn resolve_shots(
             let applied = split.to_shield + split.to_hp;
             if applied <= 0.0 {
                 continue;
+            }
+            if shot.weapon == WeaponKind::Pump && knockable.contains(acc.target) {
+                // D78: the pump shoves knights away from the shooter, by the
+                // share of pellets that landed and the damage falloff.
+                let share = acc.pellets as f32 / gt.pellets.max(1) as f32;
+                let distance = acc.point.distance(shot.origin);
+                let travel = tuning.grunt.pump_knockback * share * gt.falloff(distance);
+                let away = (transform.translation - shot.origin)
+                    .with_y(0.0)
+                    .try_normalize()
+                    .unwrap_or_else(|| shot.dirs[0].as_vec3().with_y(0.0).normalize_or_zero());
+                let shove = away * knockback_speed(travel);
+                if let Ok(mut knockback) = knockbacks.get_mut(acc.target) {
+                    knockback.velocity += shove;
+                } else {
+                    commands
+                        .entity(acc.target)
+                        .insert(Knockback { velocity: shove });
+                }
             }
             shot_hit = true;
             shot_headshot |= acc.headshot;

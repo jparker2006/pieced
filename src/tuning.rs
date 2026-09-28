@@ -17,6 +17,15 @@ pub struct Tuning {
     pub hud: crate::hud::HudTuning,
     pub audio: crate::audio::AudioTuning,
     pub graphics: crate::render::GraphicsTuning,
+    // Designer tuning for Waves (M3). Never persisted: `settings.json` holds
+    // every other section, so a saved copy would freeze these numbers and hide
+    // play-test tuning changes from Jake's game.
+    #[serde(skip)]
+    pub grunt: crate::grunt::GruntTuning,
+    #[serde(skip)]
+    pub orb: crate::orb::OrbTuning,
+    #[serde(skip)]
+    pub waves: crate::waves::WavesTuning,
 }
 
 impl Tuning {
