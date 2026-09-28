@@ -19,6 +19,7 @@ pub mod chamber;
 pub mod hat;
 pub mod material;
 pub mod orbs;
+pub mod potions;
 pub mod shapes;
 pub mod sim;
 pub mod spells;
@@ -240,7 +241,8 @@ impl Plugin for FxPlugin {
             )
             .add_systems(Last, end_hitstop_frame)
             .add_plugins(spells::SpellsPlugin)
-            .add_plugins(orbs::OrbFxPlugin);
+            .add_plugins(orbs::OrbFxPlugin)
+            .add_plugins(potions::PotionFxPlugin);
     }
 }
 

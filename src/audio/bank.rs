@@ -87,6 +87,11 @@ pub const ORB_CAST: CueSpec = spec(0.50, -11.0);
 pub const ORB_WHOOSH: CueSpec = spec(0.45, -11.0);
 pub const ORB_BONK: CueSpec = spec(0.40, -10.0);
 pub const WAND_WARNING: CueSpec = spec(0.40, -11.0);
+// The run's beats (M3 chunk 2).
+pub const POTION_GULP: CueSpec = spec(0.50, -11.0);
+pub const WAVE_CLEARED: CueSpec = spec(0.90, -11.0);
+pub const WAVE_START: CueSpec = spec(0.55, -11.0);
+pub const NEW_BEST: CueSpec = spec(1.20, -10.0);
 
 /// Round-robin takes for the cues that repeat fastest (the rifle fires six times a
 /// second; footsteps never stop), so repeats never sound machine-gunned.
@@ -1035,4 +1040,116 @@ pub fn wand_warning() -> Vec<f32> {
         |t| attack(t, 0.06) * release(t, len, 0.05),
     );
     b.master(WAND_WARNING.rms_db)
+}
+
+// ---------------------------------------------------------------------------
+// The run's beats (M3 chunk 2)
+// ---------------------------------------------------------------------------
+//
+// Bright, happy and pentatonic like the hits, but longer and rounder: they
+// reward, they don't confirm. Each is heard alone (a potion, a cleared wave,
+// the next wave, a new best), so they may sit loud without masking a hit.
+
+/// Drinking a potion: two glassy "gulp" bloops (a sine bending up from low)
+/// and a cyan glass chime on E6 and A6.
+pub fn potion_gulp() -> Vec<f32> {
+    let mut b = Buffer::new(0.5);
+    for (i, at) in [0.0f32, 0.09].into_iter().enumerate() {
+        let mut o = Osc::default();
+        let from = if i == 0 { 260.0 } else { 300.0 };
+        b.add(at, 0.09, 0.9, |t| {
+            let bend = 1.0 - decay(t, 0.025);
+            o.sine(from + 420.0 * bend) * ad(t, 0.004, 0.03) * release(t, 0.09, 0.02)
+        });
+        click(&mut b, at, 900.0, 2.0, 0.002, 0.35, 401 + i as u64);
+    }
+    glass(&mut b, 0.17, note(88.0), 0.09, 0.55);
+    glass(&mut b, 0.22, note(93.0), 0.08, 0.45);
+    sparkle(&mut b, 0.2, 0.18, 4, (100.0, 110.0), 0.03, 0.18, true, 402);
+    b.master(POTION_GULP.rms_db)
+}
+
+/// A wave cleared: a quick rising arpeggio of chimes (C5 E5 G5 C6 E6) with a
+/// soft sparkle on top.
+pub fn wave_cleared() -> Vec<f32> {
+    let mut b = Buffer::new(0.9);
+    for (i, m) in [72.0, 76.0, 79.0, 84.0, 88.0].into_iter().enumerate() {
+        let last = i == 4;
+        chime(
+            &mut b,
+            0.075 * i as f32,
+            note(m),
+            if last { 0.2 } else { 0.1 },
+            if last { 0.8 } else { 0.55 },
+        );
+    }
+    sparkle(&mut b, 0.3, 0.35, 6, (96.0, 108.0), 0.05, 0.22, true, 411);
+    b.master(WAVE_CLEARED.rms_db)
+}
+
+/// The next wave: a short two-note horn call (G4 then C5) with a little
+/// breath, warm rather than bright so it reads as "here they come".
+pub fn wave_start() -> Vec<f32> {
+    let mut b = Buffer::new(0.55);
+    for (i, (m, len)) in [(67.0, 0.13), (72.0, 0.34)].into_iter().enumerate() {
+        let at = 0.14 * i as f32;
+        let (mut o1, mut o2, mut vib) = (Osc::default(), Osc::at(0.25), Osc::default());
+        let freq = note(m);
+        b.add(at, len, 0.6, |t| {
+            let f = freq * (1.0 + 0.006 * vib.sine(6.0) * (t / len));
+            (o1.soft_square(f, 1.8) + 0.3 * o2.sine(f * 2.0))
+                * attack(t, 0.02)
+                * release(t, len, 0.06)
+        });
+        noise_bp(
+            &mut b,
+            at,
+            len,
+            0.12,
+            421 + i as u64,
+            3.0,
+            move |_| freq * 2.0,
+            move |t| attack(t, 0.02) * release(t, len, 0.06),
+        );
+    }
+    b.master(WAVE_START.rms_db)
+}
+
+/// "NEW BEST!": a fanfare arpeggio (C5 E5 G5 C6), a held bright chord and a
+/// shower of sparkles.
+pub fn new_best() -> Vec<f32> {
+    let mut b = Buffer::new(1.2);
+    for (i, m) in [72.0, 76.0, 79.0].into_iter().enumerate() {
+        let at = 0.09 * i as f32;
+        let mut o = Osc::default();
+        let freq = note(m);
+        b.add(at, 0.14, 0.4, |t| {
+            o.soft_square(freq, 1.4) * attack(t, 0.008) * release(t, 0.14, 0.05)
+        });
+        chime(&mut b, at, freq * 2.0, 0.08, 0.35);
+    }
+    let hold = 0.27;
+    for (k, m) in [84.0, 88.0, 91.0].into_iter().enumerate() {
+        let (mut o1, mut o2) = (Osc::default(), Osc::at(0.1 * k as f32));
+        let freq = note(m);
+        b.add(hold, 0.8, 0.28, |t| {
+            (o1.soft_square(freq, 1.2) + 0.25 * o2.sine(freq * 2.0))
+                * attack(t, 0.01)
+                * decay(t, 0.35)
+                * release(t, 0.8, 0.1)
+        });
+    }
+    chime(&mut b, hold, note(96.0), 0.25, 0.5);
+    sparkle(
+        &mut b,
+        hold + 0.05,
+        0.6,
+        10,
+        (98.0, 112.0),
+        0.06,
+        0.25,
+        false,
+        431,
+    );
+    b.master(NEW_BEST.rms_db)
 }

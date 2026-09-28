@@ -86,6 +86,8 @@ impl AudioTuning {
             SfxCategory::Hits => self.hits_volume,
             SfxCategory::Building => self.building_volume,
             SfxCategory::Movement => self.movement_volume,
+            // The run's beats follow the master volume only.
+            SfxCategory::Run => 1.0,
         }
         .max(0.0)
     }
@@ -151,6 +153,14 @@ pub enum Sfx {
     /// A knight off-screen starting his wind-up: a rising charge from his
     /// direction (D76's off-screen warning).
     WandWarning,
+    /// Drinking a shield potion: a glassy gulp and a chime (D80).
+    PotionGulp,
+    /// A wave cleared: a bright rising jingle as the break starts (D79).
+    WaveCleared,
+    /// The next wave coming: a two-note horn call.
+    WaveStart,
+    /// "NEW BEST!" on the results: a little fanfare and a sparkle shower.
+    NewBest,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -159,10 +169,12 @@ pub enum SfxCategory {
     Hits,
     Building,
     Movement,
+    /// The run's own beats: potions, wave clears, the next wave, a new best.
+    Run,
 }
 
 impl Sfx {
-    pub const ALL: [Sfx; 27] = [
+    pub const ALL: [Sfx; 31] = [
         Sfx::RifleShot,
         Sfx::PumpShot,
         Sfx::PumpRack,
@@ -190,6 +202,10 @@ impl Sfx {
         Sfx::OrbWhoosh,
         Sfx::OrbBonk,
         Sfx::WandWarning,
+        Sfx::PotionGulp,
+        Sfx::WaveCleared,
+        Sfx::WaveStart,
+        Sfx::NewBest,
     ];
 
     /// The cue for a piece event: walls are brick (clunk, crack, crumble); floors
@@ -241,6 +257,10 @@ impl Sfx {
             Sfx::OrbWhoosh => bank::orb_whoosh(),
             Sfx::OrbBonk => bank::orb_bonk(),
             Sfx::WandWarning => bank::wand_warning(),
+            Sfx::PotionGulp => bank::potion_gulp(),
+            Sfx::WaveCleared => bank::wave_cleared(),
+            Sfx::WaveStart => bank::wave_start(),
+            Sfx::NewBest => bank::new_best(),
         }
     }
 
@@ -289,6 +309,10 @@ impl Sfx {
             OrbWhoosh => bank::ORB_WHOOSH,
             OrbBonk => bank::ORB_BONK,
             WandWarning => bank::WAND_WARNING,
+            PotionGulp => bank::POTION_GULP,
+            WaveCleared => bank::WAVE_CLEARED,
+            WaveStart => bank::WAVE_START,
+            NewBest => bank::NEW_BEST,
         }
     }
 
@@ -303,6 +327,7 @@ impl Sfx {
             Footstep | Jump | Land | Slide => SfxCategory::Movement,
             // The knights' casts sit with the guns (the weapons volume).
             OrbCast | OrbWhoosh | OrbBonk | WandWarning => SfxCategory::Weapons,
+            PotionGulp | WaveCleared | WaveStart | NewBest => SfxCategory::Run,
         }
     }
 
@@ -314,7 +339,10 @@ impl Sfx {
     ///
     /// | Cues | Mix (dBFS) |
     /// |---|---|
-    /// | headshot, shield break, elimination | −13 |
+    /// | headshot, shield break, elimination, new best | −13 |
+    /// | wave cleared | −14 |
+    /// | potion gulp | −15 |
+    /// | next wave | −16 |
     /// | body hit, shield hit | −14 |
     /// | pump cast, orb bonk (hitting you), off-screen wand warning | −15 |
     /// | piece breaks | −16 |
@@ -330,10 +358,10 @@ impl Sfx {
     pub fn mix_db(self) -> f32 {
         use Sfx::*;
         match self {
-            HeadshotDing | ShieldBreak | Elimination => -13.0,
-            HitTick | ShieldHit => -14.0,
-            PumpShot | OrbBonk | WandWarning => -15.0,
-            BrickBreak | PlankBreak => -16.0,
+            HeadshotDing | ShieldBreak | Elimination | NewBest => -13.0,
+            HitTick | ShieldHit | WaveCleared => -14.0,
+            PumpShot | OrbBonk | WandWarning | PotionGulp => -15.0,
+            BrickBreak | PlankBreak | WaveStart => -16.0,
             OrbWhoosh => -17.0,
             RifleShot | BrickPlace | PlankPlace | BrickCrack | PlankCrack => -18.0,
             OrbCast => -19.0,
@@ -358,7 +386,7 @@ impl Sfx {
             return 3;
         }
         match self.category() {
-            SfxCategory::Hits => 3,
+            SfxCategory::Hits | SfxCategory::Run => 3,
             SfxCategory::Weapons | SfxCategory::Building => 2,
             SfxCategory::Movement => 1,
         }
@@ -457,6 +485,7 @@ impl Plugin for GameAudioPlugin {
                     queue_combat_sounds,
                     queue_piece_sounds,
                     queue_cue_sounds,
+                    queue_run_sounds,
                     play_queued,
                     apply_live_volume,
                 )
@@ -509,7 +538,7 @@ impl PlayQueue {
         let spread = match sfx.category() {
             SfxCategory::Movement => 0.08,
             SfxCategory::Weapons | SfxCategory::Building => 0.03,
-            SfxCategory::Hits => 0.0,
+            SfxCategory::Hits | SfxCategory::Run => 0.0,
         };
         let speed = 1.0 + spread * ((h % 1000) as f32 / 500.0 - 1.0);
         let take = self.takes[sfx as usize];
@@ -670,8 +699,9 @@ fn queue_cue_sounds(
             // The wand's cast and off-screen warning need the view and the
             // wand tip: `wand::queue_wand_sounds` plays them.
             GameCue::WandWindup { .. } | GameCue::OrbFired { .. } => continue,
-            // Potions are voiced by the Waves presentation (chunk 2, slice B).
-            GameCue::PotionDropped { .. } | GameCue::PotionPicked { .. } => continue,
+            // Drinking a potion gulps and chimes; a drop is only seen.
+            GameCue::PotionPicked { who, .. } => (who, Sfx::PotionGulp),
+            GameCue::PotionDropped { .. } => continue,
         };
         let own = Some(who) == player;
         if !own && sfx.category() != SfxCategory::Movement {
@@ -687,6 +717,44 @@ fn queue_cue_sounds(
             }
         };
         queue.push(sfx, at, now);
+    }
+}
+
+/// The run's beats from [`RunSummary`](crate::waves::RunSummary): a jingle
+/// when a wave is cleared, a horn as the next one starts, and a fanfare when
+/// the results show a new best.
+fn queue_run_sounds(
+    time: Res<Time<Real>>,
+    summary: Option<Res<crate::waves::RunSummary>>,
+    mut last: Local<Option<(crate::waves::RunPhase, u32)>>,
+    mut queue: ResMut<PlayQueue>,
+) {
+    let Some(summary) = summary else {
+        *last = None;
+        return;
+    };
+    let Some((was, was_wave)) = last.replace((summary.phase, summary.wave)) else {
+        return;
+    };
+    if let Some(sfx) = run_beat(was, was_wave, &summary) {
+        queue.push(sfx, None, time.elapsed_secs_f64());
+    }
+}
+
+/// The run beat to play when the run goes from `was` (in wave `was_wave`) to
+/// `now`, if any.
+pub fn run_beat(
+    was: crate::waves::RunPhase,
+    was_wave: u32,
+    now: &crate::waves::RunSummary,
+) -> Option<Sfx> {
+    use crate::waves::RunPhase::{Break, Fighting, Over};
+    match (was, now.phase) {
+        (Fighting, Break { .. }) => Some(Sfx::WaveCleared),
+        (Break { .. }, Fighting) if now.wave > was_wave => Some(Sfx::WaveStart),
+        (Over { .. }, _) => None,
+        (_, Over { .. }) if now.new_best => Some(Sfx::NewBest),
+        _ => None,
     }
 }
 

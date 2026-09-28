@@ -432,27 +432,13 @@ impl Plugin for WavesPlugin {
     }
 }
 
-/// Presentation-side run effects (client only): the death beat's slow motion.
+/// Presentation-side run effects (client only): the death beat (slow motion,
+/// the view dropping to the grass, the vignette; [`ui::death`]).
 pub struct WavesClientPlugin;
 
 impl Plugin for WavesClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, death_slow_motion);
-    }
-}
-
-/// D84: time runs at `death_time_scale` during the death beat. Only the client
-/// scales virtual time; the headless sim keeps one fixed tick per update, and
-/// the beat's length is counted in ticks (`RunPhase::Dying`).
-fn death_slow_motion(run: Option<Res<Run>>, tuning: Res<Tuning>, mut time: ResMut<Time<Virtual>>) {
-    let dying = run.is_some_and(|r| matches!(r.phase, RunPhase::Dying { .. }));
-    let speed = if dying {
-        tuning.waves.death_time_scale.clamp(0.05, 1.0)
-    } else {
-        1.0
-    };
-    if time.relative_speed() != speed {
-        time.set_relative_speed(speed);
+        ui::death::build(app);
     }
 }
 
