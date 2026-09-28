@@ -63,3 +63,14 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
   - The art slice waits for a free build slot.
   - A researcher is shortlisting CC0 and CC-BY music for chunk 3's listening page. Nothing is downloaded before Jake's OK (D116).
   - The board targets (`M4-V1`–`V8`) are in use as generated; Jake's explicit approval is still pending.
+- 2026-09-28: **the music listening page is ready** (private Artifact https://claude.ai/artifact/6PhbUgWT9KYcLFX8r5E3Dx).
+  - It lists 3 candidates for each of the 7 slots, all from OpenGameArt or Freesound, with every license checked on its page. Incompetech was left out: its pages wouldn't render, so its license couldn't be verified, and it offers MP3 only.
+  - Recommended picks:
+    - Enchanted Festival (menu);
+    - Heavenly Loop (break);
+    - Heroic Demise (combat low);
+    - Battle March (combat high);
+    - Just a random fanfare (round start);
+    - wah wah sad trombone (death);
+    - Won! (new best).
+  - Waiting on Jake's picks and his OK to download (D116). `ffmpeg` is available for trimming and OGG encoding.
