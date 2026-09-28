@@ -124,3 +124,13 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - **Session `20260928-045508`** (62 s, builds paused): mean 16.77 ms, p99 20.29, 25 frames > 25 ms, 96.35% < 18 ms. That's much better than the first logged session, which ran under build load, but still short of the S2 bar.
   - **Session `20260928-045801`** (387 s): mean 45.2 ms and a 23.5 s launch. **Not a measurement of the game:** load was 57 at launch and still 12–16 later. The chunk-2 builder was compiling at full priority, because hand-set environment variables skip `env.sh`'s wrapper, so neither low priority nor quiet mode applied.
   - **Fix:** `scripts/cargo.sh` is now the only way builders run cargo; it applies low priority, the quiet-mode wait and the disk guard.
+- 2026-09-28: **chunk 2A merged** (`cf6366e`): the endless wave director.
+  - Wave n brings 3 + 2(n − 1) knights, at most 8 at once; the rest poof in at seeded edge points as knights go down. Stats from `GruntStats::for_wave(n)` with ±10% speed.
+  - The 10 s break: +50 shield (capped); `SkipBreak` ends it early.
+  - Shield potions: a seeded 10% drop, a pool of 12, +25 shield spilling into health, gone after 20 s.
+  - Score: 100 per knight, +50 for a headshot kill, +150 for a void kill (the hook for chunk 3), +250 × n per wave.
+  - The personal best (wave, then score) in `userdata/best.json`, and one line per run in `userdata/runs.jsonl` with the cause of death.
+  - The death beat (`Dying`, then `Over`, with the survivors' victory hops); `EndRun` and `RestartRun`; `--seed N`.
+  - `RunSummary` feeds the UI. Headless runs write no files.
+  - Tests: `tests/waves.rs` (19), `tests/potions.rs` (5), 6 unit tests. The branch's full suite on top of `0f9472c` had 523 passing and 0 failed; clippy and fmt clean. The orchestrator reviewed the file-writing code (`src/waves/record.rs`) and the `app.rs` changes before merging, because the safety classifier was down while the builder worked.
+  - **Chunk 2B dispatched** (`m3-waves-ui`): the wave HUD, the break countdown, the potion look and sound, the death-beat slow motion, and the results screen with Go again.
