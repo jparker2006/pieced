@@ -26,7 +26,8 @@ pub fn process_start() -> Instant {
     *PROCESS_START.get_or_init(Instant::now)
 }
 
-/// Time from process start to the first frame where the player can act.
+/// Time from process start to the first frame where the main menu can be
+/// clicked, or (when play starts straight away) where the player can act.
 #[derive(Resource, Debug, Default, Clone, Copy)]
 pub struct LaunchTime(pub Option<Duration>);
 
@@ -186,12 +187,15 @@ fn detect_controllable(
     scenario: Option<Res<crate::scenario::ScenarioRun>>,
     info: Option<Res<crate::session::LaunchInfo>>,
 ) {
-    if launch.0.is_some() || *state.get() != AppState::Playing {
+    if launch.0.is_some() {
         return;
     }
-    let input_live =
-        scenario.is_some() || cursor.is_some_and(|c| c.grab_mode == CursorGrabMode::Locked);
-    if input_live {
+    // Ready: the main menu can be clicked (chunk 5), or, when play starts
+    // straight away (`--waves`, `--practice`, scenarios), the player can act.
+    let menu_ready = *state.get() == AppState::Menu;
+    let input_live = *state.get() == AppState::Playing
+        && (scenario.is_some() || cursor.is_some_and(|c| c.grab_mode == CursorGrabMode::Locked));
+    if menu_ready || input_live {
         let elapsed = process_start().elapsed();
         launch.0 = Some(elapsed);
         let ms = elapsed.as_secs_f64() * 1000.0;

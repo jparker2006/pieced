@@ -478,11 +478,18 @@ fn the_results_card_shows_every_field_and_new_best_only_when_earned() {
     assert_eq!(text(&mut sim, RunUi::BestWave), "2");
     assert_eq!(text(&mut sim, RunUi::BestScore), "650");
 
-    // Quit on the card closes the game.
+    // Quit to menu on the card goes to the main menu (chunk 5), not out of
+    // the game.
     sim.world_mut().resource_mut::<Messages<AppExit>>().clear();
     click(&mut sim, ResultsButton::Quit);
-    let exits = sim.world().resource::<Messages<AppExit>>().len();
-    assert!(exits > 0, "Quit closes the game");
+    sim.app.update();
+    assert_eq!(
+        *sim.world().resource::<State<AppState>>().get(),
+        AppState::Menu,
+        "Quit to menu"
+    );
+    assert_eq!(sim.world().resource::<Messages<AppExit>>().len(), 0);
+    assert!(!sim.world().contains_resource::<Run>(), "the run is put away");
 }
 
 #[test]
@@ -520,8 +527,9 @@ fn pause_quit_mid_run_shows_the_results_then_quits() {
     assert_eq!(speed(&sim), 1.0);
     assert_eq!(sim.world().resource::<DeathBeat>().progress(), 0.0);
     assert!(!shown(&mut sim, RunUi::Vignette));
-    // A second Quit (from the pause menu over the results) closes the game.
-    assert_eq!(pause_quit(Some(&run(&sim))), PauseQuit::Exit);
+    // A second quit (from the pause menu over the results) goes to the main
+    // menu (chunk 5).
+    assert_eq!(pause_quit(Some(&run(&sim))), PauseQuit::ToMenu);
 }
 
 // ---------------------------------------------------------------------------

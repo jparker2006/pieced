@@ -11,7 +11,7 @@
 //!   to the grass, a soft vignette.
 //! - **The results** ([`results`]): a cartoon card in the pause menu's style
 //!   (T12) with the run's numbers, the best run beside them, a "NEW BEST!"
-//!   burst and the seed; **Go again** and **Quit**.
+//!   burst and the seed; **Go again** and **Quit to menu**.
 //!
 //! Every part is spawned once at startup (hidden) and only has its text and
 //! visibility rewritten, into the strings it already owns, so nothing
@@ -83,15 +83,15 @@ pub enum RunUi {
 pub enum ResultsButton {
     /// Starts a new run in place ([`RestartRun`](super::RestartRun)).
     GoAgain,
-    /// Closes the game (chunk 5: back to the main menu).
+    /// "Quit to menu": back to the main menu (chunk 5).
     Quit,
 }
 
 // ---------------------------------------------------------------------------
-// What the pause menu's Quit does
+// What the pause menu's Quit to menu does
 // ---------------------------------------------------------------------------
 
-/// What the pause menu's Quit does in the current run.
+/// What the pause menu's "Quit to menu" does in the current run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PauseQuit {
     /// A run in progress ends ([`EndRun`](super::EndRun)) and play resumes
@@ -99,17 +99,17 @@ pub enum PauseQuit {
     EndRun,
     /// The run already ended (the death beat): resume; the results follow.
     Resume,
-    /// No run, or its results are already up: close the game.
-    Exit,
+    /// No run (Practice), or its results are already up: the main menu.
+    ToMenu,
 }
 
-/// D84: quitting a run shows its results; a second Quit (on the results)
-/// closes the game.
+/// D84: quitting a run shows its results; a second quit (on the results)
+/// goes to the main menu.
 pub fn pause_quit(run: Option<&Run>) -> PauseQuit {
     match run {
         Some(run) if !run.is_ended() => PauseQuit::EndRun,
         Some(run) if !run.is_over() => PauseQuit::Resume,
-        _ => PauseQuit::Exit,
+        _ => PauseQuit::ToMenu,
     }
 }
 
@@ -268,9 +268,9 @@ mod tests {
     }
 
     #[test]
-    fn pause_quit_ends_a_live_run_then_closes_the_game() {
+    fn pause_quit_ends_a_live_run_then_goes_to_the_menu() {
         let t = WavesTuning::default();
-        assert_eq!(pause_quit(None), PauseQuit::Exit);
+        assert_eq!(pause_quit(None), PauseQuit::ToMenu);
         let mut run = Run::new(1, 0, &t);
         assert_eq!(pause_quit(Some(&run)), PauseQuit::EndRun);
         run.phase = RunPhase::Break { ends_tick: 100 };
@@ -279,6 +279,6 @@ mod tests {
         run.phase = RunPhase::Dying { until: 10 };
         assert_eq!(pause_quit(Some(&run)), PauseQuit::Resume);
         run.phase = RunPhase::Over { tick: 10 };
-        assert_eq!(pause_quit(Some(&run)), PauseQuit::Exit);
+        assert_eq!(pause_quit(Some(&run)), PauseQuit::ToMenu);
     }
 }

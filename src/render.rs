@@ -412,6 +412,11 @@ fn follow_player_eye(
     let (Some(player), Some(camera)) = (player, camera.as_mut()) else {
         return;
     };
+    if *state.get() == AppState::Menu {
+        // The main menu orbits the arena instead (`menu::main_menu`, also in
+        // `CameraFollowSet`).
+        return;
+    }
     let (transform, previous, eye, look) = player.into_inner();
     let alpha = if *state.get() == AppState::Playing {
         fixed.overstep_fraction().clamp(0.0, 1.0)

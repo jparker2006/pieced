@@ -1,6 +1,17 @@
 //! Keyboard + trackpad adapter: turns device input into the player's
 //! [`PlayerIntent`], and owns cursor lock and pause/focus handling.
 //! Disabled while a scenario drives the player.
+//!
+//! Every action goes through the player's [`Bindings`] (D93, [`bindings`]);
+//! this is the only code that reads keys and buttons, including the Controls
+//! page's "press a key" capture.
+
+mod bindings;
+
+pub use bindings::{
+    Action, BindError, Binding, BindingCapture, Bindings, CaptureOutcome, Captured, apply_capture,
+    captured_input,
+};
 
 use crate::{
     building::{EditMode, EditTarget},
@@ -74,6 +85,16 @@ pub struct InputAdapterPlugin;
 impl Plugin for InputAdapterPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<IgnoreNextLook>()
+            .init_resource::<BindingCapture>()
+            .add_systems(
+                PreUpdate,
+                // Before the UI sees the click (a captured click binds, it
+                // doesn't press another row) and before Esc pauses or resumes.
+                capture_binding
+                    .after(bevy::input::InputSystems)
+                    .before(bevy::ui::UiSystems::Focus)
+                    .before(pause_controls),
+            )
             .add_systems(
                 PreUpdate,
                 (pause_controls, cursor_lock)
@@ -101,29 +122,58 @@ impl Plugin for InputAdapterPlugin {
     }
 }
 
-/// The key that starts the next wave during a break and goes again on the
-/// results screen (D79, D84). Chunk 5 makes it rebindable; until then the
-/// on-screen hints read its name from [`start_key_name`].
+/// The default key that starts the next wave during a break and goes again
+/// on the results screen (D79, D84). It's rebindable ([`Action::Start`]); the
+/// hints print the bound key ([`Bindings::name`]).
 pub const START_KEY: KeyCode = KeyCode::Enter;
 
-/// [`START_KEY`] and its twin on the number pad.
-const START_KEYS: [KeyCode; 2] = [START_KEY, KeyCode::NumpadEnter];
-
-/// The bound start key's name, for on-screen hints ("Press Enter to start").
+/// The default start key's name ("Enter"). On-screen hints show the bound
+/// key instead: [`Bindings::name`] of [`Action::Start`].
 pub fn start_key_name() -> &'static str {
     key_name(START_KEY)
 }
 
-/// A key's name as the hints print it.
+/// A key's name as the hints print it ("?" for a key that can't be bound).
 pub fn key_name(key: KeyCode) -> &'static str {
-    match key {
-        KeyCode::Enter | KeyCode::NumpadEnter => "Enter",
-        KeyCode::Space => "Space",
-        KeyCode::Escape => "Esc",
-        KeyCode::Tab => "Tab",
-        KeyCode::Backspace => "Backspace",
-        _ => "?",
+    bindings::key_display_name(key)
+}
+
+/// Applies the Controls page's pending capture: the next key or click binds
+/// the waiting action (a conflict swaps), Esc cancels, Cmd combos are
+/// refused. The input it used is consumed, so it doesn't also pause, resume,
+/// or press a menu button this frame.
+fn capture_binding(
+    mut keys: ResMut<ButtonInput<KeyCode>>,
+    mut mouse: ResMut<ButtonInput<MouseButton>>,
+    mut capture: ResMut<BindingCapture>,
+    mut tuning: ResMut<Tuning>,
+) {
+    let Some(action) = capture.waiting else {
+        return;
+    };
+    let Some(captured) = captured_input(&keys, &mouse) else {
+        return;
+    };
+    let outcome = match captured {
+        // Only a real binding touches the settings (and autosaves).
+        Captured::Input(_) => apply_capture(&mut tuning.bindings, action, captured),
+        _ => apply_capture(&mut Bindings::default(), action, captured),
+    };
+    match captured {
+        Captured::Cancel => {
+            keys.clear_just_pressed(KeyCode::Escape);
+        }
+        Captured::CmdCombo(b) | Captured::Input(b) => match b {
+            Binding::Key(k) => {
+                keys.clear_just_pressed(k);
+            }
+            Binding::Mouse(m) => {
+                mouse.clear_just_pressed(m);
+            }
+        },
     }
+    capture.waiting = None;
+    capture.last = Some(outcome);
 }
 
 /// Whether the results screen is up: the cursor is free for its buttons.
@@ -141,6 +191,7 @@ fn pause_controls(
     mut next: ResMut<NextState<AppState>>,
     window: Option<Single<&Window, With<PrimaryWindow>>>,
     edit: Option<Single<&EditMode, With<Player>>>,
+    menu: Option<ResMut<crate::menu::MenuState>>,
 ) {
     let focused = window.map(|w| w.focused).unwrap_or(true);
     // In edit mode Esc leaves edit mode instead of pausing (device_to_intent).
@@ -152,7 +203,13 @@ fn pause_controls(
         AppState::Paused if keys.just_pressed(KeyCode::Escape) && focused => {
             next.set(AppState::Playing);
         }
-        _ => {}
+        // On the main menu, Esc steps back from Settings or Controls.
+        AppState::Menu if keys.just_pressed(KeyCode::Escape) => {
+            if let Some(mut menu) = menu {
+                menu.back();
+            }
+        }
+        AppState::Boot | AppState::Menu | AppState::Playing | AppState::Paused => {}
     }
 }
 
@@ -217,7 +274,7 @@ fn device_to_intent(
         editing: edit.is_some_and(EditMode::is_editing),
         aiming_at_edit: target.is_some_and(|t| t.0.is_some_and(|t| t.edited)),
     };
-    buttons_to_intent_in(&keys, &mouse, context, &mut intent);
+    bound_buttons_to_intent(&keys, &mouse, &tuning.bindings, context, &mut intent);
 
     if std::mem::take(&mut ignore.0) {
         return;
@@ -225,16 +282,19 @@ fn device_to_intent(
     intent.look_delta += tuning.look.look_delta(motion.delta, ads.0, tool.is_build());
 }
 
-/// UI keys of a Waves run (not `PlayerIntent`): [`START_KEY`] skips the
-/// break, and on the results screen goes again (a new run in place). It does
-/// nothing during the death beat, so a mashed key can't skip the results.
+/// UI keys of a Waves run (not `PlayerIntent`): the bound start key
+/// ([`Action::Start`], Enter by default) skips the break, and on the results
+/// screen goes again (a new run in place). It does nothing during the death
+/// beat, so a mashed key can't skip the results.
 fn run_keys(
     keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    tuning: Res<Tuning>,
     run: Option<Res<crate::waves::Run>>,
     mut restart: MessageWriter<crate::waves::RestartRun>,
     mut skip: MessageWriter<crate::waves::SkipBreak>,
 ) {
-    if !keys.any_just_pressed(START_KEYS) {
+    if !tuning.bindings.just_pressed(Action::Start, &keys, &mouse) {
         return;
     }
     match run.map(|r| r.phase) {
@@ -248,7 +308,9 @@ fn run_keys(
     }
 }
 
-/// Maps held keys and trackpad buttons onto `intent` (docs/SPEC.md → Controls):
+/// Maps held keys and trackpad buttons onto `intent` with D43's default
+/// layout (docs/SPEC.md → Controls; the game itself uses the player's
+/// bindings, [`bound_buttons_to_intent`]):
 ///
 /// - W A S D move. Holding W sprints (D41: sprint by default, no sprint key);
 ///   movement decides when that applies (forward, standing, not aiming).
@@ -288,41 +350,55 @@ pub fn buttons_to_intent_in(
     edit: EditContext,
     intent: &mut PlayerIntent,
 ) {
-    let axis =
-        |neg: KeyCode, pos: KeyCode| (keys.pressed(pos) as i32 - keys.pressed(neg) as i32) as f32;
+    bound_buttons_to_intent(keys, mouse, &Bindings::default(), edit, intent);
+}
+
+/// [`buttons_to_intent_in`] through the player's `bindings` (D93). Esc
+/// always leaves edit mode (it's never bound); everything else is the bound
+/// key or button.
+pub fn bound_buttons_to_intent(
+    keys: &ButtonInput<KeyCode>,
+    mouse: &ButtonInput<MouseButton>,
+    bindings: &Bindings,
+    edit: EditContext,
+    intent: &mut PlayerIntent,
+) {
+    let held = |a: Action| bindings.pressed(a, keys, mouse);
+    let pressed = |a: Action| bindings.just_pressed(a, keys, mouse);
+    let axis = |neg: Action, pos: Action| (held(pos) as i32 - held(neg) as i32) as f32;
     let raw = Vec2::new(
-        axis(KeyCode::KeyA, KeyCode::KeyD),
-        axis(KeyCode::KeyS, KeyCode::KeyW),
+        axis(Action::MoveLeft, Action::MoveRight),
+        axis(Action::MoveBack, Action::MoveForward),
     );
     intent.move_axis = raw.clamp_length_max(1.0);
 
-    intent.jump = keys.pressed(KeyCode::Space);
-    intent.jump_pressed |= keys.just_pressed(KeyCode::Space);
-    intent.sprint = keys.pressed(KeyCode::KeyW);
-    intent.crouch = keys.pressed(KeyCode::KeyC);
-    intent.crouch_pressed |= keys.just_pressed(KeyCode::KeyC);
-    intent.fire = mouse.pressed(MouseButton::Left);
-    intent.fire_pressed |= mouse.just_pressed(MouseButton::Left);
-    intent.ads_held = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    let r = keys.just_pressed(KeyCode::KeyR);
+    intent.jump = held(Action::Jump);
+    intent.jump_pressed |= pressed(Action::Jump);
+    intent.sprint = held(Action::MoveForward);
+    intent.crouch = held(Action::Crouch);
+    intent.crouch_pressed |= pressed(Action::Crouch);
+    intent.fire = held(Action::Fire);
+    intent.fire_pressed |= pressed(Action::Fire);
+    intent.ads_held = held(Action::Aim);
+    let r = pressed(Action::Reload);
     if edit.editing || edit.aiming_at_edit {
         intent.reset_pressed |= r;
     } else {
         intent.reload_pressed |= r;
     }
     intent.edit_pressed |=
-        keys.just_pressed(KeyCode::KeyG) || (edit.editing && keys.just_pressed(KeyCode::Escape));
+        pressed(Action::Edit) || (edit.editing && keys.just_pressed(KeyCode::Escape));
 
     let selections = [
-        (KeyCode::Digit1, ActiveTool::Weapon(WeaponKind::Rifle)),
-        (KeyCode::Digit2, ActiveTool::Weapon(WeaponKind::Pump)),
-        (KeyCode::KeyQ, ActiveTool::Build(PieceKind::Wall)),
-        (KeyCode::KeyE, ActiveTool::Build(PieceKind::Ramp)),
-        (KeyCode::KeyF, ActiveTool::Build(PieceKind::Floor)),
-        (KeyCode::KeyV, ActiveTool::Build(PieceKind::Cone)),
+        (Action::Rifle, ActiveTool::Weapon(WeaponKind::Rifle)),
+        (Action::Pump, ActiveTool::Weapon(WeaponKind::Pump)),
+        (Action::Wall, ActiveTool::Build(PieceKind::Wall)),
+        (Action::Ramp, ActiveTool::Build(PieceKind::Ramp)),
+        (Action::Floor, ActiveTool::Build(PieceKind::Floor)),
+        (Action::Cone, ActiveTool::Build(PieceKind::Cone)),
     ];
-    for (key, tool) in selections {
-        if keys.just_pressed(key) {
+    for (action, tool) in selections {
+        if pressed(action) {
             intent.select = Some(tool);
         }
     }

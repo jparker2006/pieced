@@ -278,6 +278,15 @@ fn review(app: &mut App, image: &Handle<Image>, out: &Path, prefix: &str) {
     app.world_mut().resource_mut::<MenuState>().page = MenuPage::Settings;
     frames(app, 10);
     capture(app, image, out.join(format!("{prefix}hud-settings.png")));
+    // M3 chunk 5: Settings → Controls, then the main menu over the orbit.
+    app.world_mut().resource_mut::<MenuState>().page = MenuPage::Controls;
+    frames(app, 10);
+    capture(app, image, out.join(format!("{prefix}hud-controls.png")));
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Menu);
+    frames(app, 90);
+    capture(app, image, out.join(format!("{prefix}hud-main-menu.png")));
 }
 
 #[test]

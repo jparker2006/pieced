@@ -113,6 +113,10 @@ fn tuning_panel(
                 )
             });
             for key in keys {
+                // Key bindings have their own page (Settings → Controls).
+                if key == "bindings" {
+                    continue;
+                }
                 let default = defaults.get(&key).cloned().unwrap_or(Value::Null);
                 if let Some(value) = sections.get_mut(&key) {
                     section(ui, &key, &key, value, &default);

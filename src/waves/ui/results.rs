@@ -3,7 +3,7 @@
 //! the wave reached, the score, eliminations, accuracy, headshots and run
 //! time, the best run beside them, a bursting "NEW BEST!" when this run beat
 //! it, and the seed in small print. **Go again** (or the start key) starts a
-//! new run in place; **Quit** closes the game (chunk 5: quits to the menu).
+//! new run in place; **Quit to menu** goes back to the main menu (chunk 5).
 //! The cursor is free while it shows (`input::cursor_lock`), so the trackpad
 //! clicks the buttons.
 
@@ -346,7 +346,7 @@ fn spawn_results(
                         art.crystal_blue.clone(),
                     ));
                     row.spawn(button(
-                        "QUIT",
+                        "QUIT TO MENU",
                         ResultsButton::Quit,
                         art.crystal_blue.clone(),
                     ));
@@ -406,6 +406,7 @@ pub fn burst_motion(age: f32) -> (f32, f32) {
 #[allow(clippy::type_complexity)]
 fn update_results(
     time: Res<Time<Real>>,
+    tuning: Res<crate::tuning::Tuning>,
     summary: Option<Res<RunSummary>>,
     mut clock: ResMut<ResultsClock>,
     mut texts: Query<(&RunUi, &mut Text)>,
@@ -488,7 +489,8 @@ fn update_results(
                 let _ = write!(s, "Seed {}", summary.seed);
             }),
             RunUi::ResultsHint => set_text(&mut t, scratch, |s| {
-                let _ = write!(s, "{}  go again", crate::input::start_key_name());
+                let key = tuning.bindings.name(crate::input::Action::Start);
+                let _ = write!(s, "{key}  go again");
             }),
             _ => {}
         }
@@ -502,7 +504,7 @@ fn results_buttons(
     summary: Option<Res<RunSummary>>,
     state: Res<State<AppState>>,
     mut restart: MessageWriter<RestartRun>,
-    mut exit: MessageWriter<AppExit>,
+    mut next: ResMut<NextState<AppState>>,
 ) {
     let up = *state.get() == AppState::Playing
         && summary.is_some_and(|s| matches!(s.phase, RunPhase::Over { .. }));
@@ -518,7 +520,7 @@ fn results_buttons(
                 restart.write(RestartRun);
             }
             ResultsButton::Quit => {
-                exit.write(AppExit::Success);
+                next.set(AppState::Menu);
             }
         }
     }

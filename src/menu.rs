@@ -10,9 +10,26 @@
 //!   and pauses so the cursor is free. F4 or Esc closes it.
 //! - The whole `Tuning` autosaves to [`Tuning::settings_path`] about a second after
 //!   changes stop. Scenario runs never save.
+//!
+//! Milestone 3, chunk 5 (D92, D93):
+//!
+//! - The **main menu** ([`AppState::Menu`], `main_menu.rs`): the PIECED logo
+//!   over the live island with the camera orbiting; Waves (with the best
+//!   run), Practice, Settings and Quit. Waves and Practice start in place
+//!   (`waves::modes`). The pause menu's Quit becomes "Quit to menu".
+//! - The **Controls** page in Settings (`controls.rs`): every action's
+//!   binding; click one, press a key or click; Esc cancels; a conflict swaps;
+//!   Reset to defaults. The input adapter does the capture (`input.rs` stays
+//!   the only device reader).
 
+mod controls;
+pub mod main_menu;
 mod panel;
 mod pause;
+
+pub use controls::{ControlsButton, ControlsStatus, KeyChip};
+pub use main_menu::{LastPlay, MainMenuButton, OrbitCamera, orbit_eye};
+pub use pause::PauseButton;
 
 use crate::{render::QualityPreset, scenario::ScenarioRun, shared::AppState, tuning::Tuning};
 use bevy::{
@@ -26,14 +43,18 @@ pub const AUTOSAVE_DELAY: f64 = 1.0;
 /// Which menu page is showing.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum MenuPage {
+    /// The pause menu's buttons, or (on the main menu) the title screen.
     #[default]
     Main,
     Settings,
+    /// Settings → Controls (D93).
+    Controls,
 }
 
 /// What the menus show. Entering [`AppState::Paused`] opens the menu; entering
-/// [`AppState::Playing`] closes everything. Scenarios may set these directly to
-/// capture the menus without pausing.
+/// [`AppState::Menu`] opens the title screen; entering [`AppState::Playing`]
+/// closes everything. Scenarios may set these directly to capture the menus
+/// without pausing.
 #[derive(Resource, Debug, Clone, Default)]
 pub struct MenuState {
     pub menu_open: bool,
@@ -41,11 +62,33 @@ pub struct MenuState {
     pub panel_open: bool,
     /// Closing the tuning panel returns to play (it was opened from play).
     resume_on_close: bool,
+    /// The menus belong to the main menu (the title screen is their Main
+    /// page), not the pause menu.
+    pub title: bool,
 }
 
 impl MenuState {
     pub fn menu_visible(&self) -> bool {
         self.menu_open && !self.panel_open
+    }
+
+    /// The title screen is showing.
+    pub fn title_visible(&self) -> bool {
+        self.menu_visible() && self.title && self.page == MenuPage::Main
+    }
+
+    /// The pause menu's layer (its buttons, or Settings and Controls over
+    /// either menu) is showing.
+    pub fn pause_layer_visible(&self) -> bool {
+        self.menu_visible() && !(self.title && self.page == MenuPage::Main)
+    }
+
+    /// One page back: Controls → Settings → Main.
+    pub fn back(&mut self) {
+        self.page = match self.page {
+            MenuPage::Controls => MenuPage::Settings,
+            MenuPage::Settings | MenuPage::Main => MenuPage::Main,
+        };
     }
 
     /// Closes the tuning panel. Returns true when play should resume (the panel
@@ -398,11 +441,21 @@ fn apply_window_settings(
 
 fn open_menu(mut menu: ResMut<MenuState>) {
     menu.menu_open = true;
+    menu.title = false;
+    menu.page = MenuPage::Main;
+}
+
+/// Entering the main menu shows the title screen.
+fn open_title(mut menu: ResMut<MenuState>) {
+    menu.menu_open = true;
+    menu.title = true;
+    menu.close_panel();
     menu.page = MenuPage::Main;
 }
 
 fn close_menus(mut menu: ResMut<MenuState>) {
     menu.menu_open = false;
+    menu.title = false;
     menu.close_panel();
     menu.page = MenuPage::Main;
 }
@@ -430,19 +483,36 @@ fn toggle_panel(
     }
 }
 
+/// The whole menu layer of the game: [`MenuUiPlugin`] plus settings
+/// persistence, live window settings and the F4 tuning panel.
 pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
+        app.add_plugins(MenuUiPlugin)
+            .add_systems(Startup, init_autosave)
+            .add_systems(Update, (toggle_panel, apply_window_settings))
+            .add_systems(Last, autosave);
+        panel::build(app);
+    }
+}
+
+/// The menus themselves (native Bevy UI, headless-safe): the main menu, the
+/// pause menu, Settings and Controls, and the main menu's orbit camera and
+/// Play timing. Never writes the settings file.
+pub struct MenuUiPlugin;
+
+impl Plugin for MenuUiPlugin {
+    fn build(&self, app: &mut App) {
         // The font, the logo and the crystal (shared with the HUD).
         crate::hud::art::install(app);
         app.init_resource::<MenuState>()
-            .add_systems(Startup, init_autosave)
+            .init_resource::<crate::input::BindingCapture>()
             .add_systems(OnEnter(AppState::Paused), open_menu)
-            .add_systems(OnEnter(AppState::Playing), close_menus)
-            .add_systems(Update, (toggle_panel, apply_window_settings))
-            .add_systems(Last, autosave);
+            .add_systems(OnEnter(AppState::Menu), open_title)
+            .add_systems(OnEnter(AppState::Playing), close_menus);
         pause::build(app);
-        panel::build(app);
+        controls::build(app);
+        main_menu::build(app);
     }
 }

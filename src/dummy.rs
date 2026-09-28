@@ -115,7 +115,9 @@ impl Plugin for DummyPlugin {
     }
 }
 
-fn spawn_dummy(
+/// Spawns the dummy at its spot, facing the player's spawn. Practice's
+/// `Startup` runs it; so does the main menu's Practice (chunk 5).
+pub fn spawn_dummy(
     mut commands: Commands,
     layout: Res<ArenaLayout>,
     tuning: Res<Tuning>,

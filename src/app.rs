@@ -126,14 +126,27 @@ impl PluginGroup for ClientPlugins {
     }
 }
 
-/// Moves from `Boot` to `Playing` once the first frame has run and every
-/// [`BootGate`] hold has been released.
+/// Moves from `Boot` to [`BootTarget`] (`Playing` unless the game opens on
+/// the main menu) once the first frame has run and every [`BootGate`] hold
+/// has been released.
 pub struct BootPlugin;
 
 impl Plugin for BootPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BootGate>()
+            .init_resource::<BootTarget>()
             .add_systems(Update, boot.run_if(in_state(AppState::Boot)));
+    }
+}
+
+/// Where `Boot` hands over: `Playing` (scenarios, `--waves`, `--practice`,
+/// tests) or the main menu (the native game without a mode flag, D92).
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BootTarget(pub AppState);
+
+impl Default for BootTarget {
+    fn default() -> Self {
+        Self(AppState::Playing)
     }
 }
 
@@ -164,9 +177,13 @@ impl BootGate {
     }
 }
 
-fn boot(gate: Res<BootGate>, mut next: ResMut<NextState<AppState>>) {
+fn boot(
+    gate: Res<BootGate>,
+    target: Option<Res<BootTarget>>,
+    mut next: ResMut<NextState<AppState>>,
+) {
     if gate.is_open() {
-        next.set(AppState::Playing);
+        next.set(target.map_or(AppState::Playing, |t| t.0));
     }
 }
 
@@ -243,6 +260,16 @@ impl GameOptions {
         }
     }
 
+    /// Where the native game goes after `Boot`: the main menu, unless a
+    /// scenario or `--waves`/`--practice` starts play straight away.
+    pub fn boot_target(&self) -> AppState {
+        if self.scenario.is_some() || self.mode.is_some() {
+            AppState::Playing
+        } else {
+            AppState::Menu
+        }
+    }
+
     /// Applies the command-line graphics overrides (vsync A/B runs).
     pub fn apply_graphics_overrides(&self, graphics: &mut crate::render::GraphicsTuning) {
         if self.no_vsync {
@@ -254,8 +281,9 @@ impl GameOptions {
     }
 }
 
-/// The mode the native game opens in without a flag (M3: Waves; `--practice`
-/// gives the M2 sandbox until the main menu lands in chunk 5).
+/// The mode the native game is built in without a flag. It opens on the main
+/// menu (chunk 5), which starts Waves or Practice in place; Waves at startup
+/// means the grunt pool and the potions are created and warmed during Boot.
 pub const NATIVE_DEFAULT_MODE: GameMode = GameMode::Waves;
 
 /// The full game.
@@ -263,6 +291,7 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     let mut tuning = Tuning::load_or_default(&Tuning::settings_path());
     options.apply_graphics_overrides(&mut tuning.graphics);
     let mode = options.game_mode();
+    let boot_target = BootTarget(options.boot_target());
     let scenario = options.scenario.map(ScenarioRun::new).transpose()?;
     let windowed = options.windowed || !tuning.graphics.fullscreen;
     let window = Window {
@@ -304,6 +333,7 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     .add_plugins(ClientPlugins)
     .insert_resource(tuning)
     .insert_resource(mode)
+    .insert_resource(boot_target)
     // Waves runs keep the personal best and the run log in `userdata/`.
     .insert_resource(RunStore::user())
     .insert_resource(bevy::winit::WinitSettings::continuous());

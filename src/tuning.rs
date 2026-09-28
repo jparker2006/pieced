@@ -17,6 +17,9 @@ pub struct Tuning {
     pub hud: crate::hud::HudTuning,
     pub audio: crate::audio::AudioTuning,
     pub graphics: crate::render::GraphicsTuning,
+    /// The key bindings (D93: the Settings → Controls page). A menu setting:
+    /// `load_or_default` keeps it from the file.
+    pub bindings: crate::input::Bindings,
     // Designer tuning for Waves (M3). Never persisted: `settings.json` holds
     // every other section, so a saved copy would freeze these numbers and hide
     // play-test tuning changes from Jake's game.
@@ -42,7 +45,7 @@ impl Tuning {
     /// Loads persisted settings, falling back to defaults on any problem.
     ///
     /// Only what the Settings menu edits is taken from the file (look, audio,
-    /// graphics, HUD, feedback and aim friction). Designer numbers (movement,
+    /// graphics, HUD, feedback, aim friction and the key bindings). Designer numbers (movement,
     /// building, combat, the dummy) always come from the code: every section is
     /// saved, so otherwise the first save froze them and later tuning never
     /// reached the game.
