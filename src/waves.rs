@@ -236,6 +236,14 @@ impl Run {
         self.next_spawn_tick = tick + ticks(FIRST_SPAWN_DELAY);
     }
 
+    /// Test and debug hook: makes the run fight wave `wave` from `tick` (its
+    /// size, and its stats for every knight taken from then on). Meant for a
+    /// run that has just started, before its first ship launches (the
+    /// fairness suite starts seeded runs at waves 1–10).
+    pub fn start_at_wave(&mut self, wave: u32, tick: u64, tuning: &WavesTuning) {
+        self.start_wave(wave.max(1), tick, tuning);
+    }
+
     /// The results screen is up: the run has ended and the death beat is over.
     pub fn is_over(&self) -> bool {
         matches!(self.phase, RunPhase::Over { .. })
