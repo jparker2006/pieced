@@ -122,7 +122,9 @@ pub struct GruntTuning {
 impl Default for GruntTuning {
     fn default() -> Self {
         Self {
-            hp: 100.0,
+            // D74 said 100; 80 after play-test 1 ("a little hard to kill them in
+            // the early rounds"): 3 rifle body shots or 2 headshots.
+            hp: 80.0,
             speed: 4.5,
             speed_cap: 6.5,
             fire_interval: 1.5,
@@ -221,7 +223,7 @@ mod tests {
     fn wave_one_matches_the_spec() {
         let t = GruntTuning::default();
         let s = GruntStats::for_wave(1, &t);
-        assert_eq!(s.hp, 100.0);
+        assert_eq!(s.hp, 80.0);
         assert_eq!(s.speed, 4.5);
         assert_eq!(s.fire_interval, 1.5);
         assert_eq!(s.reaction, 0.33);
@@ -232,10 +234,10 @@ mod tests {
     fn scaling_curves_and_caps() {
         let t = GruntTuning::default();
         let w10 = GruntStats::for_wave(10, &t);
-        assert!((w10.hp - 136.0).abs() < 1e-3);
+        assert!((w10.hp - 108.8).abs() < 1e-3);
         assert!((w10.speed - 4.5 * 1.135).abs() < 1e-3);
         let w25 = GruntStats::for_wave(25, &t);
-        assert!((w25.hp - 196.0).abs() < 1e-3);
+        assert!((w25.hp - 156.8).abs() < 1e-3);
         assert!(w25.speed <= t.speed_cap && w25.speed < 7.5);
         assert_eq!(GruntStats::for_wave(40, &t), w25);
         let w15 = GruntStats::for_wave(15, &t);
