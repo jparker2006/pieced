@@ -39,7 +39,7 @@ pub use brain::{
 use crate::{
     orb::Wand,
     player,
-    shared::{Health, LookAngles, SimSet},
+    shared::{AppState, Health, LookAngles, SimSet},
 };
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -212,6 +212,13 @@ impl Plugin for GruntPlugin {
                 )
                     .chain()
                     .in_set(SimSet::Control),
+            )
+            .add_systems(
+                FixedUpdate,
+                brain::confirm_shots
+                    .after(SimSet::Building)
+                    .before(SimSet::Combat)
+                    .run_if(in_state(AppState::Playing)),
             );
     }
 }

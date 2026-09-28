@@ -101,6 +101,14 @@ struct Counts {
     /// Info: released orbs whose wand tip was blocked while the eye saw the
     /// player (the orb then stops on the blocker).
     tip_blocked_eye_clear: u64,
+    /// Info: wind-ups that started without line of sight from the wand tip
+    /// (rule 1 is judged on the orbs they release; a cancelled one releases none).
+    windups_without_los: u64,
+    /// Info: orbs released on the tick their knight went down.
+    orbs_from_downed: u64,
+    /// Orbs, wind-ups or hits the auditor couldn't trace (must be 0: every
+    /// orb is checked).
+    untracked: u64,
     // Violations.
     r1_no_los: u64,
     r2_early_first_windup: u64,
@@ -127,6 +135,7 @@ impl Counts {
             + self.r7_stuck_events
             + self.r8_unfair_hits
             + self.unfair_deaths
+            + self.untracked
     }
 
     fn example(&mut self, text: String) {
@@ -157,6 +166,9 @@ impl Counts {
         self.max_tokens = self.max_tokens.max(o.max_tokens);
         self.max_winding = self.max_winding.max(o.max_winding);
         self.tip_blocked_eye_clear += o.tip_blocked_eye_clear;
+        self.orbs_from_downed += o.orbs_from_downed;
+        self.windups_without_los += o.windups_without_los;
+        self.untracked += o.untracked;
         self.r1_no_los += o.r1_no_los;
         self.r2_early_first_windup += o.r2_early_first_windup;
         self.r3_too_many_shooters += o.r3_too_many_shooters;
@@ -238,8 +250,9 @@ type Knights<'w, 's> = Query<
         &'static GruntBrain,
         &'static GruntStats,
         &'static Wand,
+        Has<Downed>,
     ),
-    (With<Grunt>, Without<Parked>, Without<Downed>),
+    (With<Grunt>, Without<Parked>),
 >;
 
 fn filter_all() -> SpatialQueryFilter {
@@ -320,13 +333,19 @@ fn audit_fixed(
         }
     }
 
-    // Knights leaving play forget their audit (the pool reuses them).
-    let active: Vec<Entity> = knights.iter().map(|k| k.0).collect();
-    audit.knights.retain(|e, _| active.contains(e));
-    audit.c.max_alive = audit.c.max_alive.max(active.len() as u32);
+    // Knights back in the pool forget their audit (the pool reuses them). A
+    // knight downed this tick is still looked up: his wand may release on
+    // the tick he goes down.
+    let landed: Vec<Entity> = knights.iter().map(|k| k.0).collect();
+    audit.knights.retain(|e, _| landed.contains(e));
+    let alive = knights.iter().filter(|k| !k.7).count() as u32;
+    audit.c.max_alive = audit.c.max_alive.max(alive);
 
     // Line of sight (rule 2) and progress (rule 7), every tick.
-    for (entity, tf, keye, _, brain, _, _) in &knights {
+    for (entity, tf, keye, _, brain, _, _, downed) in &knights {
+        if downed {
+            continue;
+        }
         let k = audit.knights.entry(entity).or_insert_with(|| {
             audit.c.knights_landed += 1;
             KnightAudit::default()
@@ -369,22 +388,18 @@ fn audit_fixed(
     // Wind-up starts: rules 1 (at the start), 2 and 4.
     for who in windups {
         audit.c.windups += 1;
-        let Ok((_, tf, keye, look, brain, stats, _)) = knights.get(who) else {
-            audit.c.example(format!("windup by an inactive knight {who} at {now}"));
+        let Ok((_, tf, keye, look, brain, stats, _, _)) = knights.get(who) else {
+            audit.c.untracked += 1;
+            audit
+                .c
+                .example(format!("windup by an unknown knight {who} at {now}"));
             continue;
         };
         let target = brain.shot_target();
         let tip = wand_tip(tf.translation, look.yaw);
         let los = wand_sees(&spatial, &is_piece, tip, target, head, chest);
         let chest_k = tf.translation + Vec3::Y * KNIGHT_CHEST;
-        let offscreen = !in_view(
-            eye,
-            player_look.rotation(),
-            vfov,
-            VIEW_ASPECT,
-            chest_k,
-            1.0,
-        );
+        let offscreen = !in_view(eye, player_look.rotation(), vfov, VIEW_ASPECT, chest_k, 1.0);
         let k = audit.knights.entry(who).or_default();
         match target {
             Some(ShotTarget::Player) => {
@@ -405,9 +420,12 @@ fn audit_fixed(
                 }
             }
             Some(ShotTarget::Piece { .. }) => audit.c.windups_at_pieces += 1,
-            None => audit.c.example(format!("windup with no shot by {who} at {now}")),
+            None => audit
+                .c
+                .example(format!("windup with no shot by {who} at {now}")),
         }
         if !los {
+            audit.c.windups_without_los += 1;
             let eye_k = tf.translation + Vec3::Y * keye.0;
             let eye_sees = sight(&spatial, eye_k, head, chest, is_piece).visible;
             audit.c.example(format!(
@@ -430,13 +448,14 @@ fn audit_fixed(
     let mut releases: Vec<(Entity, Release)> = Vec::new();
     for who in fired {
         audit.c.orbs_fired += 1;
-        let Ok((_, tf, keye, look, brain, _, _)) = knights.get(who) else {
-            audit.c.r1_no_los += 1;
+        let Ok((_, tf, keye, look, brain, _, _, downed)) = knights.get(who) else {
+            audit.c.untracked += 1;
             audit
                 .c
-                .example(format!("r1: an orb from inactive knight {who} at {now}"));
+                .example(format!("an orb from an unknown knight {who} at {now}"));
             continue;
         };
+        audit.c.orbs_from_downed += u64::from(downed);
         let target = brain.shot_target();
         let tip = wand_tip(tf.translation, look.yaw);
         let los_release = wand_sees(&spatial, &is_piece, tip, target, head, chest);
@@ -483,6 +502,7 @@ fn audit_fixed(
             }
             None => {
                 let Some(r) = release_of(impact.shooter) else {
+                    audit.c.untracked += 1;
                     audit.c.example(format!(
                         "impact from an untracked orb (shooter {}) at {now}",
                         impact.shooter
@@ -559,6 +579,7 @@ fn audit_fixed(
                     last: r.axis,
                 },
                 None => {
+                    audit.c.untracked += 1;
                     audit
                         .c
                         .example(format!("orb launched at {now} without a release"));
@@ -566,6 +587,7 @@ fn audit_fixed(
                 }
             },
             None => {
+                audit.c.untracked += 1;
                 audit.c.example(format!("untracked orb in flight at {now}"));
                 continue;
             }
@@ -588,7 +610,7 @@ fn audit_fixed(
     audit.orbs.retain(|e, _| flying.contains(e));
 
     // Rule 3: tokens and winding wands.
-    let winding = knights.iter().filter(|k| k.6.is_winding()).count();
+    let winding = knights.iter().filter(|k| !k.7 && k.6.is_winding()).count();
     let holders = tokens.holders().len();
     let max = tuning.grunt.max_shooters as usize;
     audit.c.max_tokens = audit.c.max_tokens.max(holders);
@@ -636,11 +658,7 @@ fn audit_last(
     }
     for who in std::mem::take(&mut audit.pending_offscreen) {
         if log.0.contains(&who) {
-            if let Some(w) = audit
-                .knights
-                .get_mut(&who)
-                .and_then(|k| k.windup.as_mut())
-            {
+            if let Some(w) = audit.knights.get_mut(&who).and_then(|k| k.windup.as_mut()) {
                 w.warned = true;
             }
         } else {
@@ -695,7 +713,12 @@ impl Behaviour {
 
 type Eyes = SystemState<(
     SpatialQuery<'static, 'static>,
-    Query<'static, 'static, (Entity, &'static Transform), (With<Grunt>, Without<Parked>, Without<Downed>)>,
+    Query<
+        'static,
+        'static,
+        (Entity, &'static Transform),
+        (With<Grunt>, Without<Parked>, Without<Downed>),
+    >,
 )>;
 
 struct StandIn {
@@ -798,7 +821,7 @@ impl StandIn {
         let mut i = PlayerIntent::default();
         let rifle = ActiveTool::Weapon(WeaponKind::Rifle);
         let face = |yaw: f32, pitch: f32| Vec2::new(turn(look.yaw, yaw), pitch - look.pitch);
-        // Aim at the nearest knight in sight and fire in bursts (0.5 s on, 1 s off).
+        // Aim at the nearest knight in sight and fire in bursts (0.5 s on, 0.5 s off).
         let engage = |i: &mut PlayerIntent| {
             if tool != rifle {
                 i.select = Some(rifle);
@@ -806,7 +829,7 @@ impl StandIn {
             if let Some(knight) = visible {
                 let want = look_toward(knight + Vec3::Y * 1.0 - eye);
                 i.look_delta = face(want.yaw, want.pitch);
-                i.fire = k % 90 < 30;
+                i.fire = k % 60 < 30;
             }
             if ammo == 0 {
                 i.reload_pressed = true;
@@ -835,7 +858,7 @@ impl StandIn {
                     i.select = Some(rifle);
                     i.look_delta = face(self.yaw, 0.0);
                 }
-                0..150 => {}
+                1..150 => {}
                 150..200 | 300.. => {
                     i.look_delta = face(self.yaw, 0.0);
                     i.move_axis = Vec2::Y;
@@ -865,7 +888,7 @@ impl StandIn {
                 }
                 3 => i.fire_pressed = true,
                 5 => i.select = Some(rifle),
-                0..6 => {}
+                1..6 => {}
                 _ => {
                     let c = (k - 6) % 96;
                     if (24..60).contains(&c) {
@@ -1023,8 +1046,13 @@ fn print_summary(title: &str, c: &Counts) {
         c.orbs_fired, c.orbs_on_pieces, c.orb_segments, c.hits, c.damage_events, c.would_be_deaths
     );
     println!(
-        "  peak token holders {}, peak winding wands {}; tip blocked while the eye saw {}",
-        c.max_tokens, c.max_winding, c.tip_blocked_eye_clear
+        "  peak token holders {}, peak winding wands {}; wind-ups without wand LOS {}; tip blocked while the eye saw {}; orbs from knights downed that tick {}; untraced {}",
+        c.max_tokens,
+        c.max_winding,
+        c.windups_without_los,
+        c.tip_blocked_eye_clear,
+        c.orbs_from_downed,
+        c.untracked
     );
     println!(
         "  violations: 1 no-LOS {} | 2 early first wind-up {} | 3 >3 shooters {} | 4 unwarned off-screen {} | 5 no arrow {} | 6 through a piece {} | 7 stuck {} (stuck events {}) | 8 unfair hits {}, unfair deaths {}",
@@ -1046,17 +1074,16 @@ fn print_summary(title: &str, c: &Counts) {
 
 fn assert_fair(c: &Counts) {
     assert!(c.orbs_fired > 0 && c.hits > 0, "the knights fought: {c:?}");
-    assert_eq!(
-        c.hits, c.damage_events,
-        "every orb hit is one damage event"
-    );
+    assert_eq!(c.hits, c.damage_events, "every orb hit is one damage event");
     assert_eq!(c.violations(), 0, "every rule holds: {c:#?}");
 }
 
 /// W3: 20 seeded runs, two at each of waves 1–10.
 #[test]
 fn twenty_seeded_waves_hold_every_fairness_rule() {
-    let jobs: Vec<(u64, u32)> = (1..=20u64).map(|s| (s, ((s - 1) % 10) as u32 + 1)).collect();
+    let jobs: Vec<(u64, u32)> = (1..=20u64)
+        .map(|s| (s, ((s - 1) % 10) as u32 + 1))
+        .collect();
     let c = run_suite(&jobs, 150.0);
     print_summary("Fairness suite (W3): 20 seeded runs, waves 1-10", &c);
     assert_fair(&c);
