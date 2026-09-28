@@ -78,3 +78,11 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
   - The first shortlist leaned festival and comic, so a researcher is re-shortlisting symphonic, brass-fanfare and celesta candidates (CC0 or CC-BY only).
   - Jake gets one final file list to OK before anything is downloaded.
 - 2026-09-28: **board approved.** Jake: "approve all 8 board images". `M4-V1`–`V8` are the A6 targets.
+- 2026-09-28: **Williams-style picks proposed** (waiting on Jake's download OK):
+  - Menu: humanoide9000 "Space Fanfare" (freesound 744049).
+  - Combat low: "Cinematic orchestral adventure music" (689177).
+  - Combat high: "Cinematic Battle Music (Star Wars Style)" (685841).
+  - Round start: Sheyvan "Orchestral Victory Fanfare" (470083).
+  - New best: humanoide9000 "Victory Fanfare" (466133).
+  - All five are CC-BY 4.0, about 24 MB together. They would come from Freesound's high-quality previews, since originals need a login.
+  - No CC0 or CC-BY celesta cue exists; the ideal ones are non-commercial. So the break is a code-built celesta ostinato over a string drone, and the death sting is a downward bend of a brass chord from the battle cue.
