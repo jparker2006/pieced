@@ -335,6 +335,11 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     if let Some(run) = scenario {
         app.insert_resource(run);
     }
+    // Last, so its cleanup marks every plugin's finish and cleanup done; the
+    // PIECED_BOOT line then splits process start → app built → plugins ready
+    // → Startup (the window) → first frame.
+    app.add_plugins(crate::telemetry::BootMarkPlugin);
+    crate::telemetry::mark_app_built(&mut app);
     Ok(app)
 }
 

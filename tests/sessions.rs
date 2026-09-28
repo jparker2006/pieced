@@ -560,6 +560,47 @@ fn boot_phases_record_each_gate_release_in_order() {
     );
 }
 
+#[test]
+fn boot_phases_split_the_time_before_the_window() {
+    let mut app = App::new();
+    app.add_plugins((MinimalPlugins, bevy::state::app::StatesPlugin))
+        .init_state::<AppState>()
+        .add_message::<WindowOccluded>()
+        .add_message::<WindowCreated>()
+        .add_plugins(TelemetryPlugin)
+        .add_plugins(pieced::telemetry::BootMarkPlugin);
+    pieced::telemetry::mark_app_built(&mut app);
+    app.finish();
+    app.cleanup();
+    app.update();
+    let p = app.world().resource::<BootPhases>().clone();
+    let order = [
+        p.app_built_ms,
+        p.plugins_ready_ms,
+        p.startup_start_ms,
+        p.startup_end_ms,
+        p.first_frame_ms,
+    ];
+    assert!(order.iter().all(Option::is_some), "{p:?}");
+    assert!(order.windows(2).all(|w| w[0] <= w[1]), "{p:?}");
+    let line = p.line();
+    assert!(line.starts_with("PIECED_BOOT app_built="), "{line}");
+    for phase in [
+        "plugins_ready=",
+        "startup_start=",
+        "startup_end=",
+        "first_frame=",
+    ] {
+        assert!(line.contains(phase), "{line}");
+    }
+    // Later frames don't move them.
+    app.update();
+    assert_eq!(
+        app.world().resource::<BootPhases>().startup_end_ms,
+        p.startup_end_ms
+    );
+}
+
 // ---------------------------------------------------------------------------
 // The plugin, end to end
 // ---------------------------------------------------------------------------
@@ -630,7 +671,10 @@ fn a_simulated_session_writes_its_folder_and_prints_the_quit_line() {
         .iter()
         .map(|p| p["phase"].as_str().unwrap())
         .collect();
-    assert_eq!(phases, ["first_frame", "playing"]);
+    assert_eq!(
+        phases,
+        ["startup_start", "startup_end", "first_frame", "playing"]
+    );
     assert_eq!(
         doc["graphics_preset"],
         format!("{:?}", QualityPreset::Battery)
