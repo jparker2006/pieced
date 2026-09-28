@@ -20,6 +20,7 @@
 //! run start (parked and inactive), reused for every spawn, so a wave spawn
 //! never instances a model mid-fight (the knight figure is rigged once).
 
+pub mod modes;
 pub mod potion;
 pub mod record;
 pub mod ships;
@@ -438,6 +439,8 @@ impl Plugin for WavesPlugin {
                     .run_if(resource_exists::<Run>),
             );
         void::build(app);
+        // The main menu's mode switch (chunk 5).
+        modes::build(app);
     }
 }
 
@@ -952,20 +955,67 @@ fn restart_run(world: &mut World) {
     if !requested {
         return;
     }
-    // Orbs in flight and potions on the ground vanish back into their pools.
-    crate::orb::recycle_all_orbs(world);
-    potion::recycle_all_potions(world);
+    recycle_pools(world);
     if let Err(e) = world.run_system_cached(reset_characters) {
         error!("waves: restart failed: {e}");
         return;
     }
-    // The grid back to the arena's initial cover (after the player is back at
-    // spawn, which is off the cover).
+    // After the player is back at spawn, which is off the cover.
+    reset_cover(world);
+}
+
+/// Orbs in flight and potions on the ground vanish back into their pools.
+fn recycle_pools(world: &mut World) {
+    crate::orb::recycle_all_orbs(world);
+    potion::recycle_all_potions(world);
+}
+
+/// The grid back to the arena's initial cover.
+fn reset_cover(world: &mut World) {
     building::clear_pieces(world);
     for slot in building::initial_cover() {
         if let Ok(piece) = building::place_piece(world, slot) {
             world.entity_mut(piece).insert(InitialCover);
         }
+    }
+}
+
+/// The player's parts a restart (or a mode switch) puts back.
+#[derive(QueryData)]
+#[query_data(mutable)]
+struct PlayerParts {
+    entity: Entity,
+    transform: &'static mut Transform,
+    previous: &'static mut PreviousFeet,
+    look: &'static mut LookAngles,
+    health: &'static mut Health,
+    intent: &'static mut PlayerIntent,
+    motor: &'static mut Motor,
+    eye: &'static mut EyeHeight,
+    loadout: &'static mut Loadout,
+    ads: &'static mut Ads,
+    edit: Option<&'static mut building::EditMode>,
+}
+
+impl PlayerPartsItem<'_, '_> {
+    /// Back at spawn, whole, guns full, not editing.
+    fn respawn(&mut self, commands: &mut Commands, layout: &ArenaLayout, tuning: &Tuning) {
+        self.transform.translation = layout.player_spawn;
+        self.previous.0 = layout.player_spawn;
+        *self.look = layout.player_look;
+        self.health.reset();
+        *self.intent = PlayerIntent::default();
+        *self.motor = Motor::default();
+        self.eye.0 = tuning.movement.eye_height;
+        self.loadout.rifle = GunState::new(&tuning.combat.rifle);
+        self.loadout.pump = GunState::new(&tuning.combat.pump);
+        self.loadout.switch_remaining = 0.0;
+        self.loadout.pump_buffer = None;
+        self.ads.0 = false;
+        if let Some(edit) = self.edit.as_mut() {
+            **edit = building::EditMode::default();
+        }
+        commands.entity(self.entity).remove::<(Downed, Knockback)>();
     }
 }
 
@@ -984,57 +1034,14 @@ fn reset_characters(
     mut tokens: ResMut<AttackTokens>,
     mut ships: ResMut<ships::Ships>,
     mut grunts: Query<PoolParts, (With<PoolGrunt>, Without<Player>)>,
-    mut players: Query<
-        (
-            Entity,
-            &mut Transform,
-            &mut PreviousFeet,
-            &mut LookAngles,
-            &mut Health,
-            &mut PlayerIntent,
-            &mut Motor,
-            &mut EyeHeight,
-            &mut Loadout,
-            &mut Ads,
-            Option<&mut building::EditMode>,
-        ),
-        With<Player>,
-    >,
+    mut players: Query<PlayerParts, With<Player>>,
 ) {
     let now = tick.0;
     for mut grunt in &mut grunts {
         grunt.park(&mut commands, now);
     }
-    for (
-        entity,
-        mut tf,
-        mut prev,
-        mut look,
-        mut health,
-        mut intent,
-        mut motor,
-        mut eye,
-        mut lo,
-        mut ads,
-        edit,
-    ) in &mut players
-    {
-        tf.translation = layout.player_spawn;
-        prev.0 = layout.player_spawn;
-        *look = layout.player_look;
-        health.reset();
-        *intent = PlayerIntent::default();
-        *motor = Motor::default();
-        eye.0 = tuning.movement.eye_height;
-        lo.rifle = GunState::new(&tuning.combat.rifle);
-        lo.pump = GunState::new(&tuning.combat.pump);
-        lo.switch_remaining = 0.0;
-        lo.pump_buffer = None;
-        ads.0 = false;
-        if let Some(mut edit) = edit {
-            *edit = building::EditMode::default();
-        }
-        commands.entity(entity).remove::<(Downed, Knockback)>();
+    for mut player in &mut players {
+        player.respawn(&mut commands, &layout, &tuning);
     }
     stats.reset();
     inbox.reset();

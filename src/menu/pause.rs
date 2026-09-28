@@ -5,13 +5,19 @@
 //! veil, the PIECED logo (`art/blender/assets/logo.py`) over Resume, Settings
 //! and Quit as rounded cartoon buttons (gold frame, rivets, a crystal, ink
 //! outline), and a Settings card in the same style.
+//!
+//! Milestone 3 (chunk 5): Quit becomes **Quit to menu**, Settings gets a
+//! **Controls** page (`controls.rs`, a card on this same veiled layer), the
+//! control hints print the bound keys, and the Settings and Controls cards
+//! also open over the main menu.
 
-use super::{MenuPage, MenuState, Setting, SettingKind};
+use super::{MenuPage, MenuState, Setting, SettingKind, controls::ControlsCard};
 use crate::{
     hud::{
         UiArt,
         style::{ACCENT, INK, PANEL, RIM, SHIELD_FILL, TEXT, TROUGH, caps, dim, ink, text},
     },
+    input::{Action, Bindings},
     shared::AppState,
     tuning::Tuning,
     waves::{
@@ -20,6 +26,7 @@ use crate::{
     },
 };
 use bevy::{ecs::message::Messages, prelude::*, text::LetterSpacing, ui::RelativeCursorPosition};
+use std::fmt::Write;
 
 pub(super) fn build(app: &mut App) {
     app.add_systems(Startup, spawn_menu).add_systems(
@@ -31,17 +38,37 @@ pub(super) fn build(app: &mut App) {
             slider_drag,
             button_looks,
             refresh_widgets,
+            refresh_hints,
         )
             .chain(),
     );
 }
 
+/// The pause menu's buttons (and the Settings card's header buttons).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-enum MenuAction {
+pub enum PauseButton {
     Resume,
     Settings,
+    /// "Quit to menu" (D92).
     Quit,
     Back,
+    /// Settings → Controls (D93).
+    Controls,
+}
+
+/// A cartoon button (the pause menu's T12 style); `primary` ones are
+/// crystal blue, the rest slate. [`button_looks`] lights them on hover.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Cartoon {
+    pub primary: bool,
+}
+
+/// The control hints under the pause menu's buttons, written from the
+/// bindings.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+enum Hint {
+    Controls,
+    Build,
 }
 
 #[derive(Component)]
@@ -91,19 +118,43 @@ const BLUE_HOVER: Color = Color::srgb(0.23, 0.53, 0.88);
 const SLATE: Color = Color::srgb(0.16, 0.21, 0.28);
 const SLATE_HOVER: Color = Color::srgb(0.22, 0.29, 0.38);
 /// The brass frame round buttons and the Settings card.
-const GOLD_FRAME: Color = Color::srgb(0.9, 0.66, 0.22);
-const GOLD_HOVER: Color = Color::srgb(1.0, 0.83, 0.36);
+pub(super) const GOLD_FRAME: Color = Color::srgb(0.9, 0.66, 0.22);
+pub(super) const GOLD_HOVER: Color = Color::srgb(1.0, 0.83, 0.36);
 const RIVET: Color = Color::srgb(0.62, 0.65, 0.74);
 
 /// Menu buttons are this wide; the logo above them is a little wider.
-/// The controls that aren't obvious (docs/SPEC.md → Controls, D40–D42).
-const CONTROLS_HINT: &str = "W sprint   Shift (hold) aim   C slide   R reload";
-/// Building and editing (D43, D44).
-const BUILD_HINT: &str = "Q E F V wall ramp floor cone   G edit   R reset an edit";
 const BUTTON_WIDTH: f32 = 380.0;
-const LOGO_WIDTH: f32 = 600.0;
+pub(super) const LOGO_WIDTH: f32 = 600.0;
 
-fn card(width: f32) -> impl Bundle {
+/// The controls that aren't obvious (docs/SPEC.md → Controls, D40–D42), with
+/// the bound keys: "W sprint   Shift (hold) aim   C slide   R reload".
+fn write_controls_hint(out: &mut String, b: &Bindings) {
+    let _ = write!(
+        out,
+        "{} sprint   {} (hold) aim   {} slide   {} reload",
+        b.name(Action::MoveForward),
+        b.name(Action::Aim),
+        b.name(Action::Crouch),
+        b.name(Action::Reload),
+    );
+}
+
+/// Building and editing (D43, D44), with the bound keys:
+/// "Q E F V wall ramp floor cone   G edit   R reset an edit".
+fn write_build_hint(out: &mut String, b: &Bindings) {
+    let _ = write!(
+        out,
+        "{} {} {} {} wall ramp floor cone   {} edit   {} reset an edit",
+        b.name(Action::Wall),
+        b.name(Action::Ramp),
+        b.name(Action::Floor),
+        b.name(Action::Cone),
+        b.name(Action::Edit),
+        b.name(Action::Reload),
+    );
+}
+
+pub(super) fn card(width: f32) -> impl Bundle {
     (
         Node {
             width: px(width),
@@ -148,16 +199,30 @@ fn rivet(left: bool, top: bool) -> impl Bundle {
     )
 }
 
-/// A rounded cartoon button: a brass frame with rivets, a shine along the top,
-/// an ink outline, a crystal on the left (when given) and the label.
+/// A pause-menu button: [`cartoon_button`] with its action (Resume is the
+/// primary one).
 fn menu_button(
     label: &str,
-    action: MenuAction,
+    action: PauseButton,
     height: f32,
     size: f32,
     crystal: Option<Handle<Image>>,
 ) -> impl Bundle {
-    let primary = action == MenuAction::Resume;
+    (
+        action,
+        cartoon_button(label, action == PauseButton::Resume, height, size, crystal),
+    )
+}
+
+/// A rounded cartoon button: a brass frame with rivets, a shine along the top,
+/// an ink outline, a crystal on the left (when given) and the label.
+pub(super) fn cartoon_button(
+    label: &str,
+    primary: bool,
+    height: f32,
+    size: f32,
+    crystal: Option<Handle<Image>>,
+) -> impl Bundle {
     let icon = crystal.map(|image| {
         (
             ImageNode::new(image),
@@ -171,7 +236,7 @@ fn menu_button(
         )
     });
     (
-        action,
+        Cartoon { primary },
         Button,
         Node {
             height: px(height),
@@ -259,9 +324,9 @@ fn spawn_menu(mut commands: Commands, art: Option<Res<UiArt>>) {
                     },
                 ));
                 for (label, action) in [
-                    ("RESUME", MenuAction::Resume),
-                    ("SETTINGS", MenuAction::Settings),
-                    ("QUIT", MenuAction::Quit),
+                    ("RESUME", PauseButton::Resume),
+                    ("SETTINGS", PauseButton::Settings),
+                    ("QUIT TO MENU", PauseButton::Quit),
                 ] {
                     c.spawn(Node {
                         width: px(BUTTON_WIDTH),
@@ -284,8 +349,8 @@ fn spawn_menu(mut commands: Commands, art: Option<Res<UiArt>>) {
                         ..default()
                     },
                     children![
-                        text(CONTROLS_HINT, 13.0, dim(0.75)),
-                        text(BUILD_HINT, 13.0, dim(0.75)),
+                        (Hint::Controls, text("", 13.0, dim(0.75))),
+                        (Hint::Build, text("", 13.0, dim(0.75))),
                         text("Esc resume   F3 stats   F4 tuning", 13.0, dim(0.6)),
                     ],
                 ));
@@ -311,10 +376,36 @@ fn spawn_menu(mut commands: Commands, art: Option<Res<UiArt>>) {
                     ));
                     header
                         .spawn(Node {
-                            width: px(130),
+                            flex_direction: FlexDirection::Row,
+                            column_gap: px(12),
                             ..default()
                         })
-                        .with_child(menu_button("BACK", MenuAction::Back, 46.0, 20.0, None));
+                        .with_children(|buttons| {
+                            buttons
+                                .spawn(Node {
+                                    width: px(180),
+                                    ..default()
+                                })
+                                .with_child(menu_button(
+                                    "CONTROLS",
+                                    PauseButton::Controls,
+                                    46.0,
+                                    20.0,
+                                    None,
+                                ));
+                            buttons
+                                .spawn(Node {
+                                    width: px(130),
+                                    ..default()
+                                })
+                                .with_child(menu_button(
+                                    "BACK",
+                                    PauseButton::Back,
+                                    46.0,
+                                    20.0,
+                                    None,
+                                ));
+                        });
                 });
                 c.spawn(Node {
                     flex_direction: FlexDirection::Row,
@@ -368,6 +459,7 @@ fn spawn_menu(mut commands: Commands, art: Option<Res<UiArt>>) {
                     )],
                 ));
             });
+            super::controls::spawn_card(root);
         });
 }
 
@@ -539,61 +631,69 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
 fn menu_visibility(
     menu: Res<MenuState>,
     mut root: Query<&mut Visibility, With<MenuRoot>>,
-    mut main: Query<&mut Node, (With<MainCard>, Without<SettingsCard>)>,
-    mut settings: Query<&mut Node, With<SettingsCard>>,
+    mut main: Query<&mut Node, (With<MainCard>, Without<SettingsCard>, Without<ControlsCard>)>,
+    mut settings: Query<&mut Node, (With<SettingsCard>, Without<ControlsCard>)>,
+    mut controls: Query<&mut Node, (With<ControlsCard>, Without<MainCard>)>,
 ) {
     if !menu.is_changed() {
         return;
     }
     for mut v in &mut root {
-        v.set_if_neq(if menu.menu_visible() {
+        v.set_if_neq(if menu.pause_layer_visible() {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         });
     }
     // Hidden pages take no layout space.
-    let display = |on: bool| if on { Display::Flex } else { Display::None };
-    for mut node in &mut main {
-        let d = display(menu.page == MenuPage::Main);
+    let show = |node: &mut Node, page: MenuPage| {
+        let d = if menu.page == page {
+            Display::Flex
+        } else {
+            Display::None
+        };
         if node.display != d {
             node.display = d;
         }
+    };
+    for mut node in &mut main {
+        show(&mut node, MenuPage::Main);
     }
     for mut node in &mut settings {
-        let d = display(menu.page == MenuPage::Settings);
-        if node.display != d {
-            node.display = d;
-        }
+        show(&mut node, MenuPage::Settings);
+    }
+    for mut node in &mut controls {
+        show(&mut node, MenuPage::Controls);
     }
 }
 
 fn menu_buttons(
-    buttons: Query<(&Interaction, &MenuAction, &InheritedVisibility), Changed<Interaction>>,
+    buttons: Query<(&Interaction, &PauseButton, &InheritedVisibility), Changed<Interaction>>,
     state: Res<State<AppState>>,
     run: Option<Res<Run>>,
     mut end_run: Option<ResMut<Messages<EndRun>>>,
     mut next: ResMut<NextState<AppState>>,
     mut menu: ResMut<MenuState>,
-    mut exit: MessageWriter<AppExit>,
 ) {
     for (interaction, action, visible) in &buttons {
         if *interaction != Interaction::Pressed || !visible.get() {
             continue;
         }
         match action {
-            MenuAction::Resume => {
+            PauseButton::Resume => {
                 if *state.get() == AppState::Paused {
                     next.set(AppState::Playing);
                 } else {
                     menu.menu_open = false;
                 }
             }
-            MenuAction::Settings => menu.page = MenuPage::Settings,
-            MenuAction::Back => menu.page = MenuPage::Main,
-            MenuAction::Quit => {
+            PauseButton::Settings => menu.page = MenuPage::Settings,
+            PauseButton::Controls => menu.page = MenuPage::Controls,
+            PauseButton::Back => menu.back(),
+            PauseButton::Quit => {
                 // Quitting a Waves run ends it and shows the results (D84);
-                // Quit on the results card (or outside a run) closes the game.
+                // quitting from the results card (or Practice) goes to the
+                // main menu.
                 match pause_quit(run.as_deref()) {
                     PauseQuit::EndRun => {
                         if let Some(end) = end_run.as_mut() {
@@ -602,11 +702,31 @@ fn menu_buttons(
                         next.set(AppState::Playing);
                     }
                     PauseQuit::Resume => next.set(AppState::Playing),
-                    PauseQuit::Exit => {
-                        exit.write(AppExit::Success);
-                    }
+                    PauseQuit::ToMenu => next.set(AppState::Menu),
                 }
             }
+        }
+    }
+}
+
+/// Rewrites the control hints when the bindings change (never per frame).
+fn refresh_hints(
+    tuning: Res<Tuning>,
+    mut shown: Local<Option<Bindings>>,
+    mut hints: Query<(&Hint, &mut Text)>,
+) {
+    if shown.as_ref() == Some(&tuning.bindings) {
+        return;
+    }
+    *shown = Some(tuning.bindings.clone());
+    for (hint, mut text) in &mut hints {
+        let mut line = String::new();
+        match hint {
+            Hint::Controls => write_controls_hint(&mut line, &tuning.bindings),
+            Hint::Build => write_build_hint(&mut line, &tuning.bindings),
+        }
+        if text.0 != line {
+            text.0 = line;
         }
     }
 }
@@ -672,18 +792,18 @@ fn button_looks(
             &Interaction,
             &mut BackgroundColor,
             Option<&mut BorderColor>,
-            Option<&MenuAction>,
+            Option<&Cartoon>,
             Option<&Widget>,
         ),
         With<Button>,
     >,
 ) {
-    for (interaction, mut bg, border, action, widget) in &mut buttons {
+    for (interaction, mut bg, border, cartoon, widget) in &mut buttons {
         let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
         let pressed = *interaction == Interaction::Pressed;
-        let (fill, edge) = match (action, widget) {
-            (Some(action), _) => {
-                let (rest, hover) = if *action == MenuAction::Resume {
+        let (fill, edge) = match (cartoon, widget) {
+            (Some(cartoon), _) => {
+                let (rest, hover) = if cartoon.primary {
                     (BLUE, BLUE_HOVER)
                 } else {
                     (SLATE, SLATE_HOVER)

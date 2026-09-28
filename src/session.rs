@@ -985,6 +985,16 @@ enum Msg {
         battery: bool,
     },
     Finish(SyncSender<SessionOutcome>),
+    /// A mode started from the main menu: Play → controllable (chunk 5).
+    Play(PlayRecord),
+}
+
+/// One `PIECED_PLAY_MS`: the main menu's Play click to the first frame the
+/// player can act, and the mode started.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PlayRecord {
+    pub ms: f64,
+    pub mode: &'static str,
 }
 
 /// The main thread's handle on the writer thread.
@@ -1031,6 +1041,10 @@ impl SessionWriter {
 
     pub fn record_launch(&self, record: LaunchRecord) {
         let _ = self.tx.send(Msg::Launch(record));
+    }
+
+    pub fn record_play(&self, record: PlayRecord) {
+        let _ = self.tx.send(Msg::Play(record));
     }
 
     pub fn set_preset(&self, preset: String, graphics: String, battery: bool) {
@@ -1082,6 +1096,10 @@ fn run_writer(config: WriterConfig, rx: Receiver<Msg>, dropped: Arc<AtomicU64>) 
                 state.launch = Some(record);
                 state.write_json(false);
             }
+            Ok(Msg::Play(record)) => {
+                state.plays.push(record);
+                state.write_json(false);
+            }
             Ok(Msg::Preset {
                 preset,
                 graphics,
@@ -1127,6 +1145,7 @@ struct WriterState {
     power: Vec<PowerSample>,
     next_sample_ms: f64,
     launch: Option<LaunchRecord>,
+    plays: Vec<PlayRecord>,
     dropped: Arc<AtomicU64>,
     spikes: SpikeStats,
 }
@@ -1152,6 +1171,7 @@ impl WriterState {
             power: Vec::new(),
             next_sample_ms: 0.0,
             launch: None,
+            plays: Vec::new(),
             dropped,
             spikes: SpikeStats::default(),
         };
@@ -1280,7 +1300,9 @@ impl WriterState {
                         .map(|(phase, ms)| json!({ "phase": phase, "ms": ms }))
                         .collect::<Vec<_>>()
                 }),
+                "ready": "the main menu can be clicked (or, when play starts straight away, the player can act)",
             },
+            "plays": self.plays,
             "power_samples": self.power,
             "frames_logged": self.frames,
             "rows_dropped": self.dropped.load(Ordering::Relaxed),
@@ -1411,6 +1433,12 @@ impl SessionLog {
             self.quit_line = Some(line);
         }
         self.quit_line.as_deref().unwrap_or_default()
+    }
+
+    /// Records a `PIECED_PLAY_MS` (a mode started from the main menu) in
+    /// `session.json`.
+    pub fn record_play(&self, record: PlayRecord) {
+        self.writer.record_play(record);
     }
 
     /// The printed quit line, once the session has finished.

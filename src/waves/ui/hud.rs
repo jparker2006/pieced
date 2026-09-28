@@ -274,6 +274,7 @@ fn show(visibility: &mut Mut<Visibility>, on: bool) {
 #[allow(clippy::type_complexity)]
 fn update_run_hud(
     time: Res<Time<Real>>,
+    tuning: Res<crate::tuning::Tuning>,
     summary: Option<Res<RunSummary>>,
     mut clock: ResMut<HudClock>,
     mut texts: Query<(&RunUi, &mut Text)>,
@@ -355,7 +356,8 @@ fn update_run_hud(
                 }
             }
             RunUi::HintKey => set_text(&mut text, scratch, |s| {
-                s.push_str(crate::input::start_key_name())
+                // The bound key (D93), e.g. "Enter".
+                s.push_str(tuning.bindings.name(crate::input::Action::Start))
             }),
             _ => {}
         }

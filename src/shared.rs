@@ -11,6 +11,11 @@ pub enum AppState {
     Boot,
     Playing,
     Paused,
+    /// The main menu (D92, M3 chunk 5): the logo over the live island with
+    /// the camera orbiting; no player input, the cursor free. The native game
+    /// opens here after `Boot` unless `--waves`/`--practice` or a scenario
+    /// skips it.
+    Menu,
 }
 
 /// Which game is being played (docs/M3-SPEC.md → Scope and the seams).
@@ -20,8 +25,8 @@ pub enum AppState {
 ///   and scenario runs unchanged.
 /// - **Waves** is M3's mode: grunts, one life, waves, score.
 ///
-/// Set before `Startup` (the dummy spawns only in Practice) and never changed
-/// mid-app except by the main menu (chunk 5).
+/// Set before `Startup` (the dummy spawns only in Practice) and changed
+/// mid-app only by the main menu (chunk 5: `waves::modes::StartMode`).
 #[derive(Resource, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum GameMode {
     Waves,
