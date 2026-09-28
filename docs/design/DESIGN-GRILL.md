@@ -210,6 +210,28 @@ After play-test 5 (fun 4.5, no unfair deaths), Jake asked: "What state is this w
 |---|---|---|
 | D95 | **Waves closes with three gates carried (Jake: "wrap up and close it").** | <ul><li>M3 closes with W1–W6, W9 and W10 PASS.</li><li>**W7** (60 fps on battery with Low Power Mode to wave 6), **W8** (3 warm launches in a row < 5 s) and **W0** (M2's S2/S3) are **carried** into the next milestone, not passed.</li><li>That milestone is the **AAA look-and-feel pass**, and it starts with a GPU budget: the first spike report puts 86% of slow frames on the GPU.</li><li>Story and real progression come after it (Jake's order: AAA look and feel, then progression).</li></ul> |
 
+## Round 11: grilling Milestone 4, the AAA pass, 2026-09-28
+
+The goal, from Jake: make Pieced "play and feel like a AAA game". Story and real progression come after this milestone, not in it.
+
+**Context going in:**
+- The latest spike report (`20260928-212450`, AC, with the fairness suite running beside the game) puts 86% of slow frames in `acquire`: the GPU is behind. Normal frames already wait about 6 ms there.
+- The best battery session (`20260928-163647`, battery + Low Power Mode) had a mean of 16.98 ms, 278 frames > 25 ms and 94.3% < 18 ms.
+- Warm launches were 4,139 and 4,570 ms, but never 3 in a row. The knight rig adds 1.3 s; cold launches reach 12.9 s.
+- The Battery preset renders ≤ 1.4 MP with MSAA off plus FXAA, inverted-hull outlines, a far layer of ≤ 90k triangles and ≤ 64 additive halos. The game has no music.
+
+**Batch 1: what "AAA" means, and the GPU (Q94–Q100).** Jake: "Q94 rec … Q95 Fortnite, COD Zombies, GTA, Overwatch... AAA games … Q96–Q100 rec is good" (Q98: "rec 1-4 is good").
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D96 | **AAA is led by feel (Q94).** | Animation, hit feedback, weapons, camera, audio and menus are polished to AAA level. The cartoon style stays: the look gets a polish pass, not a new style. |
+| D97 | **Reference games (Q95).** | **Fortnite, CoD Zombies, GTA and Overwatch** ("AAA games"). Fortnite for building and weapon juice and cartoon polish; CoD Zombies for the wave loop's tension, round transitions and audio; GTA for the camera, the world feeling alive, and menu and UI presentation; Overwatch for hit feedback, character animation and stylized readability. |
+| D98 | **The 60 fps bar, measured on presented frames (Q96).** | D5's thresholds stay exactly (mean 16.4–17.0 ms, 0 frames > 25 ms, ≥ 99% < 18 ms), but they're measured on **presented frames** (the drawable cadence: what reaches the screen), not CPU frame intervals. The method changes, not the bar. |
+| D99 | **A GPU budget first (Q97).** | Chunk 0 is the GPU budget. Per-pass GPU timing is verified in Jake's normal sessions. On battery with Low Power Mode at wave 6, the GPU gets **≤ 12 ms per frame**, split by pass (world, outlines, far, effects, UI, FXAA). Every AAA feature must fit its slice or pay for itself. |
+| D100 | **Pre-approved performance levers (Q98).** | Without asking Jake: <ol><li>the far layer (castle, sky, galaxy) renders at half resolution into its own buffer and is composited;</li><li>dynamic resolution on the Battery preset only, never below 0.8×, with a sharpening pass;</li><li>overdraw caps on halos, particles and spell bursts by screen coverage;</li><li>outlines fade in closer (15–25 m instead of 25–40 m), and knights beyond 20 m animate at 30 Hz.</li></ol>Thinner grass isn't pre-approved. Anything that visibly changes the castle or a scored view still goes to Jake. |
+| D101 | **The carried gates (Q99).** | W7 and W8 become M4 gates, measured on the final AAA look. W0 closes automatically when they pass (M2's S2 and S3 are the same measurement). W8 is worked in chunk 0: the knight rig's 1.3 s and the pre-window load, aiming at about 3 s warm. The gate stays < 5 s. |
+| D102 | **A smaller target board (Q100).** | Codex makes 8 "AAA version of this frame" concept images, one at a time, each using an in-game render as its reference. Jake scores the matching in-game views 1–5, and each needs ≥ 4. Stills can't show feel, so feel is judged in play-tests. |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**
