@@ -1,5 +1,6 @@
 //! Far-view motion: the turning galaxy, bobbing islands, ships on looping
-//! splines and pulsing stained glass. Every system here is a pure transform or
+//! splines and pulsing stained glass (and, in [`super::magic`], the castle's
+//! rune ring, lanterns and the sky's shimmer, aurora and shooting stars). Every system here is a pure transform or
 //! parameter update driven by [`SkyClock`], so it runs headless and tests can
 //! step it ([`FarMotionPlugin`] needs no renderer, window or assets on disk).
 
@@ -272,11 +273,23 @@ impl Plugin for FarMotionPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SkyClock>()
             .init_resource::<GlassPulse>()
+            .init_resource::<super::magic::SkyGlow>()
+            .init_resource::<super::magic::ShootingStars>()
             .add_systems(
                 Update,
                 (
                     tick_sky_clock,
-                    (spin_galaxy, bob_islands, fly_ships, pulse_glass),
+                    (
+                        spin_galaxy,
+                        bob_islands,
+                        fly_ships,
+                        pulse_glass,
+                        super::magic::turn_rune_ring,
+                        super::magic::float_lanterns,
+                        super::magic::drift_motes,
+                        super::magic::shimmer_galaxy,
+                        super::magic::fly_shooting_stars,
+                    ),
                 )
                     .chain()
                     .in_set(FarMotionSet),

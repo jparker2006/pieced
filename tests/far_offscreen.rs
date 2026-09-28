@@ -314,3 +314,98 @@ fn render_the_far_view_offscreen() {
     assert_pipelines_ok(&app);
     let _ = Path::new(&out);
 }
+
+/// The castle's look check (M3 W5, docs/M3-SPEC.md → The castle and the sky):
+/// the spawn vista and the look up at the castle, next to C4. It writes, with
+/// a greyscale copy of each, into `PIECED_CASTLE_OUT` (default
+/// `<tmp>/pieced-castle`):
+///
+/// - `castle-spawn.png`: from the player spawn, level, facing -Z (the castle
+///   upper right, as C4 frames it);
+/// - `castle-spawn-t01.png`: the gallery's T01 camera (the west edge, 5° left,
+///   5° down);
+/// - `castle-up.png`: looking up at the castle from the void 420 m in front of
+///   it, below its rock;
+/// - `castle-up-t10.png`: the gallery's T10 camera (250 m out, 24° up).
+///
+/// The sky clock is set so a shooting star is crossing the spawn view.
+///
+/// ```sh
+/// PIECED_CASTLE_OUT=/some/dir cargo test --locked --test far_offscreen castle -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "needs a GPU: run by hand to review the castle"]
+fn render_the_castle_offscreen() {
+    use pieced::far::ShootingStars;
+    use pieced::shared::LookAngles;
+    let out = std::env::var("PIECED_CASTLE_OUT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("pieced-castle"));
+    std::fs::create_dir_all(&out).unwrap();
+    let mut app = far_app();
+    let mut boot_frames = 0;
+    while *app.world().resource::<State<AppState>>().get() == AppState::Boot {
+        app.update();
+        boot_frames += 1;
+        assert!(boot_frames < 900, "Boot never ended");
+    }
+    frames(&mut app, 10);
+    let layout = app.world().resource::<FarLayout>().clone();
+
+    // A moment when a shooting star crosses the spawn view.
+    let spawn_view = |d: Vec3| {
+        let az = d.x.atan2(-d.z).to_degrees();
+        let el = d.y.asin().to_degrees();
+        az.abs() < 38.0 && (8.0..32.0).contains(&el)
+    };
+    let pass = ShootingStars::default()
+        .passes(40)
+        .into_iter()
+        .find(|p| spawn_view(p.direction(0.2)) && spawn_view(p.direction(0.6)))
+        .expect("a shooting star crosses the spawn view");
+    let seconds = pass.start_s + pass.duration_s as f64 * 0.45;
+    println!("sky time {seconds:.2} s (shooting star {})", pass.index);
+
+    let save = |app: &mut App, name: &str, camera: Transform| {
+        view(app, seconds, camera);
+        let shot = capture(app, Some(out.join(format!("{name}.png"))));
+        let grey = shot.try_into_dynamic().unwrap().to_luma8();
+        grey.save(out.join(format!("{name}-grey.png"))).unwrap();
+    };
+    let look = |eye: Vec3, yaw: f32, pitch: f32| {
+        Transform::from_translation(eye).with_rotation(
+            LookAngles {
+                yaw: yaw.to_radians(),
+                pitch: pitch.to_radians(),
+            }
+            .rotation(),
+        )
+    };
+    save(&mut app, "castle-spawn", look(SPAWN_EYE, 0.0, 0.0));
+    save(
+        &mut app,
+        "castle-spawn-t01",
+        look(Vec3::new(-19.5, 1.62, 14.0), 5.0, -5.0),
+    );
+    let station = layout.station.position;
+    let away = |deg: f32| {
+        let a = deg.to_radians();
+        Vec3::new(a.sin(), 0.0, -a.cos())
+    };
+    let up_eye = (station + away(220.8) * 420.0).with_y(60.0);
+    save(
+        &mut app,
+        "castle-up",
+        Transform::from_translation(up_eye).looking_at(station + Vec3::Y * 150.0, Vec3::Y),
+    );
+    let t10_eye = (station + away(220.8) * 250.0).with_y(70.0);
+    save(
+        &mut app,
+        "castle-up-t10",
+        Transform::from_translation(t10_eye).looking_at(
+            station.with_y(70.0 + 250.0 * 24f32.to_radians().tan()),
+            Vec3::Y,
+        ),
+    );
+    assert_pipelines_ok(&app);
+}

@@ -3,18 +3,18 @@
   "kind": "station",
   "source": "art/blender/assets/far.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 14760,
+  "triangles": 18190,
   "triangle_budget": 25000,
   "bounds": {
     "min": [
-      -225.1619,
+      -289.207,
       0.4,
-      -203.0
+      -265.6431
     ],
     "max": [
-      218.1462,
-      463.0,
-      203.0
+      294.466,
+      599.2,
+      187.9758
     ]
   },
   "parts": {
@@ -22,144 +22,117 @@
       "parent": "station",
       "bounds": {
         "min": [
-          -225.1619,
-          65.1202,
-          -196.2762
+          -289.207,
+          64.334,
+          -265.6431
         ],
         "max": [
-          218.1462,
-          196.0,
-          161.3785
+          294.466,
+          254.2,
+          187.9758
         ]
       },
-      "triangles": 3626,
+      "triangles": 3858,
       "colors": [
-        "far_rock",
         "far_rock_dark",
         "far_rock_shade",
+        "far_stone_dark",
         "far_stone_light",
-        "grass",
-        "grass_shadow"
+        "foliage_shadow"
       ]
     },
-    "Cathedral": {
+    "Castle": {
       "parent": "station",
       "bounds": {
         "min": [
-          -204.1384,
-          196.0,
-          -203.0
+          -275.9611,
+          185.0,
+          -257.6067
         ],
         "max": [
-          204.1384,
-          463.0,
-          203.0
+          275.9677,
+          588.2,
+          150.0156
         ]
       },
-      "triangles": 5870,
+      "triangles": 8936,
       "colors": [
         "far_stone",
         "far_stone_dark",
         "far_stone_light",
-        "far_stone_shade"
+        "far_stone_shade",
+        "gun_brass",
+        "gun_brass_dark",
+        "gun_brass_light",
+        "gun_glass_violet",
+        "knight_purple_shadow"
       ]
     },
     "GlassNave": {
       "parent": "station",
       "bounds": {
         "min": [
-          -22.0,
-          199.0,
-          -147.5
+          -29.0,
+          251.0,
+          -93.2112
         ],
         "max": [
-          22.0,
-          350.0,
-          -66.3
+          29.0,
+          399.0,
+          -56.3
         ]
       },
-      "triangles": 2378,
+      "triangles": 135,
       "colors": [
-        "crystal_blue",
-        "far_glass_blue",
         "far_glass_gold",
-        "far_glass_magenta",
         "far_glass_teal",
         "far_glass_white",
         "glass_cyan",
-        "glass_violet",
-        "gun_iron"
-      ]
-    },
-    "GlassSide": {
-      "parent": "station",
-      "bounds": {
-        "min": [
-          -138.3,
-          246.0,
-          -72.8
-        ],
-        "max": [
-          138.3,
-          326.0,
-          -21.691
-        ]
-      },
-      "triangles": 884,
-      "colors": [
-        "far_glass_blue",
-        "far_glass_gold",
-        "far_glass_magenta",
-        "far_glass_teal",
-        "far_glass_white",
-        "glass_cyan",
-        "glass_violet",
-        "gun_iron"
+        "gun_brass"
       ]
     },
     "GlassTowers": {
       "parent": "station",
       "bounds": {
         "min": [
-          -109.0,
-          234.0,
-          -56.3
+          -62.0,
+          305.0,
+          -66.8
         ],
         "max": [
-          109.0,
-          338.0,
-          -56.3
+          62.0,
+          379.0,
+          -66.8
         ]
       },
-      "triangles": 1570,
+      "triangles": 702,
       "colors": [
         "far_glass_blue",
         "far_glass_gold",
-        "far_glass_magenta",
         "far_glass_teal",
         "far_glass_white",
         "glass_cyan",
-        "glass_violet",
-        "gun_iron"
+        "gun_brass"
       ]
     },
     "GlassWindows": {
       "parent": "station",
       "bounds": {
         "min": [
-          -202.9765,
-          200.0,
-          -202.9765
+          -272.5172,
+          187.4593,
+          -256.0632
         ],
         "max": [
-          202.9765,
-          236.8,
-          202.9765
+          271.3566,
+          599.2,
+          147.598
         ]
       },
-      "triangles": 222,
+      "triangles": 4349,
       "colors": [
         "glass_yellow",
+        "spell_gold",
         "star_gold"
       ]
     },
@@ -167,14 +140,14 @@
       "parent": "station",
       "bounds": {
         "min": [
-          76.9631,
-          10.4,
-          -122.838
+          80.2926,
+          14.4,
+          -131.6272
         ],
         "max": [
-          89.987,
-          195.4,
-          -113.071
+          94.2794,
+          250.4,
+          -121.3547
         ]
       },
       "triangles": 30,
@@ -186,14 +159,14 @@
       "parent": "station",
       "bounds": {
         "min": [
-          35.3656,
-          25.4,
-          -141.6826
+          26.5462,
+          36.4,
+          -153.3214
         ],
         "max": [
-          47.1788,
-          195.4,
-          -137.2417
+          38.5056,
+          250.4,
+          -149.7471
         ]
       },
       "triangles": 30,
@@ -205,14 +178,14 @@
       "parent": "station",
       "bounds": {
         "min": [
-          -30.0576,
+          -46.7587,
           0.4,
-          -142.8865
+          -179.3779
         ],
         "max": [
-          -13.0217,
-          195.4,
-          -138.8041
+          -25.8087,
+          250.4,
+          -173.2943
         ]
       },
       "triangles": 30,
@@ -224,14 +197,14 @@
       "parent": "station",
       "bounds": {
         "min": [
-          -94.0695,
-          35.4,
-          -135.2248
+          -94.3134,
+          46.4,
+          -138.5987
         ],
         "max": [
-          -83.5218,
-          195.4,
-          -127.6116
+          -81.9184,
+          250.4,
+          -129.8625
         ]
       },
       "triangles": 30,
@@ -243,14 +216,14 @@
       "parent": "station",
       "bounds": {
         "min": [
-          212.2971,
-          49.4,
-          -107.5061
+          -146.4986,
+          34.4,
+          -265.5652
         ],
         "max": [
-          217.6571,
-          179.4,
-          -99.3909
+          -135.5042,
+          184.4,
+          -262.5679
         ]
       },
       "triangles": 30,
@@ -262,14 +235,14 @@
       "parent": "station",
       "bounds": {
         "min": [
-          -222.5825,
-          43.4,
-          -106.8688
+          145.4229,
+          78.4,
+          -230.1969
         ],
         "max": [
-          -216.5225,
-          183.4,
-          -97.91
+          153.3437,
+          198.4,
+          -227.4698
         ]
       },
       "triangles": 30,
@@ -281,14 +254,14 @@
       "parent": "station",
       "bounds": {
         "min": [
-          120.6175,
-          59.4,
-          -192.092
+          264.4591,
+          146.4,
+          -51.7277
         ],
         "max": [
-          127.2663,
-          169.4,
-          -188.6632
+          271.4284,
+          242.4,
+          -49.5895
         ]
       },
       "triangles": 30,
@@ -298,12 +271,40 @@
     }
   },
   "attach": {
-    "GlowCrystal": {
+    "AuraHall": {
       "parent": "station",
       "position": [
         0.0,
-        227.0,
-        -145.0
+        371.0,
+        -10.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "AuraKeep": {
+      "parent": "station",
+      "position": [
+        0.0,
+        513.0,
+        48.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "GlowDoor": {
+      "parent": "station",
+      "position": [
+        0.0,
+        264.5,
+        -98.5112
       ],
       "rotation": [
         0.0,
@@ -316,8 +317,8 @@
       "parent": "station",
       "position": [
         0.0,
-        296.9,
-        -72.0
+        348.6,
+        -64.0
       ],
       "rotation": [
         0.0,
@@ -329,9 +330,9 @@
     "GlowTowerLeft": {
       "parent": "station",
       "position": [
-        98.0,
-        286.0,
-        -62.0
+        56.0,
+        342.0,
+        -71.5
       ],
       "rotation": [
         0.0,
@@ -343,9 +344,9 @@
     "GlowTowerRight": {
       "parent": "station",
       "position": [
-        -98.0,
-        286.0,
-        -62.0
+        -56.0,
+        342.0,
+        -71.5
       ],
       "rotation": [
         0.0,
@@ -357,9 +358,9 @@
     "Mist1": {
       "parent": "station",
       "position": [
-        84.1683,
-        10.4,
-        -118.934
+        88.013,
+        14.4,
+        -127.5444
       ],
       "rotation": [
         0.0,
@@ -371,9 +372,9 @@
     "Mist2": {
       "parent": "station",
       "position": [
-        41.5446,
-        25.4,
-        -140.3827
+        32.7274,
+        36.4,
+        -152.4729
       ],
       "rotation": [
         0.0,
@@ -385,9 +386,9 @@
     "Mist3": {
       "parent": "station",
       "position": [
-        -21.7453,
+        -36.6223,
         0.4,
-        -142.1897
+        -177.9816
       ],
       "rotation": [
         0.0,
@@ -399,9 +400,9 @@
     "Mist4": {
       "parent": "station",
       "position": [
-        -89.3331,
-        35.4,
-        -132.2136
+        -88.7305,
+        46.4,
+        -135.1669
       ],
       "rotation": [
         0.0,
@@ -413,9 +414,9 @@
     "Mist5": {
       "parent": "station",
       "position": [
-        215.5927,
-        49.4,
-        -103.8219
+        -140.8395,
+        34.4,
+        -264.9315
       ],
       "rotation": [
         0.0,
@@ -427,9 +428,9 @@
     "Mist6": {
       "parent": "station",
       "position": [
-        -220.231,
-        43.4,
-        -102.8131
+        149.2208,
+        78.4,
+        -229.4524
       ],
       "rotation": [
         0.0,
@@ -441,9 +442,9 @@
     "Mist7": {
       "parent": "station",
       "position": [
-        124.1701,
-        59.4,
-        -190.8889
+        268.0656,
+        146.4,
+        -51.2052
       ],
       "rotation": [
         0.0,
@@ -456,7 +457,7 @@
       "parent": "station",
       "position": [
         0.0,
-        196.0,
+        251.0,
         0.0
       ],
       "rotation": [

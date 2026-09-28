@@ -133,7 +133,7 @@ from `art/palette.json`, sampled from the target images by
 | `models/planet.json` | `art/blender/assets/far.py` | Sidecar |
 | `models/ship.glb` | `art/blender/assets/far.py` | Small starship with an additive engine streak |
 | `models/ship.json` | `art/blender/assets/far.py` | Sidecar |
-| `models/station.glb` | `art/blender/assets/far.py` | Gothic cathedral station: slate stone, spires and pinnacles, buttresses, flush stained glass with a great jewel window, arcade, ring walkway, columnar floating rock, waterfalls |
+| `models/station.glb` | `art/blender/assets/far.py` | The castle station (M3-C4, the starlit citadel): a castle city on a columnar floating rock, a town of cone-roofed turrets and houses round the rim, the great terrace and its glowing gate, the great hall with its gold-and-teal rose window, the keep stacked like a wedding cake, star-tipped spires, hundreds of warm windows (one part), bridges, two satellite castle rocks, waterfalls, aura glow points |
 | `models/station.json` | `art/blender/assets/far.py` | Sidecar |
 
 ## Shaders (`assets/shaders/`)

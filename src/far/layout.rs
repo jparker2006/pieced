@@ -2,11 +2,10 @@
 //! player spawn (2, 0, 14) facing -Z. Pure data, so tests can check it.
 //!
 //! - The galaxy's core is upper left: azimuth -21°, 28° up.
-//! - The station fills the upper-right quarter: azimuth 30°, 640 m out, its
-//!   platform 120 m up, so from spawn its ring spans about 12°–48° of azimuth,
-//!   its front rim is about 14° up, its rock hangs to the horizon and its
-//!   flèche just reaches the top of a level view (T01, T02): broader than it is
-//!   tall, as the targets paint it. Its waterfalls fall past the horizon.
+//! - The station, the castle (M3-C4), fills the upper-right quarter: azimuth
+//!   30°, 640 m out, its plaza 120 m up, so from spawn its city spans about
+//!   6°–54° of azimuth, its rock hangs to the horizon and its keep's needle
+//!   just reaches the top of a level view. Its waterfalls fall past the horizon.
 //! - The ringed planet sits low in the middle of the view below and left of the
 //!   station: azimuth 4°, 13° up, 800 m out, about 13° across.
 //! - Floating islands fill the sky in three depth layers (T01, T03, T11): a near
@@ -400,20 +399,22 @@ mod tests {
     }
 
     #[test]
-    fn the_station_fills_the_upper_right_quarter_from_spawn() {
-        // T01, T02: the ring spans the upper right from about 12° to the
-        // view's edge; the rock hangs down to the horizon; the flèche reaches
-        // about the top of a level view (±35° tall, ±47° wide), so the whole
-        // station is broader than it is tall.
+    fn the_castle_fills_the_upper_right_quarter_from_spawn() {
+        // C4 (M3, D94): from spawn the castle city spans the upper right from
+        // about 6° out to the view's edge, its rock hangs to the horizon and
+        // its keep's needle reaches the top of a level view (±35° tall, ±48°
+        // wide). The centre is stacked like a wedding cake: the keep rises
+        // well above the ring of towers round it.
         let side = station_sidecar();
         let platform = side.attach("Platform").unwrap().position();
         let part = |name: &str| side.part(name).unwrap().bounds;
         let d = STATION_DISTANCE;
-        let half_width = part("Cathedral").max[0].max(-part("Cathedral").min[0]);
+        let castle = part("Castle");
+        let half_width = castle.max[0].max(-castle.min[0]);
         let left = STATION_AZIMUTH - (half_width / d).atan().to_degrees();
         let right = STATION_AZIMUTH + (half_width / d).atan().to_degrees();
         assert!(
-            (8.0..16.0).contains(&left) && right > 44.0,
+            (4.0..14.0).contains(&left) && right > 44.0,
             "{left}°..{right}°"
         );
         let height = |y: f32| {
@@ -421,13 +422,17 @@ mod tests {
                 .atan()
                 .to_degrees()
         };
-        let (bottom, top) = (
-            height(part("Base").min[1]),
-            height(part("Cathedral").max[1]),
-        );
+        let (bottom, top) = (height(part("Base").min[1]), height(castle.max[1]));
         assert!((-8.0..3.0).contains(&bottom), "rock down to {bottom}°");
-        assert!((26.0..36.0).contains(&top), "spires up to {top}°");
-        assert!(top - bottom < right - left, "{bottom}°..{top}° tall");
+        assert!((30.0..36.0).contains(&top), "spires up to {top}°");
+        // The keep (the tallest thing) is at least 300 m over the plaza, the
+        // hall's rose window a third of the way up.
+        assert!(castle.max[1] - platform.y > 300.0);
+        let rose = part("GlassNave");
+        let rose_mid = (rose.min[1] + rose.max[1]) / 2.0 - platform.y;
+        assert!((60.0..160.0).contains(&rose_mid), "rose at {rose_mid} m");
+        // The rune ring (src/far/magic.rs) encircles the castle's main body.
+        assert!(super::super::magic::RING_RADIUS > part("GlassTowers").max[0] * 3.0);
         let (_, el) = seen(FarLayout::default().station.position);
         assert!((9.0..16.0).contains(&el), "platform {el}° up");
     }

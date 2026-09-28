@@ -26,11 +26,17 @@
 
 pub mod galaxy;
 pub mod layout;
+pub mod magic;
 pub mod motion;
 pub mod waterfall;
 
 pub use galaxy::{GALAXY_FACE, GALAXY_SEED, GalaxyParams, galaxy_image, generate_galaxy};
 pub use layout::{FarLayout, FarPiece, IslandSpec, SPAWN_EYE, ShipSpec};
+pub use magic::{
+    Aurora, Ember, GalaxyLayer, Lantern, LanternPath, MagicAssets, MagicPart, Mote, RuneRing,
+    SHIMMER_PERIOD_S, ShootingStar, ShootingStars, SkyGlow, SkyMagic, StarPass, Twinkle,
+    aurora_level, shimmer_level, spawn_sky_magic,
+};
 pub use motion::{
     Bob, FarMotionPlugin, FarMotionSet, GALAXY_PERIOD_S, GLASS_PERIOD_S, GalaxySky, GalaxySpin,
     GlassGlow, GlassPane, GlassPulse, ShipFlight, ShipLoop, SkyClock, galaxy_rotation, glass_level,
@@ -107,7 +113,10 @@ impl Plugin for FarViewPlugin {
                 insert_galaxy_spin,
                 (
                     spawn_far_view,
+                    spawn_sky_magic,
                     create_far_assets,
+                    magic::create_magic_assets,
+                    magic::dress_sky_magic,
                     spawn_horizon_glow,
                     warm_far_variants,
                 )
@@ -562,7 +571,7 @@ fn create_far_assets(
     pulse.panes = glass_panes(&mut far);
     let glass = pulse.panes.iter().map(|p| p.material.clone()).collect();
     let assets = FarAssets {
-        station: far.add(FarMaterial::default().with_haze(0.5)),
+        station: far.add(FarMaterial::default().with_haze(0.4)),
         island: far.add(FarMaterial::default()),
         planet: far.add(FarMaterial::default().with_haze(0.3)),
         ship: far.add(FarMaterial::default().with_haze(0.45)),
@@ -662,11 +671,31 @@ fn far_layout_cube() -> Mesh {
 }
 
 /// Warms the far view's own pipeline variants: waterfalls and additive far
-/// surfaces (opaque far surfaces and halos are warmed by `look`).
-fn warm_far_variants(mut warmup: Warmup, mut meshes: ResMut<Assets<Mesh>>, assets: Res<FarAssets>) {
+/// surfaces (opaque far surfaces and halos are warmed by `look`), and every
+/// mesh and material of the castle's magic, so the first frame that shows the
+/// ring, a lantern or a shooting star never hitches.
+fn warm_far_variants(
+    mut warmup: Warmup,
+    mut meshes: ResMut<Assets<Mesh>>,
+    assets: Res<FarAssets>,
+    magic: Res<MagicAssets>,
+) {
     let cube = meshes.add(far_layout_cube());
     warmup.add(cube.clone(), assets.waterfall.clone());
     warmup.add(cube, assets.trail.clone());
+    for part in [
+        MagicPart::Ring,
+        MagicPart::Lantern,
+        MagicPart::LanternGlow,
+        MagicPart::Ember,
+        MagicPart::Mote,
+        MagicPart::Twinkle,
+        MagicPart::Streak,
+        MagicPart::Aurora(0),
+    ] {
+        let (mesh, material) = magic.mesh_and_material(part);
+        warmup.add(mesh, material);
+    }
 }
 
 /// Gives far models their part materials and halos once the look has dressed
@@ -772,14 +801,29 @@ fn attach_halo(model: &FarModel, point: &str) -> Option<(Halo, Option<GlassGlow>
     if let Some(glass) = point.strip_prefix("Glow") {
         let phase = GLASS_PHASES[glass_group(point)];
         let (size, color, low, high) = match glass {
-            // The great window: a soft blue-white bloom over its jewel colours.
-            "Nave" => (130.0, cartoon::GLASS_CYAN, 0.16, 0.45),
-            // The crystal over the door burns brightest.
+            // The rose window, the castle's heart: a warm gold bloom.
+            "Nave" => (110.0, cartoon::STAR_GOLD, 0.12, 0.26),
+            // The gate glows brightest.
+            "Door" => (50.0, cartoon::SPELL_GOLD, 0.4, 0.8),
+            // The M2 cathedral's crystal (kept for older station models).
             "Crystal" => (60.0, cartoon::CRYSTAL_BLUE, 0.5, 1.1),
-            // The wing towers' tall windows.
-            _ => (100.0, cartoon::GLASS_VIOLET, 0.14, 0.4),
+            // The flanking towers' teal lancets.
+            _ => (90.0, cartoon::FAR_GLASS_TEAL, 0.14, 0.36),
         };
         return Some((Halo::new(color, size, 0.3), Some(glow(phase, low, high))));
+    }
+    if let Some(aura) = point.strip_prefix("Aura") {
+        // The castle's warm golden aura (C4): wide, soft, breathing with the
+        // warm windows.
+        let (size, low, high) = match aura {
+            "Hall" => (420.0, 0.07, 0.11),
+            _ => (360.0, 0.1, 0.16),
+        };
+        let phase = GLASS_PHASES[3];
+        return Some((
+            Halo::new(cartoon::STAR_GOLD, size, low),
+            Some(glow(phase, low, high)),
+        ));
     }
     if point.starts_with("Mist") {
         if !model.mist {
