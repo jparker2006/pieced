@@ -189,7 +189,8 @@ impl<'a> NavGrid<'a> {
             return None;
         }
         let cell = GridCell::new(x, z, level);
-        if self.map.get(SlotKey::Ramp(cell)).is_some() || self.map.get(SlotKey::Cone(cell)).is_some()
+        if self.map.get(SlotKey::Ramp(cell)).is_some()
+            || self.map.get(SlotKey::Cone(cell)).is_some()
         {
             return None;
         }
@@ -616,7 +617,10 @@ mod tests {
             .plan(ground(3, 5), ground(3, 5).center(), ground(4, 5), 2000)
             .path
             .expect("around the end of the run");
-        assert!(path.iter().any(|n| n.z == 11), "goes round the end: {path:?}");
+        assert!(
+            path.iter().any(|n| n.z == 11),
+            "goes round the end: {path:?}"
+        );
         // Fully sealed: unreachable, and the search stops.
         let mut sealed = walls.clone();
         sealed.push(PieceSlot::wall(GridCell::new(3, 11, 0), Facing::East));

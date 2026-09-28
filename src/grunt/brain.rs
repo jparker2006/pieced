@@ -29,8 +29,8 @@ use crate::{
     orb::Wand,
     rng::{Rng, SimRng},
     shared::{
-        EyeHeight, GalleryFreeze, GameCue, Layer, LookAngles, PieceChange, PieceChanged,
-        PieceKind, Player, PlayerIntent, SimTick, TICK_SECONDS,
+        EyeHeight, GalleryFreeze, GameCue, Layer, LookAngles, PieceChange, PieceChanged, PieceKind,
+        Player, PlayerIntent, SimTick, TICK_SECONDS,
     },
     tuning::Tuning,
 };
@@ -53,6 +53,8 @@ pub const STRAFE_RADIUS: f32 = 1.2;
 pub const STUCK_DISTANCE: f32 = 0.5;
 /// …in this long (s), or it re-plans and a stuck event is counted.
 pub const STUCK_SECONDS: f32 = 3.0;
+/// Ticks of pushing on the ground without moving before a grunt hops.
+pub const BLOCKED_TICKS: u8 = 12;
 /// Yaw and pitch turn rates (rad/s): quick, but a turn still reads.
 const YAW_RATE: f32 = 12.0;
 const PITCH_RATE: f32 = 6.0;
@@ -106,7 +108,10 @@ impl GruntMode {
 pub enum ShotTarget {
     Player,
     /// The first piece on the eye→player line, and where the line meets it.
-    Piece { entity: Entity, point: Vec3 },
+    Piece {
+        entity: Entity,
+        point: Vec3,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -158,6 +163,9 @@ pub struct GruntBrain {
     // Stuck detection.
     anchor: Option<(Vec3, u64)>,
     jump_hold: u8,
+    /// Ticks spent pushing forward on the ground without moving (a lip at a
+    /// ramp's top edge): a short hop gets over it, as a player would.
+    blocked: u8,
 }
 
 impl Default for GruntBrain {
@@ -192,6 +200,7 @@ impl GruntBrain {
             token: false,
             anchor: None,
             jump_hold: 0,
+            blocked: 0,
         }
     }
 
@@ -369,7 +378,10 @@ pub fn choose_mode(i: &ModeInputs, current: GruntMode) -> GruntMode {
     [
         (GruntMode::Strafe, sticky(GruntMode::Strafe, strafe)),
         (travel_mode, sticky(travel_mode, travel)),
-        (GruntMode::ShootPiece, sticky(GruntMode::ShootPiece, shoot_piece)),
+        (
+            GruntMode::ShootPiece,
+            sticky(GruntMode::ShootPiece, shoot_piece),
+        ),
     ]
     .into_iter()
     .fold((GruntMode::Strafe, f32::MIN), |best, (m, s)| {
@@ -392,7 +404,13 @@ pub fn turn_toward(from: LookAngles, to: LookAngles, max_yaw: f32, max_pitch: f3
 /// world direction `wish` (length ≤ 1 scales it) for a character looking
 /// along `look`. Movement runs at `run` m/s, or `sprint` m/s only when
 /// sprinting while moving forward.
-pub fn speed_axis(wish: Vec3, look: &LookAngles, speed: f32, run: f32, sprint: f32) -> (Vec2, bool) {
+pub fn speed_axis(
+    wish: Vec3,
+    look: &LookAngles,
+    speed: f32,
+    run: f32,
+    sprint: f32,
+) -> (Vec2, bool) {
     let len = wish.xz().length().min(1.0);
     if len < 1e-3 || speed <= 0.0 {
         return (Vec2::ZERO, false);
@@ -540,7 +558,9 @@ pub(super) fn watch_pieces(
         if brain.path.is_empty() {
             continue;
         }
-        let from = brain.path_index.min(brain.path_nodes.len().saturating_sub(1));
+        let from = brain
+            .path_index
+            .min(brain.path_nodes.len().saturating_sub(1));
         if !nav.path_valid(&brain.path_nodes[from..]) {
             brain.needs_plan = true;
         }
@@ -562,7 +582,9 @@ pub(super) fn perceive(
         }
         let seen = if track.alive {
             let from = transform.translation + Vec3::Y * eye.0;
-            sight(&spatial, from, track.head, track.chest, |e| pieces.contains(e))
+            sight(&spatial, from, track.head, track.chest, |e| {
+                pieces.contains(e)
+            })
         } else {
             Sight {
                 visible: false,
@@ -647,9 +669,9 @@ pub(super) fn decide(
             .map(|(_, p)| *p)
             .collect();
         let crowded_by_elder = brain.spot.is_some_and(|s| {
-            others.iter().any(|(e, p)| {
-                *e < entity && p.xz().distance(s.pos.xz()) < SPREAD_HARD - 0.5
-            })
+            others
+                .iter()
+                .any(|(e, p)| *e < entity && p.xz().distance(s.pos.xz()) < SPREAD_HARD - 0.5)
         });
         decide_one(
             &world,
@@ -724,7 +746,9 @@ fn decide_one(
 
     // 2. Plan (or re-plan) the path to it.
     if !brain.needs_plan && !brain.path.is_empty() {
-        let from = brain.path_index.min(brain.path_nodes.len().saturating_sub(1));
+        let from = brain
+            .path_index
+            .min(brain.path_nodes.len().saturating_sub(1));
         let valid = w.nav.path_valid(&brain.path_nodes[from..]);
         let here = w.nav.localize(feet);
         let expected = &brain.path_nodes[from..(from + 2).min(brain.path_nodes.len())];
@@ -780,7 +804,12 @@ fn decide_one(
 
 /// Scores candidate spots and returns the best (line of sight checked last,
 /// for the best few only).
-fn pick_spot(w: &DecisionWorld, brain: &mut GruntBrain, feet: Vec3, rivals: &[Vec3]) -> Option<Spot> {
+fn pick_spot(
+    w: &DecisionWorld,
+    brain: &mut GruntBrain,
+    feet: Vec3,
+    rivals: &[Vec3],
+) -> Option<Spot> {
     let t = &w.tuning.grunt;
     let params = SpotParams::new(t.range_min, t.range_max);
     let player = w.track.feet;
@@ -836,7 +865,9 @@ fn pick_spot(w: &DecisionWorld, brain: &mut GruntBrain, feet: Vec3, rivals: &[Ve
         for entry in w.nav.map.iter() {
             let cell = entry.slot.cell;
             let node = match entry.slot.kind {
-                PieceKind::Floor if cell.level == level => w.nav.surface_node(cell.x, cell.z, level),
+                PieceKind::Floor if cell.level == level => {
+                    w.nav.surface_node(cell.x, cell.z, level)
+                }
                 PieceKind::Ramp if cell.level == level - 1 => {
                     w.nav.ramp_node(cell.x, cell.z, cell.level)
                 }
@@ -901,9 +932,11 @@ pub(super) fn allocate_tokens(
 ) {
     let tick = tick.0;
     tokens.holders.retain(|&e| {
-        grunts.get(e).is_ok_and(|(_, _, brain, _, wand, downed, parked)| {
-            !downed && !parked && (brain.shot.is_some() || wand.is_some_and(Wand::is_winding))
-        })
+        grunts
+            .get(e)
+            .is_ok_and(|(_, _, brain, _, wand, downed, parked)| {
+                !downed && !parked && (brain.shot.is_some() || wand.is_some_and(Wand::is_winding))
+            })
     });
     for (entity, _, mut brain, ..) in &mut grunts {
         let held = tokens.holders.contains(&entity);
@@ -978,6 +1011,7 @@ pub(super) fn drive(
             Option<&Wand>,
             Has<Downed>,
             Has<Parked>,
+            Option<&Motor>,
         ),
         With<Grunt>,
     >,
@@ -992,8 +1026,19 @@ pub(super) fn drive(
         .map(|g| (g.0, g.1.translation))
         .collect();
     let is_piece = |e: Entity| pieces.contains(e);
-    for (entity, transform, eye, mut look, mut intent, mut brain, stats, wand, downed, parked) in
-        &mut grunts
+    for (
+        entity,
+        transform,
+        eye,
+        mut look,
+        mut intent,
+        mut brain,
+        stats,
+        wand,
+        downed,
+        parked,
+        motor,
+    ) in &mut grunts
     {
         if downed || parked || freeze.is_some() || !track.alive {
             brain.shot = None;
@@ -1098,9 +1143,20 @@ pub(super) fn drive(
         // Where to look: the aim point while shooting, the player while
         // strafing, else the way it walks.
         let aim = match brain.shot {
-            Some(shot) => Some(shot_aim(&shot, stats, &tuning, &track, eye_pos, brain.head_only)),
+            Some(shot) => Some(shot_aim(
+                &shot,
+                stats,
+                &tuning,
+                &track,
+                eye_pos,
+                brain.head_only,
+            )),
             None if !travel || (brain.los && dist_to_player <= tuning.grunt.range_max) => {
-                Some(if brain.head_only { track.head } else { track.chest })
+                Some(if brain.head_only {
+                    track.head
+                } else {
+                    track.chest
+                })
             }
             None => None,
         };
@@ -1139,8 +1195,28 @@ pub(super) fn drive(
             }
             _ => brain.anchor = Some((feet, tick)),
         }
+        // Blocked by a lip (a floor's edge standing proud of a ramp's top):
+        // pushing on the ground for BLOCKED_TICKS without moving, it hops.
+        let pushing = travel && goal_far && wish.length_squared() > 0.25;
+        let stalled = motor.is_some_and(|m| {
+            m.grounded && Vec2::new(m.velocity.x, m.velocity.z).length() < 0.3 * stats.speed
+        });
+        if pushing && stalled && brain.jump_hold == 0 {
+            brain.blocked = brain.blocked.saturating_add(1);
+            if brain.blocked >= BLOCKED_TICKS {
+                brain.blocked = 0;
+                brain.jump_hold = 15;
+                jump = true;
+            }
+        } else {
+            brain.blocked = 0;
+        }
 
-        let speed = if travel { stats.speed } else { stats.speed.min(run) };
+        let speed = if travel {
+            stats.speed
+        } else {
+            stats.speed.min(run)
+        };
         let (axis, sprinting) = speed_axis(wish, &look, speed, run, sprint);
         let next = PlayerIntent {
             move_axis: axis,
@@ -1180,7 +1256,12 @@ fn shot_aim(
             } else {
                 snapshot
             };
-            lead_point(eye, snapshot, shot.noise.estimate(velocity), tuning.orb.speed)
+            lead_point(
+                eye,
+                snapshot,
+                shot.noise.estimate(velocity),
+                tuning.orb.speed,
+            )
         }
         ShotTarget::Piece { point, .. } => point,
     };
@@ -1208,7 +1289,10 @@ fn follow_path(brain: &mut GruntBrain, nav: &NavGrid, feet: Vec3, tick: u64) -> 
     // String-pull across open ground.
     if tick.is_multiple_of(4) && feet.y < 0.5 {
         while brain.path_index + 1 < len {
-            let (a, b) = (brain.path[brain.path_index], brain.path[brain.path_index + 1]);
+            let (a, b) = (
+                brain.path[brain.path_index],
+                brain.path[brain.path_index + 1],
+            );
             if a.node.is_ground()
                 && b.node.is_ground()
                 && nav.ground_segment_clear(feet, b.pos, 0.4)
@@ -1254,9 +1338,8 @@ fn strafe(brain: &mut GruntBrain, nav: &NavGrid, feet: Vec3, player: Vec3) -> Ve
     let right = forward.cross(Vec3::Y);
     let offset = (feet - spot.pos).with_y(0.0);
     let along = offset.dot(right);
-    let blocked = |dir: f32| {
-        feet.y < 0.5 && !nav.ground_segment_clear(feet, feet + right * dir * 0.8, 0.35)
-    };
+    let blocked =
+        |dir: f32| feet.y < 0.5 && !nav.ground_segment_clear(feet, feet + right * dir * 0.8, 0.35);
     if along * brain.strafe_dir > STRAFE_RADIUS || blocked(brain.strafe_dir) {
         brain.strafe_dir = -brain.strafe_dir;
         brain.strafe_turn = brain.rng.range(0.4, 1.6);
@@ -1292,7 +1375,10 @@ mod tests {
             ..inputs()
         };
         assert_eq!(choose_mode(&near, GruntMode::Strafe), GruntMode::Reposition);
-        assert_eq!(choose_mode(&inputs(), GruntMode::Approach), GruntMode::Strafe);
+        assert_eq!(
+            choose_mode(&inputs(), GruntMode::Approach),
+            GruntMode::Strafe
+        );
     }
 
     #[test]
@@ -1302,7 +1388,10 @@ mod tests {
             ..inputs()
         };
         assert_eq!(choose_mode(&edge, GruntMode::Strafe), GruntMode::Strafe);
-        assert_eq!(choose_mode(&edge, GruntMode::Reposition), GruntMode::Reposition);
+        assert_eq!(
+            choose_mode(&edge, GruntMode::Reposition),
+            GruntMode::Reposition
+        );
     }
 
     #[test]
@@ -1318,12 +1407,18 @@ mod tests {
             no_los_secs: 1.0,
             ..hidden
         };
-        assert_eq!(choose_mode(&longer, GruntMode::Strafe), GruntMode::ShootPiece);
+        assert_eq!(
+            choose_mode(&longer, GruntMode::Strafe),
+            GruntMode::ShootPiece
+        );
         let no_piece = ModeInputs {
             blocker: false,
             ..longer
         };
-        assert_eq!(choose_mode(&no_piece, GruntMode::ShootPiece), GruntMode::Strafe);
+        assert_eq!(
+            choose_mode(&no_piece, GruntMode::ShootPiece),
+            GruntMode::Strafe
+        );
     }
 
     #[test]
@@ -1337,7 +1432,11 @@ mod tests {
             pitch: 0.5,
         };
         let t = turn_toward(from, to, 0.05, 0.1);
-        assert!((t.yaw - 0.05).abs() < 1e-5, "the short way round: {}", t.yaw);
+        assert!(
+            (t.yaw - 0.05).abs() < 1e-5,
+            "the short way round: {}",
+            t.yaw
+        );
         assert!((t.pitch - 0.1).abs() < 1e-5);
         assert_eq!(turn_toward(from, to, 1.0, 1.0), to);
     }
@@ -1353,6 +1452,9 @@ mod tests {
         let side = look.flat_basis().1;
         let (a, s) = speed_axis(side, &look, 6.5, 5.5, 7.5);
         assert!(!s && (a.length() - 1.0).abs() < 1e-4, "no sprint sideways");
-        assert_eq!(speed_axis(Vec3::ZERO, &look, 6.5, 5.5, 7.5), (Vec2::ZERO, false));
+        assert_eq!(
+            speed_axis(Vec3::ZERO, &look, 6.5, 5.5, 7.5),
+            (Vec2::ZERO, false)
+        );
     }
 }

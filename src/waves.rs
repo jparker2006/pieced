@@ -212,6 +212,11 @@ pub fn run_over(run: Option<Res<Run>>) -> bool {
     run.is_some_and(|run| run.is_over())
 }
 
+/// Test-only switch: Waves mode without the wave director (no run, no pool),
+/// for tests that place their own knights (`Sim::grunt_lab`).
+#[derive(Resource, Debug, Default, Clone, Copy)]
+pub struct NoWaveDirector;
+
 /// The run: grunt pool, wave spawning, the player's death and restart.
 pub struct WavesPlugin;
 
@@ -220,7 +225,9 @@ impl Plugin for WavesPlugin {
         app.add_message::<RestartRun>()
             .add_systems(
                 Startup,
-                (start_run, register_restart).run_if(resource_equals(GameMode::Waves)),
+                (start_run, register_restart)
+                    .run_if(resource_equals(GameMode::Waves))
+                    .run_if(not(resource_exists::<NoWaveDirector>)),
             )
             .add_systems(
                 FixedUpdate,

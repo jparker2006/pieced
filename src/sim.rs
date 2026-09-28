@@ -42,11 +42,24 @@ impl Sim {
         Self::with_mode(seed, crate::shared::GameMode::Waves)
     }
 
+    /// Waves mode without the wave director: no run and no grunt pool, for tests
+    /// that spawn their own knights.
+    pub fn grunt_lab(seed: u64) -> Self {
+        let mut app = crate::app::headless_app(seed);
+        app.insert_resource(crate::shared::GameMode::Waves)
+            .insert_resource(crate::waves::NoWaveDirector);
+        Self::enter_playing(app)
+    }
+
     /// Builds the simulation in `mode` (set before `Startup`), enters `Playing`
     /// and runs the first update.
     pub fn with_mode(seed: u64, mode: crate::shared::GameMode) -> Self {
         let mut app = crate::app::headless_app(seed);
         app.insert_resource(mode);
+        Self::enter_playing(app)
+    }
+
+    fn enter_playing(mut app: App) -> Self {
         app.world_mut()
             .resource_mut::<NextState<AppState>>()
             .set(AppState::Playing);
