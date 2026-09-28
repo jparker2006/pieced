@@ -151,6 +151,12 @@ pub enum Sfx {
     /// A knight off-screen starting his wind-up: a rising charge from his
     /// direction (D76's off-screen warning).
     WandWarning,
+    /// A drop ship's rune circle lighting: a hum rising to the landing (D82).
+    ShipHum,
+    /// A knight sliding down a drop ship's beam: a falling shimmer.
+    ShipBeam,
+    /// A knight knocked into the void: a yip and a falling slide whistle (D78).
+    VoidYelp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,7 +168,7 @@ pub enum SfxCategory {
 }
 
 impl Sfx {
-    pub const ALL: [Sfx; 27] = [
+    pub const ALL: [Sfx; 30] = [
         Sfx::RifleShot,
         Sfx::PumpShot,
         Sfx::PumpRack,
@@ -190,6 +196,9 @@ impl Sfx {
         Sfx::OrbWhoosh,
         Sfx::OrbBonk,
         Sfx::WandWarning,
+        Sfx::ShipHum,
+        Sfx::ShipBeam,
+        Sfx::VoidYelp,
     ];
 
     /// The cue for a piece event: walls are brick (clunk, crack, crumble); floors
@@ -241,6 +250,9 @@ impl Sfx {
             Sfx::OrbWhoosh => bank::orb_whoosh(),
             Sfx::OrbBonk => bank::orb_bonk(),
             Sfx::WandWarning => bank::wand_warning(),
+            Sfx::ShipHum => bank::ship_hum(),
+            Sfx::ShipBeam => bank::ship_beam(),
+            Sfx::VoidYelp => bank::void_yelp(),
         }
     }
 
@@ -289,6 +301,9 @@ impl Sfx {
             OrbWhoosh => bank::ORB_WHOOSH,
             OrbBonk => bank::ORB_BONK,
             WandWarning => bank::WAND_WARNING,
+            ShipHum => bank::SHIP_HUM,
+            ShipBeam => bank::SHIP_BEAM,
+            VoidYelp => bank::VOID_YELP,
         }
     }
 
@@ -303,6 +318,8 @@ impl Sfx {
             Footstep | Jump | Land | Slide => SfxCategory::Movement,
             // The knights' casts sit with the guns (the weapons volume).
             OrbCast | OrbWhoosh | OrbBonk | WandWarning => SfxCategory::Weapons,
+            // The ships and the void sit with the knights' casts.
+            ShipHum | ShipBeam | VoidYelp => SfxCategory::Weapons,
         }
     }
 
@@ -318,10 +335,10 @@ impl Sfx {
     /// | body hit, shield hit | −14 |
     /// | pump cast, orb bonk (hitting you), off-screen wand warning | −15 |
     /// | piece breaks | −16 |
-    /// | orb whoosh | −17 |
+    /// | orb whoosh, void yelp | −17 |
     /// | rifle cast, piece places and cracks | −18 |
-    /// | orb cast (a knight's fwoom) | −19 |
-    /// | pump rack, reload, rejected | −20 |
+    /// | orb cast (a knight's fwoom), ship hum | −19 |
+    /// | pump rack, reload, rejected, ship beam | −20 |
     /// | pump shell | −21 |
     /// | weapon switch | −22 |
     /// | land, slide | −22 |
@@ -334,10 +351,10 @@ impl Sfx {
             HitTick | ShieldHit => -14.0,
             PumpShot | OrbBonk | WandWarning => -15.0,
             BrickBreak | PlankBreak => -16.0,
-            OrbWhoosh => -17.0,
+            OrbWhoosh | VoidYelp => -17.0,
             RifleShot | BrickPlace | PlankPlace | BrickCrack | PlankCrack => -18.0,
-            OrbCast => -19.0,
-            PumpRack | RifleMagOut | RifleMagIn | Rejected => -20.0,
+            OrbCast | ShipHum => -19.0,
+            PumpRack | RifleMagOut | RifleMagIn | Rejected | ShipBeam => -20.0,
             PumpShell => -21.0,
             WeaponSwitch | Land | Slide => -22.0,
             Jump => -26.0,
@@ -468,7 +485,7 @@ impl Plugin for GameAudioPlugin {
 
 /// A playing sound effect.
 #[derive(Component, Debug, Clone, Copy)]
-struct Voice {
+pub(crate) struct Voice {
     priority: u8,
     started: f64,
     /// Volume before master volume (so master changes apply live).
@@ -489,7 +506,7 @@ struct PlayRequest {
 }
 
 #[derive(Resource, Default)]
-struct PlayQueue {
+pub(crate) struct PlayQueue {
     pending: Vec<PlayRequest>,
     /// Counter for deterministic pitch variation.
     variation: u32,
@@ -498,11 +515,18 @@ struct PlayQueue {
 }
 
 impl PlayQueue {
-    fn push(&mut self, sfx: Sfx, at: Option<Vec3>, now: f64) {
+    pub(crate) fn push(&mut self, sfx: Sfx, at: Option<Vec3>, now: f64) {
         self.push_with(sfx, at, 1.0, 0.0, now);
     }
 
-    fn push_with(&mut self, sfx: Sfx, at: Option<Vec3>, gain: f32, delay: f64, now: f64) {
+    pub(crate) fn push_with(
+        &mut self,
+        sfx: Sfx,
+        at: Option<Vec3>,
+        gain: f32,
+        delay: f64,
+        now: f64,
+    ) {
         // Small, deterministic pitch variation so repeats never sound machine-gunned.
         self.variation = self.variation.wrapping_add(1);
         let h = self.variation.wrapping_mul(2_654_435_761) >> 16;
@@ -672,6 +696,8 @@ fn queue_cue_sounds(
             GameCue::WandWindup { .. } | GameCue::OrbFired { .. } => continue,
             // Potions are voiced by the Waves presentation (chunk 2, slice B).
             GameCue::PotionDropped { .. } | GameCue::PotionPicked { .. } => continue,
+            // The void yelp is voiced with the ships (`waves::ships_visuals`).
+            GameCue::VoidFall { .. } => continue,
         };
         let own = Some(who) == player;
         if !own && sfx.category() != SfxCategory::Movement {
@@ -690,7 +716,7 @@ fn queue_cue_sounds(
     }
 }
 
-fn play_queued(
+pub(crate) fn play_queued(
     mut commands: Commands,
     time: Res<Time<Real>>,
     tuning: Res<Tuning>,

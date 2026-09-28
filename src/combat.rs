@@ -786,10 +786,12 @@ fn resolve_shots(
                 let shove = away * knockback_speed(travel);
                 if let Ok(mut knockback) = knockbacks.get_mut(acc.target) {
                     knockback.velocity += shove;
+                    knockback.source = Some(shot.shooter);
                 } else {
-                    commands
-                        .entity(acc.target)
-                        .insert(Knockback { velocity: shove });
+                    commands.entity(acc.target).insert(Knockback {
+                        velocity: shove,
+                        source: Some(shot.shooter),
+                    });
                 }
             }
             shot_hit = true;

@@ -3,8 +3,10 @@
 //! [`GameMode::Waves`](crate::shared::GameMode).
 //!
 //! **The wave director** (chunk 2, slice A): wave n has
-//! [`WavesTuning::wave_size`] knights, at most `max_alive` in play; the rest
-//! poof in at seeded edge points as pool slots free up. Clearing a wave scores
+//! [`WavesTuning::wave_size`] knights, at most `max_alive` in play or on their
+//! way down; the rest come on drop ships ([`ships`], chunk 3) as pool slots
+//! free up. A knight knocked off the island falls into the void ([`void`]) and
+//! scores the void bonus. Clearing a wave scores
 //! it and starts the break ([`RunPhase::Break`]: +50 shield, 10 s, skippable
 //! with [`SkipBreak`]), then the next wave comes, a little tougher
 //! ([`GruntStats::for_wave`]). Downed knights may drop a shield potion
@@ -20,7 +22,10 @@
 
 pub mod potion;
 pub mod record;
+pub mod ships;
+pub mod ships_visuals;
 pub mod ui;
+pub mod void;
 
 pub use potion::{LivePotion, POTION_POOL, PotionSlot};
 pub use record::{
@@ -31,14 +36,13 @@ use crate::{
     arena::ArenaLayout,
     building::{self, InitialCover},
     combat::{CombatStats, Downed, GunState, Loadout},
-    dummy::look_toward,
     grunt::{self, AttackTokens, GruntBrain, GruntRng, GruntStats, Parked},
-    movement::{Knockback, Motor},
+    movement::{Knockback, Motor, VoidFall},
     orb::Wand,
     rng::{Rng, SimRng},
     shared::{
-        Ads, AppState, Character, DamageDealt, DamageTarget, EyeHeight, GameCue, GameMode, Health,
-        Layer, LookAngles, Player, PlayerIntent, PreviousFeet, SimSet, SimTick, TICK_SECONDS,
+        Ads, AppState, Character, DamageDealt, DamageTarget, EyeHeight, GameMode, Health, Layer,
+        LookAngles, Player, PlayerIntent, PreviousFeet, SimSet, SimTick, TICK_SECONDS,
     },
     tuning::Tuning,
 };
@@ -111,24 +115,19 @@ impl WavesTuning {
 // The run
 // ---------------------------------------------------------------------------
 
-/// Seconds from a run's (or wave's) start to its first grunt.
+/// Seconds from a run's (or wave's) start to its first ship's launch.
 pub const FIRST_SPAWN_DELAY: f32 = 1.0;
-/// Seconds between grunts poofing in (the stand-in for the beam until ships
-/// land in chunk 3, D82).
-pub const SPAWN_STAGGER: f32 = 0.4;
 /// Seconds a downed grunt lies (the KO take, the hat drop) before it goes back
 /// to the pool.
 pub const RETURN_DELAY: f32 = 1.0;
 /// Simulated seconds after the player's elimination during which the surviving
 /// knights hop (D84's goofy victory hop); then they stand still.
 pub const VICTORY_HOP_SECONDS: f32 = 1.2;
-/// Grunts poof in on a ring this far inside the playable bounds (m): just
-/// inside the island edge.
+/// Grunts land on a ring this far inside the playable bounds (m): just inside
+/// the island edge (the drop points, [`ships::DROP_POINTS`]).
 pub const EDGE_INSET: f32 = 2.0;
-/// ... at least this far (horizontally) from the player (m) ...
+/// ... at least this far (horizontally) from the player (m).
 pub const SPAWN_MIN_PLAYER_DISTANCE: f32 = 12.0;
-/// ... and from any other grunt in play (m).
-pub const SPAWN_SPACING: f32 = 3.0;
 /// Where parked grunts wait: under the island, out of sight and out of play.
 pub const PARK_SPOT: Vec3 = Vec3::new(0.0, -60.0, 0.0);
 /// Salt for the run-seed stream.
@@ -145,7 +144,7 @@ pub(crate) fn ticks(seconds: f32) -> u64 {
 /// Where the run stands.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum RunPhase {
-    /// The wave's grunts are poofing in or fighting.
+    /// The wave's grunts are arriving or fighting.
     #[default]
     Fighting,
     /// Every grunt of wave `Run::wave` is down: the break (D79). The next wave
@@ -168,10 +167,14 @@ pub struct Run {
     pub seed: u64,
     pub wave: u32,
     pub phase: RunPhase,
-    /// Grunts in play: poofed in and not downed.
+    /// Grunts in play: landed and not downed.
     pub alive: u32,
-    /// Grunts of this wave still to poof in.
+    /// Grunts of this wave still to land (including those aboard a ship or in
+    /// its beam).
     pub remaining: u32,
+    /// Of `remaining`, those aboard a ship or in its beam: `alive + aboard`
+    /// never exceeds `max_alive`.
+    pub aboard: u32,
     /// Knights downed this run.
     pub eliminations: u32,
     /// Knights downed by a headshot (the +50s in the score).
@@ -206,6 +209,7 @@ impl Run {
             phase: RunPhase::Fighting,
             alive: 0,
             remaining: 0,
+            aboard: 0,
             eliminations: 0,
             headshot_kills: 0,
             void_kills: 0,
@@ -342,10 +346,12 @@ pub struct RunSeed(pub u64);
 pub struct PoolGrunt {
     /// Tick it went down, while it lies before returning to the pool.
     pub downed_at: Option<u64>,
-    /// The wave it poofed in for.
+    /// The wave it came for.
     pub wave: u32,
     /// Knocked into the void ([`VoidKill`]) before its down was counted.
     pub void_kill: bool,
+    /// Taken for a ship: aboard or in its beam, not yet landed.
+    pub aboard: bool,
 }
 
 /// Run condition: a Waves run exists and it has ended (the death beat or the
@@ -400,6 +406,7 @@ impl Plugin for WavesPlugin {
             .init_resource::<RunStore>()
             .init_resource::<PersonalBest>()
             .init_resource::<RunInbox>()
+            .init_resource::<ships::Ships>()
             .init_resource::<potion::PendingPotions>()
             .add_systems(
                 Startup,
@@ -420,6 +427,7 @@ impl Plugin for WavesPlugin {
                     (
                         read_run_messages,
                         run_director,
+                        ships::step_ships,
                         record_run_end,
                         potion::step_potions,
                         update_summary,
@@ -429,6 +437,7 @@ impl Plugin for WavesPlugin {
                 )
                     .run_if(resource_exists::<Run>),
             );
+        void::build(app);
     }
 }
 
@@ -437,7 +446,8 @@ pub struct WavesClientPlugin;
 
 impl Plugin for WavesClientPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, death_slow_motion);
+        app.add_systems(Update, death_slow_motion)
+            .add_plugins(ships_visuals::ShipsVisualsPlugin);
     }
 }
 
@@ -513,14 +523,14 @@ struct PoolParts {
 }
 
 impl PoolPartsItem<'_, '_> {
-    /// In play: poofed in, not downed, not frozen.
+    /// In play: landed, not downed, not frozen.
     fn in_play(&self) -> bool {
         !self.parked && !self.downed
     }
 
-    /// Waiting in the pool, free for the next spawn.
+    /// Waiting in the pool, free for the next ship.
     fn free(&self) -> bool {
-        self.parked && self.downed && self.slot.downed_at.is_none()
+        self.parked && self.downed && self.slot.downed_at.is_none() && !self.slot.aboard
     }
 
     /// Back to the pool: under the island, inert, hidden (downed), restored.
@@ -536,7 +546,7 @@ impl PoolPartsItem<'_, '_> {
         commands
             .entity(self.entity)
             .insert((Parked, Downed { tick }))
-            .remove::<Knockback>();
+            .remove::<(Knockback, VoidFall, ships::Beaming)>();
     }
 }
 
@@ -685,8 +695,9 @@ impl SpawnCheck<'_, '_> {
 
 /// The wave loop, after combat each tick: the player's death (or a quit) ends
 /// the run; downed grunts score, may drop a potion, and return to the pool;
-/// grunts poof in at seeded edge points; a cleared wave starts the break; the
-/// break ends into the next wave.
+/// drop ships launch with the wave's knights as slots free up ([`ships`] then
+/// flies them in and lands them); a cleared wave starts the break; the break
+/// ends into the next wave.
 #[allow(clippy::too_many_arguments)]
 fn run_director(
     mut commands: Commands,
@@ -699,7 +710,7 @@ fn run_director(
     spawn_check: SpawnCheck,
     mut players: Query<(Entity, &Transform, &mut Health, Has<Downed>), With<Player>>,
     mut grunts: Query<PoolParts, (With<PoolGrunt>, Without<Player>)>,
-    mut cues: MessageWriter<GameCue>,
+    mut ships: ResMut<ships::Ships>,
 ) {
     let now = tick.0;
     let t = &tuning.waves;
@@ -817,60 +828,72 @@ fn run_director(
                 }
                 return;
             }
-            if run.remaining == 0 || now < run.next_spawn_tick || run.alive >= t.max_alive {
+            // A ship launches whenever a slot is free: knights alive plus
+            // those aboard or in a beam stay within `max_alive` (D77, D82).
+            let unassigned = run.remaining.saturating_sub(run.aboard);
+            let room = t.max_alive.saturating_sub(run.alive + run.aboard);
+            if unassigned == 0 || room == 0 || now < run.next_spawn_tick {
                 return;
             }
+            let Some(slot) = ships.free_slot() else {
+                return;
+            };
             let player_feet = players
                 .iter()
                 .next()
                 .map_or(layout.player_spawn, |p| p.1.translation);
-            // At most `max_alive` knights: a few spots on the stack.
-            let mut others = [Vec3::ZERO; 16];
-            let mut n = 0;
-            for g in grunts.iter().filter(|g| !g.parked) {
-                if n < others.len() {
-                    others[n] = g.transform.translation;
-                    n += 1;
-                }
-            }
-            let Some(mut grunt) = grunts.iter_mut().find(|g| g.free()) else {
+            let max_count = ships::max_aboard(t.wave_size(run.wave), unassigned, room);
+            let Some(plan) =
+                ships::plan_sortie(&mut run.rng, &ships, player_feet, max_count, |p| {
+                    spawn_check.is_clear(p)
+                })
+            else {
+                run.next_spawn_tick = now + ticks(ships::RETRY_SECONDS);
                 return;
             };
-            let spot = edge_spot(&mut run.rng, &layout, player_feet, &others[..n], |p| {
-                spawn_check.is_clear(p)
-            });
-            let mut stats = GruntStats::for_wave(run.wave, &tuning.grunt);
-            let jitter = t.speed_jitter.abs();
-            stats.speed =
-                (stats.speed * (1.0 + run.rng.range(-jitter, jitter))).min(tuning.grunt.speed_cap);
-
-            grunt.transform.translation = spot;
-            grunt.previous.0 = spot;
-            *grunt.look = look_toward((player_feet - spot).with_y(0.0));
-            *grunt.health = Health::full(stats.hp, 0.0);
-            *grunt.stats = stats;
-            *grunt.wand = Wand::new(stats.fire_interval);
-            *grunt.intent = PlayerIntent::default();
-            *grunt.motor = Motor::default();
-            *grunt.slot = PoolGrunt {
-                downed_at: None,
-                wave: run.wave,
-                void_kill: false,
-            };
-            // A fresh brain, seeded from the run so the same seed replays the run.
-            grunt.brain.reset();
-            grunt
-                .brain
-                .reseed(Rng::new(run.seed).fork(now ^ grunt.entity.to_bits().rotate_left(32)));
-            commands
-                .entity(grunt.entity)
-                .remove::<(Parked, Downed, Knockback)>();
-            // The knight pops in with its sparkle (until ships land in chunk 3).
-            cues.write(GameCue::Respawned { who: grunt.entity });
-
-            run.remaining -= 1;
-            run.alive += 1;
-            run.next_spawn_tick = now + ticks(SPAWN_STAGGER);
+            let mut sortie =
+                ships::Sortie::new(now, plan.point, plan.hover_height, plan.peel, plan.count);
+            // Take its knights from the pool: readied for this wave, still
+            // parked under the island until each starts down the beam.
+            let mut taken = 0;
+            for mut grunt in &mut grunts {
+                if taken == sortie.count {
+                    break;
+                }
+                if !grunt.free() {
+                    continue;
+                }
+                let mut stats = GruntStats::for_wave(run.wave, &tuning.grunt);
+                let jitter = t.speed_jitter.abs();
+                stats.speed = (stats.speed * (1.0 + run.rng.range(-jitter, jitter)))
+                    .min(tuning.grunt.speed_cap);
+                *grunt.health = Health::full(stats.hp, 0.0);
+                *grunt.stats = stats;
+                *grunt.wand = Wand::new(stats.fire_interval);
+                *grunt.intent = PlayerIntent::default();
+                *grunt.motor = Motor::default();
+                *grunt.slot = PoolGrunt {
+                    downed_at: None,
+                    wave: run.wave,
+                    void_kill: false,
+                    aboard: true,
+                };
+                // A fresh brain, seeded from the run so the same seed replays the run.
+                grunt.brain.reset();
+                grunt
+                    .brain
+                    .reseed(Rng::new(run.seed).fork(now ^ grunt.entity.to_bits().rotate_left(32)));
+                commands.entity(grunt.entity).remove::<Knockback>();
+                sortie.seats[taken].knight = Some(grunt.entity);
+                taken += 1;
+            }
+            if taken == 0 {
+                return;
+            }
+            sortie.count = taken;
+            ships.slots[slot] = Some(sortie);
+            run.aboard += taken as u32;
+            run.next_spawn_tick = now + ticks(plan.gap);
         }
     }
 }
@@ -935,57 +958,6 @@ fn update_summary(
     }
 }
 
-/// A seeded spawn point on the ring [`EDGE_INSET`] inside the bounds, at least
-/// [`SPAWN_MIN_PLAYER_DISTANCE`] from `player` and [`SPAWN_SPACING`] from each
-/// of `others`, where `is_clear` holds. Falls back to the ring corner farthest
-/// from the player.
-pub fn edge_spot(
-    rng: &mut Rng,
-    layout: &ArenaLayout,
-    player: Vec3,
-    others: &[Vec3],
-    is_clear: impl Fn(Vec3) -> bool,
-) -> Vec3 {
-    let min = layout.bounds_min + Vec2::splat(EDGE_INSET);
-    let max = layout.bounds_max - Vec2::splat(EDGE_INSET);
-    let size = (max - min).max(Vec2::ZERO);
-    let perimeter = 2.0 * (size.x + size.y);
-    let on_ring = |d: f32| {
-        let p = if d < size.x {
-            Vec2::new(min.x + d, min.y)
-        } else if d < size.x + size.y {
-            Vec2::new(max.x, min.y + d - size.x)
-        } else if d < 2.0 * size.x + size.y {
-            Vec2::new(max.x - (d - size.x - size.y), max.y)
-        } else {
-            Vec2::new(min.x, max.y - (d - 2.0 * size.x - size.y))
-        };
-        Vec3::new(p.x, 0.0, p.y)
-    };
-    for _ in 0..64 {
-        let spot = on_ring(rng.range(0.0, perimeter));
-        let far = spot.xz().distance(player.xz()) >= SPAWN_MIN_PLAYER_DISTANCE;
-        let spaced = others
-            .iter()
-            .all(|o| o.xz().distance(spot.xz()) >= SPAWN_SPACING);
-        if far && spaced && is_clear(spot) {
-            return spot;
-        }
-    }
-    [
-        Vec2::new(min.x, min.y),
-        Vec2::new(min.x, max.y),
-        Vec2::new(max.x, min.y),
-        Vec2::new(max.x, max.y),
-    ]
-    .into_iter()
-    .max_by(|a, b| {
-        a.distance_squared(player.xz())
-            .total_cmp(&b.distance_squared(player.xz()))
-    })
-    .map_or(PARK_SPOT, |c| Vec3::new(c.x, 0.0, c.y))
-}
-
 /// Takes pending [`RestartRun`] requests at the start of a fixed tick and
 /// restarts the run in place: no reload, nothing respawned from scratch.
 fn restart_run(world: &mut World) {
@@ -1025,6 +997,7 @@ fn reset_characters(
     mut stats: ResMut<CombatStats>,
     mut grunt_rng: ResMut<GruntRng>,
     mut tokens: ResMut<AttackTokens>,
+    mut ships: ResMut<ships::Ships>,
     mut grunts: Query<PoolParts, (With<PoolGrunt>, Without<Player>)>,
     mut players: Query<
         (
@@ -1082,6 +1055,7 @@ fn reset_characters(
     inbox.reset();
     *grunt_rng = GruntRng::default();
     tokens.clear();
+    ships.reset();
     let seed = run.rng.next_u64();
     *run = Run::new(seed, now, &tuning.waves);
 }
