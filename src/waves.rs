@@ -16,10 +16,9 @@ use crate::{
     building::{self, InitialCover},
     combat::{CombatStats, Downed, GunState, Loadout},
     dummy::look_toward,
-    grunt::{Grunt, GruntStats, Parked},
+    grunt::{self, AttackTokens, GruntBrain, GruntRng, GruntStats, Parked},
     movement::{Knockback, Motor},
     orb::{Orb, Wand},
-    player,
     rng::{Rng, SimRng},
     shared::{
         Ads, AppState, Character, EyeHeight, GameCue, GameMode, Health, Layer, LookAngles, Player,
@@ -213,6 +212,11 @@ pub fn run_over(run: Option<Res<Run>>) -> bool {
     run.is_some_and(|run| run.is_over())
 }
 
+/// Test-only switch: Waves mode without the wave director (no run, no pool),
+/// for tests that place their own knights (`Sim::grunt_lab`).
+#[derive(Resource, Debug, Default, Clone, Copy)]
+pub struct NoWaveDirector;
+
 /// The run: grunt pool, wave spawning, the player's death and restart.
 pub struct WavesPlugin;
 
@@ -221,7 +225,9 @@ impl Plugin for WavesPlugin {
         app.add_message::<RestartRun>()
             .add_systems(
                 Startup,
-                (start_run, register_restart).run_if(resource_equals(GameMode::Waves)),
+                (start_run, register_restart)
+                    .run_if(resource_equals(GameMode::Waves))
+                    .run_if(not(resource_exists::<NoWaveDirector>)),
             )
             .add_systems(
                 FixedUpdate,
@@ -257,26 +263,13 @@ fn register_restart(world: &mut World) {
     world.register_system_cached(reset_characters);
 }
 
-/// Creates one parked pool grunt.
-///
-/// Slice A integration point: becomes
-/// `let grunt = grunt::spawn_grunt(commands, PARK_SPOT, LookAngles::default(), stats);`
-/// followed by `commands.entity(grunt).insert((PoolGrunt::default(), Parked, Downed { tick: 0 }))`.
+/// Creates one parked pool grunt (a full grunt, brain included).
 fn spawn_pool_member(commands: &mut Commands, stats: GruntStats) -> Entity {
-    player::spawn_character(
-        commands,
-        PARK_SPOT,
-        LookAngles::default(),
-        Health::full(stats.hp, 0.0),
-        (
-            Grunt,
-            stats,
-            Wand::new(stats.fire_interval),
-            PoolGrunt::default(),
-            Parked,
-            Downed { tick: 0 },
-        ),
-    )
+    let grunt = grunt::spawn_grunt(commands, PARK_SPOT, LookAngles::default(), stats);
+    commands
+        .entity(grunt)
+        .insert((PoolGrunt::default(), Parked, Downed { tick: 0 }));
+    grunt
 }
 
 /// A pool grunt's parts the run resets.
@@ -291,6 +284,7 @@ struct PoolParts {
     health: &'static mut Health,
     stats: &'static mut GruntStats,
     wand: &'static mut Wand,
+    brain: &'static mut GruntBrain,
     intent: &'static mut PlayerIntent,
     motor: &'static mut Motor,
     parked: Has<Parked>,
@@ -466,7 +460,11 @@ fn run_director(
             *grunt.intent = PlayerIntent::default();
             *grunt.motor = Motor::default();
             grunt.slot.downed_at = None;
-            // Slice A integration point: reset the brain here (`GruntBrain::reset`).
+            // A fresh brain, seeded from the run so the same seed replays the run.
+            grunt.brain.reset();
+            grunt
+                .brain
+                .reseed(Rng::new(run.seed).fork(now ^ grunt.entity.to_bits().rotate_left(32)));
             commands
                 .entity(grunt.entity)
                 .remove::<(Parked, Downed, Knockback)>();
@@ -565,6 +563,8 @@ fn reset_characters(
     layout: Res<ArenaLayout>,
     mut run: ResMut<Run>,
     mut stats: ResMut<CombatStats>,
+    mut grunt_rng: ResMut<GruntRng>,
+    mut tokens: ResMut<AttackTokens>,
     mut grunts: Query<PoolParts, (With<PoolGrunt>, Without<Player>)>,
     mut players: Query<
         (
@@ -619,7 +619,8 @@ fn reset_characters(
         commands.entity(entity).remove::<(Downed, Knockback)>();
     }
     stats.reset();
-    // Slice A integration point: reset the `GruntRng` resource to its default here.
+    *grunt_rng = GruntRng::default();
+    tokens.clear();
     let seed = run.rng.next_u64();
     *run = Run::new(seed, now, &tuning.waves);
 }
