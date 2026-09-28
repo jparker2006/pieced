@@ -96,9 +96,39 @@ impl Plugin for InputAdapterPlugin {
                     .after(cursor_lock)
                     .run_if(in_state(AppState::Playing))
                     .run_if(not(resource_exists::<ScenarioRun>))
-                    .run_if(crate::waves::run_over),
+                    .run_if(crate::waves::run_over.or_else(crate::waves::in_break)),
             );
     }
+}
+
+/// The key that starts the next wave during a break and goes again on the
+/// results screen (D79, D84). Chunk 5 makes it rebindable; until then the
+/// on-screen hints read its name from [`start_key_name`].
+pub const START_KEY: KeyCode = KeyCode::Enter;
+
+/// [`START_KEY`] and its twin on the number pad.
+const START_KEYS: [KeyCode; 2] = [START_KEY, KeyCode::NumpadEnter];
+
+/// The bound start key's name, for on-screen hints ("Press Enter to start").
+pub fn start_key_name() -> &'static str {
+    key_name(START_KEY)
+}
+
+/// A key's name as the hints print it.
+pub fn key_name(key: KeyCode) -> &'static str {
+    match key {
+        KeyCode::Enter | KeyCode::NumpadEnter => "Enter",
+        KeyCode::Space => "Space",
+        KeyCode::Escape => "Esc",
+        KeyCode::Tab => "Tab",
+        KeyCode::Backspace => "Backspace",
+        _ => "?",
+    }
+}
+
+/// Whether the results screen is up: the cursor is free for its buttons.
+fn results_up(run: Option<&crate::waves::Run>) -> bool {
+    run.is_some_and(crate::waves::Run::is_over)
 }
 
 /// Set when the cursor is (re)captured so the jump in raw motion is discarded.
@@ -128,13 +158,16 @@ fn pause_controls(
 
 fn cursor_lock(
     state: Res<State<AppState>>,
+    run: Option<Res<crate::waves::Run>>,
     cursor: Option<Single<&mut CursorOptions, With<PrimaryWindow>>>,
     mut ignore: ResMut<IgnoreNextLook>,
     mut keys: ResMut<ButtonInput<KeyCode>>,
     mut mouse: ResMut<ButtonInput<MouseButton>>,
     mut was_playing: Local<bool>,
 ) {
-    let playing = *state.get() == AppState::Playing;
+    // The results screen frees the cursor like the pause menu does, so its
+    // buttons take trackpad clicks.
+    let playing = *state.get() == AppState::Playing && !results_up(run.as_deref());
     if playing != *was_playing {
         // Never carry held keys or buttons across a pause boundary.
         keys.reset_all();
@@ -192,11 +225,26 @@ fn device_to_intent(
     intent.look_delta += tuning.look.look_delta(motion.delta, ads.0, tool.is_build());
 }
 
-/// UI keys of a Waves run (not `PlayerIntent`): Enter on the results line
-/// starts a new run in place.
-fn run_keys(keys: Res<ButtonInput<KeyCode>>, mut restart: MessageWriter<crate::waves::RestartRun>) {
-    if keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter]) {
-        restart.write(crate::waves::RestartRun);
+/// UI keys of a Waves run (not `PlayerIntent`): [`START_KEY`] skips the
+/// break, and on the results screen goes again (a new run in place). It does
+/// nothing during the death beat, so a mashed key can't skip the results.
+fn run_keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    run: Option<Res<crate::waves::Run>>,
+    mut restart: MessageWriter<crate::waves::RestartRun>,
+    mut skip: MessageWriter<crate::waves::SkipBreak>,
+) {
+    if !keys.any_just_pressed(START_KEYS) {
+        return;
+    }
+    match run.map(|r| r.phase) {
+        Some(crate::waves::RunPhase::Break { .. }) => {
+            skip.write(crate::waves::SkipBreak);
+        }
+        Some(crate::waves::RunPhase::Over { .. }) => {
+            restart.write(crate::waves::RestartRun);
+        }
+        _ => {}
     }
 }
 

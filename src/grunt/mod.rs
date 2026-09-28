@@ -145,7 +145,8 @@ impl Default for GruntTuning {
             max_shooters: 3,
             decision_hz: 8.0,
             perception_hz: 30.0,
-            pump_knockback: 4.0,
+            // 4 m in D78; 5 m after play-test 2 ("hit a little harder").
+            pump_knockback: 5.0,
         }
     }
 }

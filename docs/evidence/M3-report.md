@@ -10,7 +10,7 @@ Every number here names its source (session folder or test), the commit, and the
 |---|---|---|
 | W0 M2 closed | | |
 | W1 First grunt wave | **PASS** (`b3a4c24`) | Chunk 1 tests: `tests/grunt.rs` (10), `tests/orb.rs`, `tests/waves.rs` (7), `tests/knockback.rs` (5), with 501 passing on the merge. Play-test 1: fun 4, about right, no unfair deaths; Jake: "that was so much fun!" |
-| W2 Endless waves | | |
+| W2 Endless waves | **PASS** (`5086a57`) | Chunk 2 tests: `tests/waves.rs` (19), `tests/potions.rs` (5), `tests/waves_ui.rs` (11) and unit tests; 544 passing on the 2B branch, which contains main. Play-test 2: fun 4, about right, no unfair deaths |
 | W3 Fair knights | | |
 | W4 Ships and the void | | |
 | W5 Castle and sky | | |
@@ -29,7 +29,7 @@ Every number here names its source (session folder or test), the commit, and the
 | # | Chunk | Commit | Fun (1–5) | Difficulty | Unfair deaths | What's off | Session / runs |
 |---|---|---|---|---|---|---|---|
 | 1 | One grunt wave | `b3a4c24` | **4** | About right ("maybe a little hard to kill them in the 'early rounds'") | **None** | Early grunts a bit tanky → wave-1 HP 100 → 80 | `20260928-045508` (AC, 62 s), `20260928-045801` (AC, 387 s, measured under builder load) |
-| 2 | Endless waves | | | | | | |
+| 2 | Endless waves | `5086a57` | **4** | About right | **None** | "the pump should hit a little harder" → pump falloff and knockback tuned; "map should be bigger with more progression / stuff to do... but thats out of scope" → backlog | `20260928-085054` (battery + LPM, 206 s, reached wave 3, score 1,900, 10 eliminations) |
 | 3 | Ships and the void | | | | | | |
 | 4 | Castle and sky (look check) | | | | | | |
 | 5 | Menu and controls (final) | | | | | | |
@@ -40,6 +40,8 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
 
 | Date | Number | From → to | Why |
 |---|---|---|---|
+| 2026-09-28 | Pump falloff (`GunTuning::pump`) | full damage to 8 → 10 m; falloff end 15 → 18 m; floor 30% → 40% | Play-test 2, Jake asked for it: "the pump should hit a little harder". The point-blank maximum (10 × 10 = 100) is unchanged, so M1's G6 (no pump kill from full) still holds |
+| 2026-09-28 | `GruntTuning::pump_knockback` | 4 → 5 m | Same request |
 | 2026-09-27 | `GruntTuning::hp` (wave-1 grunt health; later waves scale from it) | 100 → 80 (−20%) | Play-test 1: "maybe a little hard to kill them in the 'early rounds'". Now 3 rifle body shots or 2 headshots; wave 25 is ≈ 157 HP |
 
 ## Log
@@ -134,3 +136,17 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - `RunSummary` feeds the UI. Headless runs write no files.
   - Tests: `tests/waves.rs` (19), `tests/potions.rs` (5), 6 unit tests. The branch's full suite on top of `0f9472c` had 523 passing and 0 failed; clippy and fmt clean. The orchestrator reviewed the file-writing code (`src/waves/record.rs`) and the `app.rs` changes before merging, because the safety classifier was down while the builder worked.
   - **Chunk 2B dispatched** (`m3-waves-ui`): the wave HUD, the break countdown, the potion look and sound, the death-beat slow motion, and the results screen with Go again.
+- 2026-09-28: **chunk 2B merged** (`5086a57`):
+  - the run HUD (wave, knights left, score);
+  - the break banner and countdown, with the bound Enter key;
+  - the potion look and gulp-chime;
+  - the death beat (0.3× only while Dying, the view drops to the grass, a vignette);
+  - the results card with every stat, the best run, "NEW BEST!", the seed, Go again and Quit;
+  - pause → Quit mid-run shows the results.
+
+  The results use `RunPhase` inside `Playing`, not a separate `AppState::Results`.
+- 2026-09-28 01:50–01:55: **play-test 2** (release `pieced-play` from `5086a57`, battery at 13%, Low Power Mode on, builds paused). Jake, quoted: "done playing, 4, about right, no unfair deaths, I think the pump should hit a little harder. map should be bigger with more progression / stuff to do... but thats out of scope". He reached wave 3 (score 1,900, 10 eliminations, 21% accuracy, 206 s), and his first personal best was saved.
+  - **Launch:** 5,992 ms, **cold** (the window appeared at 4,799 ms).
+  - **Frames (S2 N/A, 206 s < 300 s):** mean 16.91 ms, p99 31.98, 168 frames > 25 ms, 94.45% < 18 ms. The spikes run all through the session and are denser in the heaviest fights. Background load from other apps was 7–25.
+  - **Next:** a performance builder was dispatched (`m3-perf`). It adds per-frame attribution to the session log (CPU by schedule, GPU time if cheap, event counts, pipeline compiles), plus a spike report, and fixes per-event costs.
+- 2026-09-28: **settings file:** `Tuning::load_or_default` now takes only the menu-editable settings from `userdata/settings.json` (look, audio, graphics, HUD, feedback, aim friction). Every section is saved, so designer numbers had been frozen by Jake's first save; tuning changes (the pump) would otherwise never reach his game.

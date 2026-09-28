@@ -188,8 +188,15 @@ fn the_rifle_never_knocks_a_knight_off() {
 
 #[test]
 fn a_far_pump_near_the_edge_only_nudges() {
-    // 12 m away the shove is under a metre and a half: it stays on the island.
-    let (mut sim, player, knight) = lab(Vec3::new(21.0, 0.0, 0.0), Vec3::new(9.0, 0.0, 0.0));
+    // Beyond the pump's falloff the shove is at most `pump_knockback` times
+    // the falloff floor: short of the barrier 3 m behind the knight.
+    let t = Tuning::default();
+    let distance = t.combat.pump.falloff_end + 2.0;
+    let most = t.grunt.pump_knockback * t.combat.pump.falloff(distance);
+    assert!(most < 2.5, "a far pump shoves up to {most:.2} m");
+    // z = -10: a clear lane (the initial cover stands across z = 0).
+    let knight_feet = Vec3::new(ARENA_HALF - 3.0, 0.0, -10.0);
+    let (mut sim, player, knight) = lab(knight_feet, knight_feet - Vec3::X * distance);
     shoot(&mut sim, player, knight, WeaponKind::Pump);
     sim.run_seconds(1.5);
     assert!(sim.world().get::<VoidFall>(knight).is_none());

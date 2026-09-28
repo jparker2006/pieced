@@ -10,3 +10,4 @@ Features Jake wants later. They're not in the current milestone's scope; each be
 | 2026-09-27 | **Economy** | Limited materials and ammo, knight drops, a Zombies-style points shop and gun upgrades (D62). |
 | 2026-09-27 | **More content** | New maps and guns to keep endless runs fresh (D58); a 1v1 build-fight mode; cosmetics such as robe colours and gun skins. |
 | 2026-09-27 | **Rename the game and name the modes** | D66: "Waves" is a placeholder. |
+| 2026-09-28 | **Bigger map and more progression** | Jake after play-test 2: "map should be bigger with more progression / stuff to do... but thats out of scope". Pairs with More content (new maps) and the Economy (points shop, upgrades). |
