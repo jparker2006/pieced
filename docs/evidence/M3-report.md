@@ -13,7 +13,7 @@ Every number here names its source (session folder or test), the commit, and the
 | W2 Endless waves | **PASS** (`5086a57`) | Chunk 2 tests: `tests/waves.rs` (19), `tests/potions.rs` (5), `tests/waves_ui.rs` (11) and unit tests; 544 passing on the 2B branch, which contains main. Play-test 2: fun 4, about right, no unfair deaths |
 | W3 Fair knights | | |
 | W4 Ships and the void | **PASS** (`fb039a3`) | `tests/ships.rs` (10), `tests/void.rs` (7), 6 unit tests; the branch's full suite, clippy, fmt and `build-art --check` are clean on top of `e1d5b9d`. Play-test 3: fun 4, about right, no unfair deaths |
-| W5 Castle and sky | | |
+| W5 Castle and sky | **PASS** (`fb039a3`) | The castle follows D94's `M3-C4`; the orchestrator reviewed the renders against C4 before merging. Sky motion and far budget tests pass (`tests/far.rs`: ≤ 90k triangles, ≤ 18 batches, ≤ 64 halos). Jake's scores, quoted: "5 and 5" (spawn vista, castle up) |
 | W6 Menu and controls | | |
 | W7 Performance (wave ≥ 6, battery, Low Power Mode) | | |
 | W8 Launch (warm < 5 s ×3; Play → controllable < 1 s) | | |
@@ -31,7 +31,7 @@ Every number here names its source (session folder or test), the commit, and the
 | 1 | One grunt wave | `b3a4c24` | **4** | About right ("maybe a little hard to kill them in the 'early rounds'") | **None** | Early grunts a bit tanky → wave-1 HP 100 → 80 | `20260928-045508` (AC, 62 s), `20260928-045801` (AC, 387 s, measured under builder load) |
 | 2 | Endless waves | `5086a57` | **4** | About right | **None** | "the pump should hit a little harder" → pump falloff and knockback tuned; "map should be bigger with more progression / stuff to do... but thats out of scope" → backlog | `20260928-085054` (battery + LPM, 206 s, reached wave 3, score 1,900, 10 eliminations) |
 | 3 | Ships and the void | `fb039a3` | **4** | About right | **None** | Nothing named: "it was actually so much fun" | `20260928-163647` (battery + LPM, 250 s, wave 3, score 2,250, 12 eliminations); an earlier launch closed after 3 s when the display went away (`20260928-095221`) |
-| 4 | Castle and sky (look check) | | | | | | |
+| 4 | Castle and sky (look check) | `fb039a3` | Castle views **5 and 5** against C4 | — | — | — | Jake saw the castle in play-tests 1–3; he scored the offscreen spawn and up views in `docs/evidence/m3/castle/` next to `M3-C4` |
 | 5 | Menu and controls (final) | | | | | | |
 
 ## Tuning changes
@@ -161,3 +161,4 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
   - **Warm launch 4,139 ms**, with the window at 3,188 ms. More than 3 s goes before the window exists, and it grows with each build (cold launches of 6.8 s, the 8.7 s one, and 2.4–4.8 s windows). This is the W8 risk; the performance builder is looking at pre-window work.
   - **Frames (S2 N/A, 250 s < 300 s):** mean 16.98 ms, p99 33.2, 278 frames > 25 ms, 94.31% < 18 ms.
   - **Bug found:** the first run of every launch uses the same seed (272065245258904011 in play-tests 2 and 3). D83 wants each run different unless `--seed` is given; being fixed.
+- 2026-09-28: **play-test 4, the castle look check.** Jake scored the two castle views against C4: "5 and 5, keep building". **W5 PASS.**
