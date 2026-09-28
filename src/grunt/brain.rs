@@ -204,6 +204,12 @@ impl GruntBrain {
         self.phase = phase;
     }
 
+    /// Replaces its RNG stream (the wave director seeds each activation from
+    /// the run's seed, so the same seed replays the same run).
+    pub fn reseed(&mut self, rng: Rng) {
+        self.rng = rng;
+    }
+
     pub fn mode(&self) -> GruntMode {
         self.mode
     }

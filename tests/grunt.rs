@@ -468,6 +468,7 @@ fn no_grunt_gets_stuck_over_two_minutes_among_pieces() {
             put_player(&mut sim, spots[(t / 600) as usize % spots.len()]);
         }
         sim.tick();
+        let stuck = sim.world().resource::<GruntNavStats>().stuck_events;
         for (k, &g) in grunts.iter().enumerate() {
             let b = brain(&sim, g);
             let f = sim.feet(g);
@@ -476,8 +477,8 @@ fn no_grunt_gets_stuck_over_two_minutes_among_pieces() {
                 anchors[k] = (f, t);
             }
             assert!(
-                t - anchors[k].1 <= 3 * 60 + 1,
-                "grunt {k} made no progress for 3 s at tick {t}: {f}, mode {:?}, spot {:?}, \
+                stuck == 0 && t - anchors[k].1 <= 3 * 60 - 10,
+                "grunt {k} stalled at tick {t} ({stuck} stuck events): {f}, mode {:?}, spot {:?}, \
                  path {:?}, intent {:?}",
                 b.mode(),
                 b.spot(),

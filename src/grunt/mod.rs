@@ -48,9 +48,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct Grunt;
 
-/// Marks a pooled grunt that is out of play: the brain skips it (and clears
-/// its intent), and the attack tokens drop it. The wave director (slice C)
-/// adds and removes it.
+/// A pooled grunt that is out of play: no AI (the brain skips it and clears
+/// its intent, and the attack tokens drop it), no movement (movement skips
+/// it), hidden while also `Downed`. The wave director parks every pool member
+/// between spawns and freezes the survivors with it when the run ends.
 #[derive(Component, Debug, Default, Clone, Copy)]
 pub struct Parked;
 
