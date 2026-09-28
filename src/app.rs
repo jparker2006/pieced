@@ -29,7 +29,7 @@ use crate::{
     telemetry::TelemetryPlugin,
     tuning::Tuning,
     viewmodel::ViewmodelPlugin,
-    waves::WavesPlugin,
+    waves::{WavesPlugin, ui::WavesUiPlugin},
 };
 use avian3d::prelude::*;
 use bevy::{
@@ -116,6 +116,7 @@ impl PluginGroup for ClientPlugins {
             .add(GameAudioPlugin)
             .add(HudPlugin)
             .add(MenuPlugin)
+            .add(WavesUiPlugin)
             .add(ScenarioPlugin)
             .add(BootPlugin)
             .add(NativeWindowPlugin)
@@ -243,9 +244,9 @@ impl GameOptions {
     }
 }
 
-/// The mode the native game opens in without a flag. Practice until the grunt
-/// wave lands (chunk 1 flips it to Waves).
-pub const NATIVE_DEFAULT_MODE: GameMode = GameMode::Practice;
+/// The mode the native game opens in without a flag (M3: Waves; `--practice`
+/// gives the M2 sandbox until the main menu lands in chunk 5).
+pub const NATIVE_DEFAULT_MODE: GameMode = GameMode::Waves;
 
 /// The full game.
 pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
@@ -303,6 +304,8 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     if options.input_probe {
         app.init_resource::<InputProbe>();
     }
+    // Launch kind always; the session frame log only outside scenarios.
+    app.add_plugins(crate::session::SessionPlugin::native(scenario.is_none()));
     if let Some(run) = scenario {
         app.insert_resource(run);
     }

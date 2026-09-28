@@ -31,6 +31,7 @@ pub mod player;
 pub mod render;
 pub mod rng;
 pub mod scenario;
+pub mod session;
 pub mod shared;
 pub mod sim;
 pub mod telemetry;
