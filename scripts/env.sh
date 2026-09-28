@@ -26,8 +26,14 @@ pieced_wait_quiet() {
 
 cargo() {
   pieced_wait_quiet
-  # A full disk corrupts half-linked test binaries; refuse early instead.
+  # Under 6 GB free, first drop test binaries nobody has rebuilt for 45 min
+  # (~200 MB each; worktrees on other bases leave whole stale sets behind).
   _pieced_free_kb=$(df -k "$HOME" | awk 'NR==2 {print $4}')
+  if [ "${_pieced_free_kb:-0}" -lt 6000000 ] && [ -d "$CARGO_TARGET_DIR/debug/deps" ]; then
+    find "$CARGO_TARGET_DIR/debug/deps" -maxdepth 1 -type f -size +50M -perm -u+x -mmin +45 -delete 2>/dev/null
+    _pieced_free_kb=$(df -k "$HOME" | awk 'NR==2 {print $4}')
+  fi
+  # A full disk corrupts half-linked test binaries; refuse early instead.
   if [ "${_pieced_free_kb:-0}" -lt 3000000 ]; then
     echo "cargo: under 3 GB free on disk; not building. Report to the orchestrator (don't prune)." >&2
     unset _pieced_free_kb
