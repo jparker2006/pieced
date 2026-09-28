@@ -1,15 +1,31 @@
-//! The Waves mode: runs, waves, the break, score and results (docs/M3-SPEC.md →
-//! Waves, D79–D85). Only active in [`GameMode::Waves`](crate::shared::GameMode).
+//! The Waves mode: runs, waves, the break, potions, score and results
+//! (docs/M3-SPEC.md → Waves, D79–D85). Only active in
+//! [`GameMode::Waves`](crate::shared::GameMode).
 //!
-//! Chunk 1 (slice C) builds the minimal run: 3 grunts poof in at seeded points
-//! on the island edge, the player's elimination ends the run, a plain results
-//! line with a restart key. Chunk 2 grows it into the full wave director.
+//! **The wave director** (chunk 2, slice A): wave n has
+//! [`WavesTuning::wave_size`] knights, at most `max_alive` in play; the rest
+//! poof in at seeded edge points as pool slots free up. Clearing a wave scores
+//! it and starts the break ([`RunPhase::Break`]: +50 shield, 10 s, skippable
+//! with [`SkipBreak`]), then the next wave comes, a little tougher
+//! ([`GruntStats::for_wave`]). Downed knights may drop a shield potion
+//! ([`potion`]). The player's elimination ends the run: the death beat
+//! ([`RunPhase::Dying`], slow motion in the client, the survivors hop), then
+//! [`RunPhase::Over`] and the results. Each run's end updates the personal best
+//! and appends a line to the run log ([`record`]). [`RunSummary`] is the
+//! read-only view the HUD and results screen draw from.
 //!
 //! Grunt characters come from a fixed pool of `max_alive` characters created at
 //! run start (parked and inactive), reused for every spawn, so a wave spawn
 //! never instances a model mid-fight (the knight figure is rigged once).
 
+pub mod potion;
+pub mod record;
 pub mod ui;
+
+pub use potion::{LivePotion, POTION_POOL, PotionSlot};
+pub use record::{
+    BestRun, DeathCause, PersonalBest, RunEnd, RunLogLine, RunResults, RunStore, build_commit,
+};
 
 use crate::{
     arena::ArenaLayout,
@@ -21,14 +37,14 @@ use crate::{
     orb::Wand,
     rng::{Rng, SimRng},
     shared::{
-        Ads, AppState, Character, EyeHeight, GameCue, GameMode, Health, Layer, LookAngles, Player,
-        PlayerIntent, PreviousFeet, SimSet, SimTick, TICK_SECONDS,
+        Ads, AppState, Character, DamageDealt, DamageTarget, EyeHeight, GameCue, GameMode, Health,
+        Layer, LookAngles, Player, PlayerIntent, PreviousFeet, SimSet, SimTick, TICK_SECONDS,
     },
     tuning::Tuning,
 };
 use avian3d::prelude::*;
 use bevy::{
-    ecs::{message::Messages, query::QueryData},
+    ecs::{message::Messages, query::QueryData, system::SystemParam},
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
@@ -92,19 +108,20 @@ impl WavesTuning {
 }
 
 // ---------------------------------------------------------------------------
-// The run (chunk 1: one grunt wave, looping)
+// The run
 // ---------------------------------------------------------------------------
 
 /// Seconds from a run's (or wave's) start to its first grunt.
 pub const FIRST_SPAWN_DELAY: f32 = 1.0;
-/// Seconds between grunts poofing in (chunk 1's stand-in for the beam, D82).
+/// Seconds between grunts poofing in (the stand-in for the beam until ships
+/// land in chunk 3, D82).
 pub const SPAWN_STAGGER: f32 = 0.4;
 /// Seconds a downed grunt lies (the KO take, the hat drop) before it goes back
 /// to the pool.
 pub const RETURN_DELAY: f32 = 1.0;
-/// Seconds "Wave n cleared!" shows before the next wave starts (chunk 1: wave
-/// 1 again; chunk 2 replaces this with the break).
-pub const CLEARED_PAUSE: f32 = 3.0;
+/// Simulated seconds after the player's elimination during which the surviving
+/// knights hop (D84's goofy victory hop); then they stand still.
+pub const VICTORY_HOP_SECONDS: f32 = 1.2;
 /// Grunts poof in on a ring this far inside the playable bounds (m): just
 /// inside the island edge.
 pub const EDGE_INSET: f32 = 2.0;
@@ -116,30 +133,38 @@ pub const SPAWN_SPACING: f32 = 3.0;
 pub const PARK_SPOT: Vec3 = Vec3::new(0.0, -60.0, 0.0);
 /// Salt for the run-seed stream.
 const WAVES_SALT: u64 = 0x3A7E_5EED;
+/// Salt for a run's potion-roll stream (separate from spawn points, so the
+/// kill count never shifts where knights land).
+const POTION_SALT: u64 = 0x9071_0115;
 
 /// Whole ticks covering `seconds`.
-fn ticks(seconds: f32) -> u64 {
+pub(crate) fn ticks(seconds: f32) -> u64 {
     (seconds / TICK_SECONDS).round().max(0.0) as u64
 }
 
 /// Where the run stands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum RunPhase {
     /// The wave's grunts are poofing in or fighting.
+    #[default]
     Fighting,
-    /// Every grunt of the wave went down at `tick`; the next wave starts after
-    /// [`CLEARED_PAUSE`].
-    Cleared { tick: u64 },
-    /// The player was eliminated at `tick` (one life per run). The run waits
-    /// for a restart ([`RestartRun`]).
+    /// Every grunt of wave `Run::wave` is down: the break (D79). The next wave
+    /// starts at `ends_tick`, or on a [`SkipBreak`].
+    Break { ends_tick: u64 },
+    /// The player was eliminated: the death beat (D84). The client runs time at
+    /// `death_time_scale` until `until` (`death_seconds` of real time), then
+    /// the run is [`RunPhase::Over`].
+    Dying { until: u64 },
+    /// The run has ended (since `tick`): the results. It waits for a
+    /// [`RestartRun`] ("Go again").
     Over { tick: u64 },
 }
 
 /// The current run (Waves mode only; absent in Practice).
 #[derive(Resource, Debug, Clone)]
 pub struct Run {
-    /// Drives spawn points and speed jitter (D83). A restart draws the next
-    /// run's seed from this run's stream.
+    /// Drives spawn points, speed jitter and potion rolls (D83). A restart
+    /// draws the next run's seed from this run's stream.
     pub seed: u64,
     pub wave: u32,
     pub phase: RunPhase,
@@ -147,18 +172,34 @@ pub struct Run {
     pub alive: u32,
     /// Grunts of this wave still to poof in.
     pub remaining: u32,
-    /// Grunts downed this run.
+    /// Knights downed this run.
     pub eliminations: u32,
-    /// Placeholder until chunk 2's D81 score: `score_kill` per elimination.
+    /// Knights downed by a headshot (the +50s in the score).
+    pub headshot_kills: u32,
+    /// Knights knocked into the void (the +150s).
+    pub void_kills: u32,
+    /// D81: 100 per knight, +50 headshot kill, +150 void, +250 × n per wave.
     pub score: u32,
     pub waves_cleared: u32,
     pub started_tick: u64,
+    /// Tick the run ended (the player's elimination, or a quit).
+    pub ended_tick: Option<u64>,
+    pub ended: Option<RunEnd>,
+    /// This run beat the personal best (set when the run ends).
+    pub new_best: bool,
     next_spawn_tick: u64,
+    /// Survivors stop moving from this tick (after the victory hop).
+    freeze_tick: Option<u64>,
+    /// The run just ended and its record isn't written yet.
+    record_pending: bool,
     rng: Rng,
+    potion_rng: Rng,
 }
 
 impl Run {
     pub fn new(seed: u64, tick: u64, tuning: &WavesTuning) -> Self {
+        let rng = Rng::new(seed);
+        let potion_rng = rng.clone().fork(POTION_SALT);
         let mut run = Self {
             seed,
             wave: 1,
@@ -166,11 +207,19 @@ impl Run {
             alive: 0,
             remaining: 0,
             eliminations: 0,
+            headshot_kills: 0,
+            void_kills: 0,
             score: 0,
             waves_cleared: 0,
             started_tick: tick,
+            ended_tick: None,
+            ended: None,
+            new_best: false,
             next_spawn_tick: tick,
-            rng: Rng::new(seed),
+            freeze_tick: None,
+            record_pending: false,
+            rng,
+            potion_rng,
         };
         run.start_wave(1, tick, tuning);
         run
@@ -183,21 +232,109 @@ impl Run {
         self.next_spawn_tick = tick + ticks(FIRST_SPAWN_DELAY);
     }
 
+    /// The results screen is up: the run has ended and the death beat is over.
     pub fn is_over(&self) -> bool {
         matches!(self.phase, RunPhase::Over { .. })
+    }
+
+    /// The run has ended: the death beat or the results.
+    pub fn is_ended(&self) -> bool {
+        matches!(self.phase, RunPhase::Dying { .. } | RunPhase::Over { .. })
     }
 
     /// Knights left in the wave: in play plus still to come.
     pub fn left(&self) -> u32 {
         self.alive + self.remaining
     }
+
+    /// Seconds of the break left (`None` outside a break).
+    pub fn break_seconds_left(&self, now: u64) -> Option<f32> {
+        match self.phase {
+            RunPhase::Break { ends_tick } => {
+                Some(ends_tick.saturating_sub(now) as f32 * TICK_SECONDS)
+            }
+            _ => None,
+        }
+    }
+
+    /// Simulated seconds from the start to the end (or `now`).
+    pub fn run_seconds(&self, now: u64) -> f32 {
+        self.ended_tick
+            .unwrap_or(now)
+            .saturating_sub(self.started_tick) as f32
+            * TICK_SECONDS
+    }
+
+    /// The results-screen numbers, with the player's shooting from `stats`.
+    pub fn results(&self, now: u64, stats: &CombatStats) -> RunResults {
+        RunResults {
+            seed: self.seed,
+            wave: self.wave,
+            score: self.score,
+            eliminations: self.eliminations,
+            accuracy: stats.accuracy(),
+            headshots: stats.headshots,
+            run_seconds: self.run_seconds(now),
+        }
+    }
+
+    /// Ends the run at `now`: an elimination starts the death beat; a quit goes
+    /// straight to the results.
+    fn end(&mut self, now: u64, how: RunEnd, tuning: &WavesTuning) {
+        self.ended_tick = Some(now);
+        self.ended = Some(how);
+        self.record_pending = true;
+        match how {
+            RunEnd::Eliminated => {
+                let beat = tuning.death_seconds * tuning.death_time_scale;
+                self.phase = RunPhase::Dying {
+                    until: now + ticks(beat).max(1),
+                };
+                self.freeze_tick = Some(now + ticks(VICTORY_HOP_SECONDS));
+            }
+            RunEnd::Quit => {
+                self.phase = RunPhase::Over { tick: now };
+                self.freeze_tick = Some(now);
+            }
+        }
+    }
+
+    /// Whether the survivors are doing the victory hop at `now`.
+    pub fn hopping(&self, now: u64) -> bool {
+        self.ended == Some(RunEnd::Eliminated) && self.freeze_tick.is_some_and(|f| now < f)
+    }
 }
 
 /// Starts a new run in place ("Go again"): pieces back to the initial cover,
-/// orbs gone, grunts parked, the player at spawn at full health, a new seed.
-/// Written by the input adapter (Enter on the results line) or by tests.
+/// orbs and potions gone, grunts parked, the player at spawn at full health, a
+/// score of 0, a new seed. Written by the input adapter (Enter on the results)
+/// or by tests. Works in any phase.
 #[derive(Message, Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RestartRun;
+
+/// Ends the break now (D79: Enter, rebindable). Ignored outside a break.
+#[derive(Message, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SkipBreak;
+
+/// Ends the run now and goes to the results (quitting from the pause menu,
+/// D84). Recorded like a death, with [`RunEnd::Quit`]. Ignored once ended.
+#[derive(Message, Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EndRun;
+
+/// A knight was knocked off the island (D78, chunk 3): worth the void bonus
+/// (`score_void`) on top of the kill. The sender also marks the knight
+/// [`Downed`] (which counts the elimination and the 100); the message may come
+/// on the same tick or any tick before the knight returns to the pool. A
+/// void knight drops no potion.
+#[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VoidKill {
+    pub knight: Entity,
+}
+
+/// The first run's seed, fixed from the command line (`--seed <n>`, D83).
+/// Later runs ("Go again") draw new seeds from it.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RunSeed(pub u64);
 
 /// A member of the grunt pool (`max_alive` characters created at startup and
 /// reused for every spawn, so a spawn never instances a knight mid-fight).
@@ -205,11 +342,21 @@ pub struct RestartRun;
 pub struct PoolGrunt {
     /// Tick it went down, while it lies before returning to the pool.
     pub downed_at: Option<u64>,
+    /// The wave it poofed in for.
+    pub wave: u32,
+    /// Knocked into the void ([`VoidKill`]) before its down was counted.
+    pub void_kill: bool,
 }
 
-/// Run condition: a Waves run exists and the player has been eliminated.
+/// Run condition: a Waves run exists and it has ended (the death beat or the
+/// results): the player's controls do nothing, and Enter goes again.
 pub fn run_over(run: Option<Res<Run>>) -> bool {
-    run.is_some_and(|run| run.is_over())
+    run.is_some_and(|run| run.is_ended())
+}
+
+/// Run condition: a Waves run is in its break (Enter skips it).
+pub fn in_break(run: Option<Res<Run>>) -> bool {
+    run.is_some_and(|run| matches!(run.phase, RunPhase::Break { .. }))
 }
 
 /// Test-only switch: Waves mode without the wave director (no run, no pool),
@@ -217,17 +364,50 @@ pub fn run_over(run: Option<Res<Run>>) -> bool {
 #[derive(Resource, Debug, Default, Clone, Copy)]
 pub struct NoWaveDirector;
 
-/// The run: grunt pool, wave spawning, the player's death and restart.
+/// Everything the HUD and the results screen show (slice B reads this; it's
+/// rewritten after the director every fixed tick).
+#[derive(Resource, Debug, Clone, Default, PartialEq)]
+pub struct RunSummary {
+    pub seed: u64,
+    /// The wave being fought (during a break: the wave just cleared).
+    pub wave: u32,
+    /// Knights left in the wave: in play plus still to come.
+    pub knights_left: u32,
+    pub score: u32,
+    pub phase: RunPhase,
+    /// The break's countdown (s), while in a break.
+    pub break_seconds_left: Option<f32>,
+    /// The saved personal best (after this run's end: including this run).
+    pub best: Option<BestRun>,
+    /// This run is a new personal best (known once the run ends).
+    pub new_best: bool,
+    /// The results-screen numbers (live during the run, final once ended).
+    pub results: RunResults,
+}
+
+/// The run: grunt pool, waves, break, potions, score, the death beat, records
+/// and restart.
 pub struct WavesPlugin;
 
 impl Plugin for WavesPlugin {
     fn build(&self, app: &mut App) {
+        let waves =
+            resource_equals(GameMode::Waves).and_then(not(resource_exists::<NoWaveDirector>));
         app.add_message::<RestartRun>()
+            .add_message::<SkipBreak>()
+            .add_message::<EndRun>()
+            .add_message::<VoidKill>()
+            .init_resource::<RunStore>()
+            .init_resource::<PersonalBest>()
+            .init_resource::<RunInbox>()
+            .init_resource::<potion::PendingPotions>()
             .add_systems(
                 Startup,
-                (start_run, register_restart)
-                    .run_if(resource_equals(GameMode::Waves))
-                    .run_if(not(resource_exists::<NoWaveDirector>)),
+                (
+                    load_best,
+                    (start_run, register_restart, potion::spawn_potion_pool).run_if(waves),
+                )
+                    .chain(),
             )
             .add_systems(
                 FixedUpdate,
@@ -236,21 +416,62 @@ impl Plugin for WavesPlugin {
                         .before(SimSet::Control)
                         .run_if(in_state(AppState::Playing)),
                     silence_dead_player.in_set(SimSet::Control),
-                    run_director.in_set(SimSet::Resolve),
+                    victory_hop.in_set(SimSet::Tool),
+                    (
+                        read_run_messages,
+                        run_director,
+                        record_run_end,
+                        potion::step_potions,
+                        update_summary,
+                    )
+                        .chain()
+                        .in_set(SimSet::Resolve),
                 )
                     .run_if(resource_exists::<Run>),
             );
     }
 }
 
+/// Presentation-side run effects (client only): the death beat's slow motion.
+pub struct WavesClientPlugin;
+
+impl Plugin for WavesClientPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, death_slow_motion);
+    }
+}
+
+/// D84: time runs at `death_time_scale` during the death beat. Only the client
+/// scales virtual time; the headless sim keeps one fixed tick per update, and
+/// the beat's length is counted in ticks (`RunPhase::Dying`).
+fn death_slow_motion(run: Option<Res<Run>>, tuning: Res<Tuning>, mut time: ResMut<Time<Virtual>>) {
+    let dying = run.is_some_and(|r| matches!(r.phase, RunPhase::Dying { .. }));
+    let speed = if dying {
+        tuning.waves.death_time_scale.clamp(0.05, 1.0)
+    } else {
+        1.0
+    };
+    if time.relative_speed() != speed {
+        time.set_relative_speed(speed);
+    }
+}
+
+fn load_best(store: Res<RunStore>, mut best: ResMut<PersonalBest>) {
+    best.0 = store.load_best();
+}
+
 fn start_run(
     mut commands: Commands,
     tuning: Res<Tuning>,
     sim_rng: Res<SimRng>,
+    fixed: Option<Res<RunSeed>>,
+    best: Res<PersonalBest>,
     tick: Res<SimTick>,
 ) {
-    let seed = sim_rng.0.clone().fork(WAVES_SALT).next_u64();
-    commands.insert_resource(Run::new(seed, tick.0, &tuning.waves));
+    let seed = fixed.map_or_else(|| sim_rng.0.clone().fork(WAVES_SALT).next_u64(), |s| s.0);
+    let run = Run::new(seed, tick.0, &tuning.waves);
+    commands.insert_resource(summarize(&run, tick.0, &CombatStats::default(), &best));
+    commands.insert_resource(run);
     let stats = GruntStats::for_wave(1, &tuning.grunt);
     for _ in 0..tuning.waves.max_alive {
         spawn_pool_member(&mut commands, stats);
@@ -311,7 +532,7 @@ impl PoolPartsItem<'_, '_> {
         self.health.reset();
         self.wand.windup = None;
         self.wand.cooldown = 0.0;
-        self.slot.downed_at = None;
+        *self.slot = PoolGrunt::default();
         commands
             .entity(self.entity)
             .insert((Parked, Downed { tick }))
@@ -319,10 +540,49 @@ impl PoolPartsItem<'_, '_> {
     }
 }
 
-/// Once the run is over, the player's controls do nothing (the results line's
+/// What the director needs from this tick's messages.
+#[derive(Resource, Debug)]
+struct RunInbox {
+    /// Knights the player downed with a headshot this tick.
+    headshot_kills: Vec<Entity>,
+    /// Knights knocked into the void this tick.
+    void_kills: Vec<Entity>,
+    skip_break: bool,
+    end_requested: bool,
+    /// The player's latest hit (tick), for the death cause.
+    player_hit_tick: Option<u64>,
+    /// What killed the player.
+    cause: Option<DeathCause>,
+}
+
+impl Default for RunInbox {
+    fn default() -> Self {
+        Self {
+            headshot_kills: Vec::with_capacity(16),
+            void_kills: Vec::with_capacity(16),
+            skip_break: false,
+            end_requested: false,
+            player_hit_tick: None,
+            cause: None,
+        }
+    }
+}
+
+impl RunInbox {
+    fn reset(&mut self) {
+        self.headshot_kills.clear();
+        self.void_kills.clear();
+        self.skip_break = false;
+        self.end_requested = false;
+        self.player_hit_tick = None;
+        self.cause = None;
+    }
+}
+
+/// Once the run has ended, the player's controls do nothing (the results'
 /// Enter is read by the input adapter, not through `PlayerIntent`).
 fn silence_dead_player(run: Res<Run>, mut players: Query<&mut PlayerIntent, With<Player>>) {
-    if !run.is_over() {
+    if !run.is_ended() {
         return;
     }
     for mut intent in &mut players {
@@ -332,36 +592,153 @@ fn silence_dead_player(run: Res<Run>, mut players: Query<&mut PlayerIntent, With
     }
 }
 
-/// The wave loop, after combat each tick: the player's death ends the run;
-/// downed grunts count and return to the pool; grunts poof in at seeded edge
-/// points; a wave with every grunt down is cleared and (chunk 1) starts again.
+/// D84's goofy victory hop: after the player's elimination the surviving
+/// knights jump whenever they land, for [`VICTORY_HOP_SECONDS`]. Runs after
+/// the brains (which idle once the player is down), before movement.
+fn victory_hop(
+    run: Res<Run>,
+    tick: Res<SimTick>,
+    mut grunts: Query<
+        (&mut PlayerIntent, &Motor),
+        (With<PoolGrunt>, Without<Parked>, Without<Downed>),
+    >,
+) {
+    if !run.hopping(tick.0) {
+        return;
+    }
+    for (mut intent, motor) in &mut grunts {
+        intent.jump = true;
+        if motor.grounded {
+            intent.jump_pressed = true;
+        }
+    }
+}
+
+/// Reads this tick's damage, void, skip and quit messages into the inbox.
+fn read_run_messages(
+    mut inbox: ResMut<RunInbox>,
+    mut damage: MessageReader<DamageDealt>,
+    mut void: MessageReader<VoidKill>,
+    mut skip: MessageReader<SkipBreak>,
+    mut end: MessageReader<EndRun>,
+    players: Query<Entity, With<Player>>,
+    sources: Query<(&Transform, Option<&PoolGrunt>)>,
+) {
+    let player = players.iter().next();
+    for hit in damage.read() {
+        if hit.target_kind != DamageTarget::Character || hit.amount <= 0.0 {
+            continue;
+        }
+        if Some(hit.target) == player {
+            if hit.killed && inbox.cause.is_none() {
+                let source = hit.source.and_then(|s| sources.get(s).ok());
+                inbox.cause = Some(DeathCause {
+                    source_wave: source.and_then(|(_, slot)| slot.map(|s| s.wave)),
+                    source_position: source.map(|(t, _)| t.translation.to_array()),
+                    seconds_since_previous_hit: inbox
+                        .player_hit_tick
+                        .map(|t| hit.tick.saturating_sub(t) as f32 * TICK_SECONDS),
+                });
+            }
+            inbox.player_hit_tick = Some(hit.tick);
+        } else if hit.killed && hit.headshot && player.is_some() && hit.source == player {
+            inbox.headshot_kills.push(hit.target);
+        }
+    }
+    inbox.void_kills.extend(void.read().map(|v| v.knight));
+    inbox.skip_break |= skip.read().count() > 0;
+    inbox.end_requested |= end.read().count() > 0;
+}
+
+/// The spawn-point checks: a knight's capsule must touch no world geometry or
+/// piece.
+#[derive(SystemParam)]
+struct SpawnCheck<'w, 's> {
+    spatial: SpatialQuery<'w, 's>,
+    collider_of: Query<'w, 's, &'static ColliderOf>,
+    characters: Query<'w, 's, (), With<Character>>,
+}
+
+impl SpawnCheck<'_, '_> {
+    fn is_clear(&self, spot: Vec3) -> bool {
+        // A capsule from 0.05 m to 1.95 m above the feet must touch no world
+        // geometry or piece (characters' own colliders don't count).
+        let blockers = SpatialQueryFilter::from_mask([Layer::World, Layer::Piece]);
+        let body = Collider::capsule(0.4, 1.1);
+        let mut clear = true;
+        self.spatial.shape_intersections_callback(
+            &body,
+            spot + Vec3::Y * 1.0,
+            Quat::IDENTITY,
+            &blockers,
+            |e| {
+                clear &= self
+                    .collider_of
+                    .get(e)
+                    .is_ok_and(|c| self.characters.contains(c.body));
+                clear
+            },
+        );
+        clear
+    }
+}
+
+/// The wave loop, after combat each tick: the player's death (or a quit) ends
+/// the run; downed grunts score, may drop a potion, and return to the pool;
+/// grunts poof in at seeded edge points; a cleared wave starts the break; the
+/// break ends into the next wave.
+#[allow(clippy::too_many_arguments)]
 fn run_director(
     mut commands: Commands,
     mut run: ResMut<Run>,
+    mut inbox: ResMut<RunInbox>,
+    mut drops: ResMut<potion::PendingPotions>,
     tick: Res<SimTick>,
     tuning: Res<Tuning>,
     layout: Res<ArenaLayout>,
-    spatial: SpatialQuery,
-    collider_of: Query<&ColliderOf>,
-    characters: Query<(), With<Character>>,
-    players: Query<(Entity, &Transform, &Health, Has<Downed>), With<Player>>,
+    spawn_check: SpawnCheck,
+    mut players: Query<(Entity, &Transform, &mut Health, Has<Downed>), With<Player>>,
     mut grunts: Query<PoolParts, (With<PoolGrunt>, Without<Player>)>,
     mut cues: MessageWriter<GameCue>,
 ) {
     let now = tick.0;
     let t = &tuning.waves;
     let run = &mut *run;
-    let player = players.iter().next();
+    let inbox = &mut *inbox;
 
-    // The player's elimination ends the run (one life, D84).
-    if !run.is_over()
-        && let Some((entity, _, health, downed)) = player
-        && (downed || health.is_dead())
-    {
-        if !downed {
-            commands.entity(entity).insert(Downed { tick: now });
+    // The player's elimination ends the run (one life, D84); so does a quit.
+    if !run.is_ended() {
+        if let Some((entity, _, health, downed)) = players.iter().next()
+            && (downed || health.is_dead())
+        {
+            if !downed {
+                commands.entity(entity).insert(Downed { tick: now });
+            }
+            run.end(now, RunEnd::Eliminated, t);
+        } else if inbox.end_requested {
+            run.end(now, RunEnd::Quit, t);
         }
-        run.phase = RunPhase::Over { tick: now };
+    }
+    inbox.end_requested = false;
+    let live = !run.is_ended();
+
+    // Void knock-offs (chunk 3): the bonus now if the down already counted,
+    // else when it does.
+    for knight in inbox.void_kills.drain(..) {
+        let Ok(mut grunt) = grunts.get_mut(knight) else {
+            continue;
+        };
+        if grunt.parked {
+            continue;
+        }
+        if grunt.slot.downed_at.is_some() {
+            if live {
+                run.score += t.score_void;
+                run.void_kills += 1;
+            }
+        } else {
+            grunt.slot.void_kill = true;
+        }
     }
 
     // Downed grunts count once, lie for a beat, then go back to the pool.
@@ -372,8 +749,21 @@ fn run_director(
         match grunt.slot.downed_at {
             None => {
                 grunt.slot.downed_at = Some(now);
+                if !live {
+                    continue;
+                }
                 run.eliminations += 1;
                 run.score += t.score_kill;
+                if inbox.headshot_kills.contains(&grunt.entity) {
+                    run.score += t.score_headshot;
+                    run.headshot_kills += 1;
+                }
+                if grunt.slot.void_kill {
+                    run.score += t.score_void;
+                    run.void_kills += 1;
+                } else if run.potion_rng.chance(t.potion_chance) {
+                    drops.0.push(grunt.transform.translation);
+                }
             }
             Some(at) if now.saturating_sub(at) >= ticks(RETURN_DELAY) => {
                 grunt.park(&mut commands, now);
@@ -381,71 +771,74 @@ fn run_director(
             Some(_) => {}
         }
     }
+    inbox.headshot_kills.clear();
     run.alive = grunts.iter().filter(|g| !g.parked && !g.downed).count() as u32;
 
-    match run.phase {
-        RunPhase::Over { tick: over } => {
-            // After the death beat the survivors stop where they stand (frozen
-            // by `Parked` once they're on the ground, so none hangs mid-jump).
-            if now.saturating_sub(over) >= ticks(t.death_seconds) {
-                for mut grunt in &mut grunts {
-                    if !grunt.in_play() {
-                        continue;
-                    }
-                    *grunt.intent = PlayerIntent::default();
-                    if grunt.motor.grounded {
-                        commands.entity(grunt.entity).insert(Parked);
-                    }
-                }
+    // After the victory hop the survivors stop where they stand (frozen by
+    // `Parked` once they're on the ground, so none hangs mid-jump).
+    if run.freeze_tick.is_some_and(|f| now >= f) {
+        for mut grunt in &mut grunts {
+            if !grunt.in_play() {
+                continue;
+            }
+            *grunt.intent = PlayerIntent::default();
+            if grunt.motor.grounded {
+                commands.entity(grunt.entity).insert(Parked);
             }
         }
-        RunPhase::Cleared { tick: cleared } => {
-            if now.saturating_sub(cleared) >= ticks(CLEARED_PAUSE) {
-                // Chunk 1 loops wave 1; chunk 2's director counts up.
-                let wave = run.wave;
-                run.start_wave(wave, now, t);
+    }
+
+    let skip = std::mem::take(&mut inbox.skip_break);
+    match run.phase {
+        RunPhase::Dying { until } => {
+            if now >= until {
+                run.phase = RunPhase::Over { tick: now };
+            }
+        }
+        RunPhase::Over { .. } => {}
+        RunPhase::Break { ends_tick } => {
+            if skip || now >= ends_tick {
+                let next = run.wave + 1;
+                run.start_wave(next, now, t);
             }
         }
         RunPhase::Fighting => {
             if run.remaining == 0 && run.alive == 0 {
-                run.phase = RunPhase::Cleared { tick: now };
+                // Wave cleared: score it, refill the shield, take a breath (D79).
                 run.waves_cleared += 1;
                 run.score += t.score_wave * run.wave;
+                run.phase = RunPhase::Break {
+                    ends_tick: now + ticks(t.break_seconds),
+                };
+                for (_, _, mut health, downed) in &mut players {
+                    if !downed && !health.is_dead() {
+                        health.shield = (health.shield + t.break_shield).min(health.max_shield);
+                    }
+                }
                 return;
             }
             if run.remaining == 0 || now < run.next_spawn_tick || run.alive >= t.max_alive {
                 return;
             }
-            let player_feet = player.map_or(layout.player_spawn, |p| p.1.translation);
-            let others: Vec<Vec3> = grunts
+            let player_feet = players
                 .iter()
-                .filter(|g| !g.parked)
-                .map(|g| g.transform.translation)
-                .collect();
-            let blockers = SpatialQueryFilter::from_mask([Layer::World, Layer::Piece]);
-            let body = Collider::capsule(0.4, 1.1);
-            let is_clear = |spot: Vec3| {
-                // A capsule from 0.05 m to 1.95 m above the feet must touch no
-                // world geometry or piece (characters' own colliders don't count).
-                let mut clear = true;
-                spatial.shape_intersections_callback(
-                    &body,
-                    spot + Vec3::Y * 1.0,
-                    Quat::IDENTITY,
-                    &blockers,
-                    |e| {
-                        clear &= collider_of
-                            .get(e)
-                            .is_ok_and(|c| characters.contains(c.body));
-                        clear
-                    },
-                );
-                clear
-            };
+                .next()
+                .map_or(layout.player_spawn, |p| p.1.translation);
+            // At most `max_alive` knights: a few spots on the stack.
+            let mut others = [Vec3::ZERO; 16];
+            let mut n = 0;
+            for g in grunts.iter().filter(|g| !g.parked) {
+                if n < others.len() {
+                    others[n] = g.transform.translation;
+                    n += 1;
+                }
+            }
             let Some(mut grunt) = grunts.iter_mut().find(|g| g.free()) else {
                 return;
             };
-            let spot = edge_spot(&mut run.rng, &layout, player_feet, &others, is_clear);
+            let spot = edge_spot(&mut run.rng, &layout, player_feet, &others[..n], |p| {
+                spawn_check.is_clear(p)
+            });
             let mut stats = GruntStats::for_wave(run.wave, &tuning.grunt);
             let jitter = t.speed_jitter.abs();
             stats.speed =
@@ -459,7 +852,11 @@ fn run_director(
             *grunt.wand = Wand::new(stats.fire_interval);
             *grunt.intent = PlayerIntent::default();
             *grunt.motor = Motor::default();
-            grunt.slot.downed_at = None;
+            *grunt.slot = PoolGrunt {
+                downed_at: None,
+                wave: run.wave,
+                void_kill: false,
+            };
             // A fresh brain, seeded from the run so the same seed replays the run.
             grunt.brain.reset();
             grunt
@@ -468,13 +865,73 @@ fn run_director(
             commands
                 .entity(grunt.entity)
                 .remove::<(Parked, Downed, Knockback)>();
-            // The knight pops in with its sparkle (chunk 1's poof).
+            // The knight pops in with its sparkle (until ships land in chunk 3).
             cues.write(GameCue::Respawned { who: grunt.entity });
 
             run.remaining -= 1;
             run.alive += 1;
             run.next_spawn_tick = now + ticks(SPAWN_STAGGER);
         }
+    }
+}
+
+/// At a run's end: compare with the personal best (saving it when beaten) and
+/// append the run's line to the run log (D81, D89).
+fn record_run_end(
+    mut run: ResMut<Run>,
+    tick: Res<SimTick>,
+    inbox: Res<RunInbox>,
+    stats: Res<CombatStats>,
+    store: Res<RunStore>,
+    mut best: ResMut<PersonalBest>,
+) {
+    if !run.record_pending {
+        return;
+    }
+    run.record_pending = false;
+    let results = run.results(tick.0, &stats);
+    let this = BestRun::from(&results);
+    run.new_best = best.0.as_ref().is_none_or(|b| this.beats(b));
+    if run.new_best {
+        if let Err(e) = store.save_best(&this) {
+            warn!("waves: couldn't save the best run: {e}");
+        }
+        best.0 = Some(this);
+    }
+    let how = run.ended.unwrap_or_default();
+    let cause = (how == RunEnd::Eliminated)
+        .then(|| inbox.cause.clone())
+        .flatten();
+    if let Err(e) = store.append_run(&RunLogLine::new(&results, how, cause)) {
+        warn!("waves: couldn't append to the run log: {e}");
+    }
+}
+
+fn summarize(run: &Run, now: u64, stats: &CombatStats, best: &PersonalBest) -> RunSummary {
+    RunSummary {
+        seed: run.seed,
+        wave: run.wave,
+        knights_left: run.left(),
+        score: run.score,
+        phase: run.phase,
+        break_seconds_left: run.break_seconds_left(now),
+        best: best.0.clone(),
+        new_best: run.new_best,
+        results: run.results(now, stats),
+    }
+}
+
+/// Rewrites [`RunSummary`] after the director.
+fn update_summary(
+    run: Res<Run>,
+    tick: Res<SimTick>,
+    stats: Res<CombatStats>,
+    best: Res<PersonalBest>,
+    mut summary: ResMut<RunSummary>,
+) {
+    let now = summarize(&run, tick.0, &stats, &best);
+    if *summary != now {
+        *summary = now;
     }
 }
 
@@ -538,8 +995,9 @@ fn restart_run(world: &mut World) {
     if !requested {
         return;
     }
-    // Orbs in flight vanish back into their fixed pool.
+    // Orbs in flight and potions on the ground vanish back into their pools.
     crate::orb::recycle_all_orbs(world);
+    potion::recycle_all_potions(world);
     if let Err(e) = world.run_system_cached(reset_characters) {
         error!("waves: restart failed: {e}");
         return;
@@ -556,12 +1014,14 @@ fn restart_run(world: &mut World) {
 
 /// Parks every grunt, puts the player back at spawn whole, and starts a new run
 /// with the next seed.
+#[allow(clippy::too_many_arguments)]
 fn reset_characters(
     mut commands: Commands,
     tick: Res<SimTick>,
     tuning: Res<Tuning>,
     layout: Res<ArenaLayout>,
     mut run: ResMut<Run>,
+    mut inbox: ResMut<RunInbox>,
     mut stats: ResMut<CombatStats>,
     mut grunt_rng: ResMut<GruntRng>,
     mut tokens: ResMut<AttackTokens>,
@@ -619,6 +1079,7 @@ fn reset_characters(
         commands.entity(entity).remove::<(Downed, Knockback)>();
     }
     stats.reset();
+    inbox.reset();
     *grunt_rng = GruntRng::default();
     tokens.clear();
     let seed = run.rng.next_u64();
@@ -637,5 +1098,21 @@ mod tests {
         assert_eq!(t.wave_size(20), 41);
         let through_20: u32 = (1..=20).map(|w| t.wave_size(w)).sum();
         assert_eq!(through_20, 440);
+    }
+
+    #[test]
+    fn the_death_beat_lasts_a_real_second_of_slow_motion() {
+        let t = WavesTuning::default();
+        let mut run = Run::new(1, 100, &t);
+        run.end(100, RunEnd::Eliminated, &t);
+        // 1 s of real time at 0.3× is 0.3 s of game time: 18 ticks.
+        assert_eq!(run.phase, RunPhase::Dying { until: 118 });
+        assert!(run.is_ended() && !run.is_over());
+        assert!(run.hopping(110));
+        let mut quit = Run::new(1, 100, &t);
+        quit.end(160, RunEnd::Quit, &t);
+        assert_eq!(quit.phase, RunPhase::Over { tick: 160 });
+        assert!(!quit.hopping(160));
+        assert_eq!(quit.run_seconds(1000), 1.0);
     }
 }

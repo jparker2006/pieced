@@ -670,6 +670,8 @@ fn queue_cue_sounds(
             // The wand's cast and off-screen warning need the view and the
             // wand tip: `wand::queue_wand_sounds` plays them.
             GameCue::WandWindup { .. } | GameCue::OrbFired { .. } => continue,
+            // Potions are voiced by the Waves presentation (chunk 2, slice B).
+            GameCue::PotionDropped { .. } | GameCue::PotionPicked { .. } => continue,
         };
         let own = Some(who) == player;
         if !own && sfx.category() != SfxCategory::Movement {
