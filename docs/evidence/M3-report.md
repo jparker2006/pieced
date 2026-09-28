@@ -75,3 +75,11 @@ Changes to spec defaults made from play-test answers (±50% allowed without aski
 - 2026-09-27: **disk hit 0.9 GB** mid-build (the grunt slice stopped).
   - Incremental caches (5.9 GB) and stale test binaries were deleted, back to 11 GB.
   - `scripts/env.sh` now sets `CARGO_INCREMENTAL=0`.
+- 2026-09-27: **chunk 1C merged** (`67cd26d`), with 442 tests passing (0 failed); clippy and fmt clean.
+  - The native game now opens in **Waves** (`--practice` gives the sandbox; scenarios stay Practice).
+  - A pool of 8 grunt characters is parked at start. Wave 1's 3 grunts pop in 0.4 s apart at seeded spots 2 m inside the edge, ≥ 12 m from the player, each with ±10% speed.
+  - "Wave 1 cleared!" loops the wave for now.
+  - The player's death stops input, freezes the knights 1 s later, and shows "Wave 1 — N eliminations — press Enter to go again". Enter restarts in place: pieces and cover reset, orbs cleared, knights parked, the player respawned, a new seed.
+  - **Pump knockback:** about 4 m at point blank, stopped by walls, knights only (it skips the Practice dummy, so M1/M2 time-to-kill is unchanged).
+  - Tests: `tests/waves.rs` (7), `tests/knockback.rs` (5).
+  - Until slice A merges, knights stand still.
