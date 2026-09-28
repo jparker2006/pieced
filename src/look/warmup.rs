@@ -221,6 +221,31 @@ pub struct LoadingOverlay;
 const OVERLAY_LOGO_WIDTH: f32 = 480.0;
 
 pub(crate) fn spawn_loading_overlay(mut commands: Commands, art: Option<Res<crate::hud::UiArt>>) {
+    // The UI box-shadow pipeline (the results card, the pause menu) would
+    // otherwise compile when the first results card shows, at the end of a
+    // counted run. One shadow drawn just under the overlay compiles it during
+    // Boot; it goes with the overlay.
+    commands.spawn((
+        Name::new("Box shadow warm-up"),
+        LoadingOverlay,
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(40),
+            top: px(40),
+            width: px(40),
+            height: px(40),
+            ..default()
+        },
+        BackgroundColor(Color::srgb(0.1, 0.07, 0.2)),
+        BoxShadow::new(
+            Color::srgba(0.0, 0.0, 0.0, 0.45),
+            px(0),
+            px(12),
+            px(0),
+            px(40),
+        ),
+        GlobalZIndex(999),
+    ));
     let mut overlay = commands.spawn((
         Name::new("Loading overlay"),
         LoadingOverlay,

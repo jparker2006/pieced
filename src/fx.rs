@@ -734,8 +734,12 @@ fn simulate_fx(
             };
             if slot.fresh {
                 slot.fresh = false;
-                mesh.0 = slot.mesh.clone();
-                if let Paint::Solid(handle) = &slot.paint {
+                if mesh.0 != slot.mesh {
+                    mesh.0 = slot.mesh.clone();
+                }
+                if let Paint::Solid(handle) = &slot.paint
+                    && material.0 != *handle
+                {
                     material.0 = handle.clone();
                 }
                 vis.set_if_neq(Visibility::Visible);

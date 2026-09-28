@@ -4,10 +4,13 @@
 //! folders, and never headless tests) writes
 //! `userdata/sessions/<YYYYMMDD-HHMMSS>/` (UTC stamp):
 //!
-//! - `frames.csv`: `frame,t_ms,dt_ms,state,occluded`, one row per frame;
+//! - `frames.csv`: `frame,t_ms,dt_ms,state,occluded`, then where the frame's
+//!   time went and what happened in it ([`crate::profile`]), one row per
+//!   frame;
 //! - `session.json`: commit, build id, preset, launch time (cold or warm) and
 //!   its boot phases, power and Low Power Mode samples, occluded and play
-//!   time, and the S2 verdict over the counted frames.
+//!   time, the S2 verdict over the counted frames, and the spike report
+//!   ([`SpikeStats`]; `scripts/sessions.py --spikes` prints it).
 //!
 //! The main thread only pushes a small `Copy` row into a bounded channel each
 //! frame. A background writer thread owns the files: it buffers the CSV and

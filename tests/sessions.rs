@@ -919,6 +919,195 @@ fn a_headless_waves_session_fills_the_attribution_columns() {
     let _ = std::fs::remove_dir_all(root);
 }
 
+// ---------------------------------------------------------------------------
+// Five minutes of live waves with the visuals: nothing grows
+// ---------------------------------------------------------------------------
+
+/// The headless game with the look, models, arena and building visuals,
+/// effects (orbs, potions, spells, debris), the HUD and the frame profiler:
+/// one fixed tick per update, no GPU. Waves mode, models loaded, `Playing`.
+fn waves_with_visuals(seed: u64) -> App {
+    use avian3d::prelude::PhysicsPlugins;
+    use bevy::{
+        gltf::GltfPlugin, input::InputPlugin, time::TimeUpdateStrategy,
+        world_serialization::WorldSerializationPlugin,
+    };
+    use pieced::{
+        rng::{Rng, SimRng},
+        shared::{GameMode, tick_duration},
+    };
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        TransformPlugin,
+        bevy::state::app::StatesPlugin,
+        AssetPlugin::default(),
+        bevy::mesh::MeshPlugin,
+        GltfPlugin::default(),
+        WorldSerializationPlugin,
+        PhysicsPlugins::default(),
+        InputPlugin,
+    ))
+    .init_asset::<Image>()
+    .init_asset::<StandardMaterial>()
+    .add_plugins(pieced::app::SimPlugins)
+    .add_plugins((
+        pieced::look::LookPlugin,
+        pieced::models::ModelsPlugin,
+        pieced::arena::visuals::ArenaVisualsPlugin,
+        pieced::building::BuildingVisualsPlugin,
+        pieced::fx::FxPlugin,
+        pieced::hud::HudPlugin,
+        pieced::profile::FrameProfilePlugin,
+    ))
+    .init_resource::<pieced::render::CurrentFov>()
+    .insert_resource(TimeUpdateStrategy::ManualDuration(tick_duration()))
+    .insert_resource(SimRng(Rng::new(seed)))
+    .insert_resource(GameMode::Waves);
+    app.finish();
+    app.cleanup();
+    let mut loaded = false;
+    for _ in 0..3000 {
+        app.update();
+        if app
+            .world()
+            .get_resource::<pieced::models::ModelLibrary>()
+            .is_some_and(|m| m.is_ready())
+            && app
+                .world()
+                .contains_resource::<pieced::building::visuals::PieceAssets>()
+        {
+            loaded = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(loaded, "the models never loaded");
+    app.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Playing);
+    app.update();
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<pieced::shared::Player>>()
+        .single(app.world())
+        .unwrap();
+    let mut health = pieced::shared::Health::full(1.0e9, 100.0);
+    health.shield = 100.0;
+    *app.world_mut()
+        .get_mut::<pieced::shared::Health>(player)
+        .unwrap() = health;
+    app
+}
+
+/// Assets of every kind the game makes at run time.
+fn asset_counts(app: &App) -> Vec<(&'static str, usize)> {
+    let w = app.world();
+    vec![
+        ("meshes", w.resource::<Assets<Mesh>>().len()),
+        (
+            "toon",
+            w.resource::<Assets<pieced::look::ToonMaterial>>().len(),
+        ),
+        (
+            "ink",
+            w.resource::<Assets<pieced::look::InkMaterial>>().len(),
+        ),
+        ("standard", w.resource::<Assets<StandardMaterial>>().len()),
+        ("images", w.resource::<Assets<Image>>().len()),
+    ]
+}
+
+/// Five simulated minutes of endless waves with live brains and every
+/// effect: knights poof in, walk, wind up and cast orbs at a player who can't
+/// die, and each is downed 6 s after it lands (so the waves grow to the
+/// 8-alive cap); breaks are skipped. After the first half minute (lazy
+/// one-time assets), no asset is created and no entity is left behind.
+#[test]
+fn five_minutes_of_live_waves_with_every_effect_grow_nothing() {
+    use pieced::{
+        combat::Downed,
+        grunt::Parked,
+        shared::{DamageDealt, DamageTarget, Health, Player},
+        waves::{PoolGrunt, Run, RunPhase, SkipBreak},
+    };
+    let mut app = waves_with_visuals(5);
+    let in_play = |app: &mut App| -> Vec<Entity> {
+        app.world_mut()
+            .query_filtered::<Entity, (With<PoolGrunt>, Without<Parked>, Without<Downed>)>()
+            .iter(app.world())
+            .collect()
+    };
+    let entities =
+        |app: &mut App| -> usize { app.world_mut().query::<Entity>().iter(app.world()).count() };
+    let player = app
+        .world_mut()
+        .query_filtered::<Entity, With<Player>>()
+        .single(app.world())
+        .unwrap();
+    let mut landed: Vec<(Entity, u32)> = Vec::new();
+    let mut baseline: Option<(Vec<(&'static str, usize)>, usize)> = None;
+    let mut most_alive = 0;
+    let mut orbs_fired = 0u32;
+    for frame in 0..(5 * 60 * 60u32) {
+        let alive = in_play(&mut app);
+        most_alive = most_alive.max(alive.len());
+        landed.retain(|(e, _)| alive.contains(e));
+        for &g in &alive {
+            if !landed.iter().any(|(e, _)| *e == g) {
+                landed.push((g, frame));
+            }
+        }
+        let due: Vec<Entity> = landed
+            .iter()
+            .filter(|(_, at)| frame >= at + 360)
+            .map(|(e, _)| *e)
+            .collect();
+        for g in due {
+            let at = app.world().get::<Transform>(g).unwrap().translation;
+            let hp = app.world().get::<Health>(g).unwrap().hp;
+            app.world_mut().get_mut::<Health>(g).unwrap().hp = 0.0;
+            let tick = app.world().resource::<pieced::shared::SimTick>().0;
+            app.world_mut().entity_mut(g).insert(Downed { tick });
+            app.world_mut().write_message(DamageDealt {
+                source: Some(player),
+                target: g,
+                target_kind: DamageTarget::Character,
+                amount: hp,
+                to_shield: 0.0,
+                headshot: false,
+                shield_broke: false,
+                killed: true,
+                point: at + Vec3::Y,
+                normal: Vec3::Z,
+                tick,
+            });
+        }
+        if matches!(app.world().resource::<Run>().phase, RunPhase::Break { .. }) {
+            app.world_mut().write_message(SkipBreak);
+        }
+        app.update();
+        orbs_fired += u32::from(
+            app.world()
+                .resource::<pieced::profile::LastCounters>()
+                .0
+                .orbs_fired,
+        );
+        if frame == 30 * 60 {
+            baseline = Some((asset_counts(&app), entities(&mut app)));
+        }
+    }
+    let run = app.world().resource::<Run>().clone();
+    assert!(!run.is_ended(), "the player survived");
+    assert!(run.wave >= 6, "reached wave {}", run.wave);
+    assert_eq!(most_alive, 8, "the cap of eight was reached");
+    assert!(orbs_fired > 50, "only {orbs_fired} orbs cast");
+    let (assets, count) = baseline.unwrap();
+    assert_eq!(asset_counts(&app), assets, "assets created during play");
+    let now = entities(&mut app);
+    assert!(now <= count, "entities grew from {count} to {now}");
+}
+
 // The per-frame path of the profiler and the session log allocates nothing:
 // a counting allocator (armed on the test thread only) compares the frames of
 // an app with and without them.

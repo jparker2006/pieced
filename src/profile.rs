@@ -533,8 +533,23 @@ impl Plugin for FrameProfilePlugin {
         }
         app.add_systems(Last, gather_counters.in_set(ProfileSystems));
 
+        // Under pipelined rendering (`--knobs pipelined=on`) the render world
+        // runs beside the next frame's main world, so its marks would not
+        // describe the interval: leave its parts at zero (idle then covers
+        // the wait for the render thread).
+        let pipelined =
+            app.is_plugin_added::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app.insert_resource(profile);
+            render_app.add_systems(
+                Render,
+                count_pipelines
+                    .after(RenderSystems::Render)
+                    .before(RenderSystems::Cleanup),
+            );
+            if pipelined {
+                return;
+            }
             let world = render_app.world_mut();
             add_mark_schedule(
                 world,
@@ -558,7 +573,7 @@ impl Plugin for FrameProfilePlugin {
                     mark_system(Mark::GraphStart)
                         .after(RenderSystems::Prepare)
                         .before(RenderSystems::Render),
-                    (count_pipelines, mark_system(Mark::GraphEnd))
+                    mark_system(Mark::GraphEnd)
                         .after(RenderSystems::Render)
                         .before(RenderSystems::Cleanup),
                 ),
