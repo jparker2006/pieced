@@ -103,6 +103,7 @@ impl PluginGroup for ClientPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
             .add(TelemetryPlugin)
+            .add(crate::profile::FrameProfilePlugin)
             .add(InputAdapterPlugin)
             .add(InputProbePlugin)
             .add(RenderSetupPlugin)
@@ -264,6 +265,12 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     options.apply_graphics_overrides(&mut tuning.graphics);
     let mode = options.game_mode();
     let scenario = options.scenario.map(ScenarioRun::new).transpose()?;
+    // Parsed before the window and renderer exist: some knobs shape them.
+    let knobs = crate::perf_knobs::PerfKnobs::from_args(&std::env::args().collect::<Vec<_>>());
+    let knob = |f: fn(&crate::perf_knobs::PerfKnobs) -> Option<bool>| {
+        knobs.as_ref().and_then(f).unwrap_or(false)
+    };
+    let frame_latency = knobs.as_ref().and_then(|k| k.latency).unwrap_or(1);
     let windowed = options.windowed || !tuning.graphics.fullscreen;
     let window = Window {
         title: "Pieced".into(),
@@ -274,7 +281,7 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
         },
         resolution: WindowResolution::new(1280, 800),
         present_mode: crate::render::present_mode_for(&tuning.graphics),
-        desired_maximum_frame_latency: NonZero::new(1),
+        desired_maximum_frame_latency: NonZero::new(frame_latency),
         window_level: if scenario.is_some() {
             WindowLevel::AlwaysOnTop
         } else {
@@ -282,11 +289,13 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
         },
         ..default()
     };
+    let mut plugins = DefaultPlugins.build();
+    if !knob(|k| k.pipelined) {
+        plugins = plugins.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+    }
     let mut app = App::new();
     app.add_plugins(
-        DefaultPlugins
-            .build()
-            .disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>()
+        plugins
             .set(WindowPlugin {
                 primary_window: Some(window),
                 ..default()
@@ -310,9 +319,11 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     if let Some(seed) = options.seed {
         app.insert_resource(RunSeed(seed));
     }
-    if let Some(knobs) =
-        crate::perf_knobs::PerfKnobs::from_args(&std::env::args().collect::<Vec<_>>())
-    {
+    if knob(|k| k.gpu) {
+        app.add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin)
+            .init_resource::<crate::profile::GpuTiming>();
+    }
+    if let Some(knobs) = knobs {
         app.insert_resource(knobs)
             .add_plugins(crate::perf_knobs::PerfKnobsPlugin);
     }
@@ -324,6 +335,11 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     if let Some(run) = scenario {
         app.insert_resource(run);
     }
+    // Last, so its cleanup marks every plugin's finish and cleanup done; the
+    // PIECED_BOOT line then splits process start → app built → plugins ready
+    // → Startup (the window) → first frame.
+    app.add_plugins(crate::telemetry::BootMarkPlugin);
+    crate::telemetry::mark_app_built(&mut app);
     Ok(app)
 }
 

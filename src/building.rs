@@ -712,7 +712,12 @@ fn update_edit_targets(
     spatial: SpatialQuery,
     tuning: Res<Tuning>,
     map: Res<PieceMap>,
-    mut characters: Query<(&Transform, &EyeHeight, &LookAngles, &mut EditTarget)>,
+    // Knights never edit, and only the player's target is read (input, HUD):
+    // skipping the pool saves its rays and piece scans every tick.
+    mut characters: Query<
+        (&Transform, &EyeHeight, &LookAngles, &mut EditTarget),
+        Without<crate::grunt::Grunt>,
+    >,
     pieces: Query<&Piece>,
 ) {
     let tuning = &tuning.building;
@@ -833,7 +838,11 @@ fn apply_piece_hits(
 fn update_aimed_pieces(
     spatial: SpatialQuery,
     tuning: Res<Tuning>,
-    mut characters: Query<(&Transform, &EyeHeight, &LookAngles, &mut AimedPiece)>,
+    // As above: only the player's aimed piece is shown.
+    mut characters: Query<
+        (&Transform, &EyeHeight, &LookAngles, &mut AimedPiece),
+        Without<crate::grunt::Grunt>,
+    >,
     pieces: Query<&Piece>,
 ) {
     let filter = SpatialQueryFilter::from_mask([Layer::World, Layer::Piece]);

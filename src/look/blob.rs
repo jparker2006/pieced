@@ -211,14 +211,12 @@ pub(crate) fn probe_blob_ground(
         let origin = transform.translation() + Vec3::Y * PROBE_LIFT;
         // Not solid: a ray starting inside a prop's own collider reports where
         // it leaves it (its base), not a hit at the ray origin.
+        // A predicate rather than a cloned filter with the owner excluded:
+        // the same hits, without a set allocated per owner per frame.
         let hit = spatial
-            .cast_ray(
-                origin,
-                Dir3::NEG_Y,
-                PROBE_DEPTH,
-                false,
-                &filter.clone().with_excluded_entities([owner]),
-            )
+            .cast_ray_predicate(origin, Dir3::NEG_Y, PROBE_DEPTH, false, &filter, &|e| {
+                e != owner
+            })
             .map(|hit| (origin - Vec3::Y * hit.distance, hit.normal));
         ground.set_if_neq(BlobGround(hit));
     }

@@ -4,6 +4,7 @@
 
 use crate::{app::BootGate, render::GraphicsTuning, shared::AppState, tuning::Tuning};
 use bevy::{
+    app::MainScheduleOrder,
     prelude::*,
     render::{Extract, ExtractSchedule, Render, RenderApp, RenderSystems},
     window::{CursorGrabMode, CursorOptions, PrimaryWindow, WindowCreated, WindowOccluded},
@@ -95,6 +96,12 @@ impl Plugin for TelemetryPlugin {
             .init_resource::<RunConditions>()
             .init_resource::<LastFrame>()
             .init_resource::<BootPhases>()
+            .add_systems(StartupMark::Start, |mut p: ResMut<BootPhases>| {
+                p.startup_start_ms.get_or_insert(now_ms());
+            })
+            .add_systems(StartupMark::End, |mut p: ResMut<BootPhases>| {
+                p.startup_end_ms.get_or_insert(now_ms());
+            })
             .add_systems(First, count_main_frame)
             .add_systems(FixedFirst, count_fixed_tick)
             .add_systems(
@@ -108,6 +115,11 @@ impl Plugin for TelemetryPlugin {
                     .chain()
                     .in_set(TelemetrySystems),
             );
+        {
+            let mut order = app.world_mut().resource_mut::<MainScheduleOrder>();
+            order.insert_startup_before(PreStartup, StartupMark::Start);
+            order.insert_startup_after(PostStartup, StartupMark::End);
+        }
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .insert_resource(submits)
@@ -120,6 +132,34 @@ impl Plugin for TelemetryPlugin {
                         .before(RenderSystems::Cleanup),
                 );
         }
+    }
+}
+
+/// Boot-phase marks around the `Startup` schedules.
+#[derive(bevy::ecs::schedule::ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
+enum StartupMark {
+    Start,
+    End,
+}
+
+/// Add last (after every other plugin): its `cleanup` runs after every other
+/// plugin's `finish` and `cleanup`, and records [`BootPhases::plugins_ready_ms`].
+pub struct BootMarkPlugin;
+
+impl Plugin for BootMarkPlugin {
+    fn build(&self, _app: &mut App) {}
+
+    fn cleanup(&self, app: &mut App) {
+        if let Some(mut phases) = app.world_mut().get_resource_mut::<BootPhases>() {
+            phases.plugins_ready_ms.get_or_insert(now_ms());
+        }
+    }
+}
+
+/// Records that the app is built (call at the end of building it).
+pub fn mark_app_built(app: &mut App) {
+    if let Some(mut phases) = app.world_mut().get_resource_mut::<BootPhases>() {
+        phases.app_built_ms.get_or_insert(now_ms());
     }
 }
 
@@ -210,12 +250,22 @@ fn detect_controllable(
 // ---------------------------------------------------------------------------
 
 /// When each boot milestone was reached, in milliseconds since process start:
-/// the window, the first frame, each [`BootGate`] key's release, `Playing`
-/// and controllable. Each time is the end of the frame where the milestone
+/// the app built (every plugin's `build`, before `App::run`), every plugin's
+/// `finish` and `cleanup` done, `Startup` begun (the window has just been
+/// created) and ended, the window, the first frame, each [`BootGate`] key's
+/// release, `Playing` and controllable. Each time is the end of the frame where the milestone
 /// was seen, so it includes that frame's work (for example a warm-up frame's
 /// synchronous pipeline compiles).
 #[derive(Resource, Debug, Default, Clone, Serialize, PartialEq)]
 pub struct BootPhases {
+    /// `game_app` returned: every plugin built, `App::run` not yet called.
+    pub app_built_ms: Option<f64>,
+    /// Every plugin's `finish` and `cleanup` ran (the renderer is set up).
+    pub plugins_ready_ms: Option<f64>,
+    /// The `Startup` schedules began (the window was just created).
+    pub startup_start_ms: Option<f64>,
+    /// The `Startup` schedules ended.
+    pub startup_end_ms: Option<f64>,
     pub window_ms: Option<f64>,
     pub first_frame_ms: Option<f64>,
     /// `BootGate` keys in release order, each with its last release time.
@@ -255,6 +305,16 @@ impl BootPhases {
     /// Every recorded phase in time order, as `(name, ms)`.
     pub fn phases(&self) -> Vec<(String, f64)> {
         let mut out = Vec::new();
+        for (name, ms) in [
+            ("app_built", self.app_built_ms),
+            ("plugins_ready", self.plugins_ready_ms),
+            ("startup_start", self.startup_start_ms),
+            ("startup_end", self.startup_end_ms),
+        ] {
+            if let Some(ms) = ms {
+                out.push((name.to_string(), ms));
+            }
+        }
         if let Some(ms) = self.window_ms {
             out.push(("window".to_string(), ms));
         }
