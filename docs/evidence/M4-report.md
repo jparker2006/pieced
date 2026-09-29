@@ -10,7 +10,7 @@ Every number here names its source (session folder or test), the commit, and the
 |---|---|---|
 | A0 Carried gates closed (M3 W7/W8, M2 S2/S3, W0) | PENDING | |
 | A1 Hit feedback and kills | **PASS** (`c227c3d`) | Merged `c227c3d`. On `aec1fe2`, `scripts/cargo.sh test --locked` had 629 passed, 0 failed, 16 ignored (52 suites), including `tests/kill_feedback.rs` 18/18 and the gameplay pin. Clippy `-D warnings`, `fmt --check` and `build-art.sh --check` are clean. Play-test 1 recorded: fun 4, AAA feel 3.5, about right, no unfair deaths |
-| A2 Weapons | PENDING | |
+| A2 Weapons | PENDING (tests pass; play-test 2 due) | Merged `3a84e94` from `4d6ccf9`. `tests/viewmodel.rs` has 24 tests: every animation inside its gameplay time, and shots and look bit-identical with and without the kick. The full suite, clippy and fmt are clean (two hud audio tests flaked once and passed on rerun); the gameplay pin passes |
 | A3 Audio and music | PENDING | |
 | A4 Knight animation | PENDING | |
 | A5 Presentation, building juice and camera | PENDING | |
@@ -167,3 +167,17 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 - 2026-09-28: Jake: "yes to lewton, and turn on pipelined for play-test 2".
   - Bevy's `vorbis` feature (the `lewton` decoder) is OK'd for chunk 3.
   - Play-test 2 launches with `--knobs pipelined=on`. The default changes only if the presented-frame numbers improve and input latency stays ≤ 33 ms.
+- 2026-09-28: **chunk 2 merged** (`3a84e94`, from `4d6ccf9`).
+  - What's in it:
+    - the draw on swap rises and settles by 0.2 s;
+    - the 0.12 s ADS blend overshoots about 3.7% and lands on the sights;
+    - rifle reload: the glove flicks out the dim crystal and slots a glowing one, which charges up;
+    - pump: shards pushed in with the fingertips, and a heavier rack (longer pull, slam, clack; `PUMP_RACK_TRAVEL` 0.09 → 0.125, a presentation-only number);
+    - breathing sway, off when M1's sway is off;
+    - a render-only camera kick (0.12° rifle, 0.3° pump, gone within 0.11 s; overlapping kicks take the max; off when shake is 0);
+    - `WeaponCue` beats for chunk 3's sounds.
+  - No new meshes or pipelines.
+  - **Still off, for the art slice:**
+    - the ADS poses read as "a brown tube" next to V2;
+    - the glove is a thumbless fist, and a pinch variant won't fit the 2k glove budget (1,904 now);
+    - the pump looks slightly small next to V3.
