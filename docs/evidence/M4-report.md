@@ -325,3 +325,4 @@ Paused at the usage limit. Both builders were told to commit their work in progr
     - restaging V3, V4 and V6;
     - the V8 cap and UVs;
     - the knight's silhouette, depending on Q121.
+- 2026-09-29: **D121:** the helmet may visually overhang the head hitbox by up to +45% of its radius (about 9 cm). It's cosmetic, and the hitboxes and numbers are unchanged. Jake: "rec". S5's helmet tolerance becomes 0.09 m, and the body keeps 5 cm.

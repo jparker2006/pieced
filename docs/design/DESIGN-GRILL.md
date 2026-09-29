@@ -278,6 +278,12 @@ The goal, from Jake: make Pieced "play and feel like a AAA game". Story and real
 |---|---|---|
 | D120 | **Weapons and music run together (amends D111).** | Once the frame regression from play-test 1 is understood, chunk 2 (weapons) and chunk 3 (audio and music) run in parallel as two builders, and **play-test 2 covers both**. Chunks 4 and 5 follow as planned. The reason is that music is the biggest missing "studio premium" cue (Jake: "AAA games just have a certain thing about them … we're not quite there yet"), its sources are ready, and the audio files don't overlap the weapon files. |
 
+**Knight proportions, after art round 3, 2026-09-29.** The round 3 review found that the fixed head sphere (r 0.20 m, with S5's 5 cm tolerance) blocks the targets' chibi helmet, which is about a third of the knight's height. Jake: "rec on Q121", and after the corrected numbers, "rec".
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D121 | **The helmet may overhang the head hitbox, visually only (Q121).** | <ul><li>The helmet's visual radius may be up to **+45%** of the head sphere's (about 0.29 m, roughly 9 cm of overhang all round), up from S5's +25% (5 cm).</li><li>It is cosmetic, like the hat (D49): the hitboxes, the head sphere and every gameplay number are unchanged, and the gameplay pin stays green.</li><li>The tradeoff Jake accepted: a shot that clips the outer rim of the helmet can miss.</li><li>The headshot feedback fires only on real head-sphere hits.</li><li>S5's helmet check becomes "within the head sphere + 0.09 m"; the body parts keep the 5 cm rule.</li></ul> |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**
