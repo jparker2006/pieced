@@ -876,6 +876,25 @@ pub fn brick_chip() -> Mesh {
     m.build()
 }
 
+/// A chip of knight armor (M4 body hits, V2/V3): a small bent steel plate,
+/// about 1 across at scale 1, an irregular pentagon in the knight's steel with
+/// a bright bevel on one face so it glints as it tumbles.
+pub fn armor_chip(seed: u64) -> Mesh {
+    let mut rng = FxRng::new(seed);
+    let mut m = ModelBuilder::new();
+    let zy: Vec<Vec2> = (0..5)
+        .map(|i| {
+            let a = TAU * (i as f32 + rng.range(-0.2, 0.2)) / 5.0;
+            let r = rng.range(0.34, 0.5);
+            Vec2::new(r * a.cos(), r * a.sin())
+        })
+        .collect();
+    m.prism_x(&zy, -0.09, 0.09, cartoon::KNIGHT_STEEL);
+    let inner: Vec<Vec2> = zy.iter().map(|p| *p * 0.62).collect();
+    m.prism_x(&inner, 0.09, 0.13, shade(cartoon::NAIL_HIGHLIGHT, 1.05));
+    m.build()
+}
+
 /// A wood splinter (piece hits on floors and ramps): a long thin wedge along
 /// z, 1 long at scale 1, in plank brown with a pale split face.
 pub fn wood_splinter() -> Mesh {

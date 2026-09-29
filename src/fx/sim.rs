@@ -121,6 +121,13 @@ impl Hitstop {
     pub fn active(&self) -> bool {
         self.frames_left > 0
     }
+
+    /// Whether the next rendered frame is held (call after
+    /// [`Hitstop::end_frame`]): true for exactly the requested frames after
+    /// the one that triggered it.
+    pub fn holding(&self) -> bool {
+        self.frames_left > 0 && !self.fresh
+    }
 }
 
 /// Fixed-size slot allocation for pooled effect entities. When every slot under

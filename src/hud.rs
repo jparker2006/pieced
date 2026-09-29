@@ -14,6 +14,7 @@
 
 pub mod art;
 pub mod damage_arrow;
+pub mod kills;
 mod layout;
 mod systems;
 
@@ -305,6 +306,7 @@ impl Plugin for HudPlugin {
             .add_systems(First, record_frame_start_tick);
         layout::build(app);
         systems::build(app);
+        kills::build(app);
         app.add_plugins(damage_arrow::DamageArrowPlugin);
     }
 }

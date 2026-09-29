@@ -23,6 +23,15 @@
 //!   flinches without stopping. Each take flings the other arm high, so under
 //!   fire he flails;
 //! - a hit wobble spring (he rocks away from the hit) and a nod;
+//! - a directional flinch (M4, D105) on top of the take: where the shot
+//!   landed ([`HitRegion`]: head, chest, his left or right, a leg) those parts
+//!   are kicked away from it on springs: the head snaps back, the torso is
+//!   punched back, a side hit twists that shoulder back and flings its arm, a
+//!   leg hit kicks the leg out and dips him;
+//! - a headshot dents his helmet ([`KnightPose::dented`]) until he goes down
+//!   or respawns; going down (or being flung into the void) takes his armor
+//!   off ([`KnightPose::armor`]): `fx::armor` flings the pieces, and
+//!   [`write_armor`] hides them on him;
 //! - a respawn pop-in: scale springs up from zero and overshoots, with a warm
 //!   sparkle ([`RespawnSparkle`]) flaring at his chest;
 //! - on a headshot the hat pops well clear of his helmet, knocked away from
@@ -41,7 +50,8 @@
 //! figure hides until respawn. The core is pure and seeded, so it is tested
 //! headless (`tests/knight.rs`); the systems only gather input and write
 //! transforms. The animation runs on `Time` (virtual): pausing virtual time
-//! freezes the pose. The gallery's [`GalleryFreeze`] also freezes it (clock,
+//! freezes the pose, and so does a kill's hitstop
+//! ([`HitstopFrozen`](crate::shared::HitstopFrozen)). The gallery's [`GalleryFreeze`] also freezes it (clock,
 //! eyes, springs, the take and the respawn sparkle) without pausing the game:
 //! see [`freeze_knights`].
 //!
@@ -176,6 +186,24 @@ pub const HAT_TIP_MAX: f32 = 0.5;
 /// And it swells as it flies, cartoon-style (extra scale per m of lift),
 /// back to its own size by the time it lands on his helmet.
 pub const HAT_SWELL: f32 = 0.8;
+/// The directional flinch (M4, D105): a spring kick on the parts nearest the
+/// hit, away from the shot, on top of the take. Its spring (1/s², 1/s: a
+/// little bouncy, settled in about 0.4 s) and kicks (rad/s): the head snapping
+/// back on a headshot, the torso punched back on a chest hit, the torso
+/// twisting the hit shoulder back and that arm flung back on a side hit, the
+/// hit leg kicked out from under him on a leg hit (with a dip).
+pub const FLINCH_K: f32 = 180.0;
+pub const FLINCH_C: f32 = 13.0;
+pub const FLINCH_HEAD: f32 = 13.0;
+pub const FLINCH_CHEST: f32 = 8.0;
+pub const FLINCH_TWIST: f32 = 9.0;
+pub const FLINCH_ARM: f32 = 18.0;
+pub const FLINCH_LEG: f32 = 15.0;
+pub const FLINCH_DIP: f32 = 2.2;
+/// Hit regions (model space, feet at the origin): below this height is a
+/// leg hit; this far off the middle (m) is a side hit.
+pub const FLINCH_LEGS_BELOW: f32 = 0.72;
+pub const FLINCH_SIDE: f32 = 0.12;
 /// Eyes: blink every 2–5 s for this long; wide this long after a hit (and
 /// after a big one).
 pub const BLINK_EVERY: (f32, f32) = (2.0, 5.0);
@@ -260,6 +288,49 @@ pub enum KnightEvent {
     /// The hit this frame broke his shield: the biggest take (send it with
     /// the frame's `Hit`s).
     ShieldBreak,
+    /// Where a hit landed (M4): the parts there flinch away from the shot,
+    /// along `push` (model space, horizontal). Send it with the frame's `Hit`s.
+    Flinch {
+        region: HitRegion,
+        push: Vec3,
+    },
+    /// His armor comes off now (flung into the void: it comes apart on the
+    /// fall). An elimination sheds it too.
+    ShedArmor,
+}
+
+/// Where a hit landed on him, for the directional flinch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HitRegion {
+    Head,
+    Chest,
+    /// His own left (model -X) and right (+X).
+    Left,
+    Right,
+    /// Below the hips; `left` is his own left leg.
+    Legs {
+        left: bool,
+    },
+}
+
+impl HitRegion {
+    /// The region of a hit at `local` (model space: feet at the origin, +X
+    /// his right, -Z his front). Headshots are the head whatever the point.
+    pub fn classify(local: Vec3, headshot: bool) -> Self {
+        if headshot {
+            Self::Head
+        } else if local.y < FLINCH_LEGS_BELOW {
+            Self::Legs {
+                left: local.x < 0.0,
+            }
+        } else if local.x < -FLINCH_SIDE {
+            Self::Left
+        } else if local.x > FLINCH_SIDE {
+            Self::Right
+        } else {
+            Self::Chest
+        }
+    }
 }
 
 /// The pose: offsets from the model's rest pose, in model space.
@@ -295,6 +366,12 @@ pub struct KnightPose {
     /// How far into a hit take he is: 0 at rest, the take's strength at its
     /// peak (a little below 0 as it bounces back).
     pub take: f32,
+    /// A headshot has dented his helmet (M4): the dented helmet shows until
+    /// he is eliminated or respawns.
+    pub dented: bool,
+    /// His armor (helmet, gauntlets, boots) is on him: false once it has come
+    /// off (an elimination, or flung into the void), until respawn.
+    pub armor: bool,
 }
 
 impl KnightPose {
@@ -317,6 +394,8 @@ impl KnightPose {
         eyes: EyeState::Open,
         visible: true,
         take: 0.0,
+        dented: false,
+        armor: true,
     };
 }
 
@@ -365,6 +444,67 @@ struct PendingHit {
     shield_break: bool,
 }
 
+/// The directional flinch's springs (angles, rad) and the push they flinch
+/// along (model x, z).
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+struct Flinch {
+    push: Vec2,
+    /// The torso leaning back along the push, and twisting the hit shoulder back.
+    lean: Spring<f32>,
+    twist: Spring<f32>,
+    /// The head snapping back.
+    head: Spring<f32>,
+    /// Each arm and leg flung back along the push: `[left, right]`.
+    arms: [Spring<f32>; 2],
+    legs: [Spring<f32>; 2],
+}
+
+impl Flinch {
+    /// Adds a velocity kick, capped so a pump's many pellets don't pile up.
+    fn kick(spring: &mut Spring<f32>, v: f32) {
+        let cap = v.abs() * 1.5;
+        spring.v = (spring.v + v).clamp(-cap, cap);
+    }
+
+    fn hit(&mut self, region: HitRegion, push: Vec2) {
+        self.push = push.normalize_or(Vec2::Y);
+        let pz = self.push.y;
+        match region {
+            HitRegion::Head => Self::kick(&mut self.head, FLINCH_HEAD),
+            HitRegion::Chest => {
+                Self::kick(&mut self.lean, FLINCH_CHEST);
+                Self::kick(&mut self.head, FLINCH_HEAD * 0.3);
+            }
+            HitRegion::Left | HitRegion::Right => {
+                // The hit shoulder (x = s) goes back along the push.
+                let (s, i) = if region == HitRegion::Left {
+                    (-1.0, 0)
+                } else {
+                    (1.0, 1)
+                };
+                let twist = -s * pz.clamp(-1.0, 1.0);
+                Self::kick(&mut self.twist, FLINCH_TWIST * twist);
+                Self::kick(&mut self.arms[i], FLINCH_ARM);
+                Self::kick(&mut self.lean, FLINCH_CHEST * 0.4);
+            }
+            HitRegion::Legs { left } => {
+                Self::kick(&mut self.legs[usize::from(!left)], FLINCH_LEG);
+                Self::kick(&mut self.lean, -FLINCH_CHEST * 0.35);
+            }
+        }
+    }
+
+    fn step(&mut self, h: f32) {
+        for s in [&mut self.lean, &mut self.twist, &mut self.head]
+            .into_iter()
+            .chain(self.arms.iter_mut())
+            .chain(self.legs.iter_mut())
+        {
+            s.step(0.0, FLINCH_K, FLINCH_C, h);
+        }
+    }
+}
+
 /// One knight's animation state. Put it on the figure entity; see the module docs.
 #[derive(Component, Debug, Clone)]
 pub struct KnightAnim {
@@ -408,6 +548,11 @@ pub struct KnightAnim {
     wide_left: f32,
     downed: bool,
     ko_time: f32,
+    /// The directional flinch (M4).
+    flinch: Flinch,
+    /// A headshot dented the helmet; the armor has come off (M4).
+    dented: bool,
+    armor_off: bool,
     /// Held by the gallery ([`GalleryFreeze`]): steps advance no time.
     frozen: bool,
     rng: Rng,
@@ -448,9 +593,22 @@ impl KnightAnim {
             wide_left: 0.0,
             downed: false,
             ko_time: 0.0,
+            flinch: Flinch::default(),
+            dented: false,
+            armor_off: false,
             frozen: false,
             rng,
         }
+    }
+
+    /// A headshot has dented his helmet (until elimination or respawn).
+    pub fn is_dented(&self) -> bool {
+        self.dented
+    }
+
+    /// His armor has come off (until respawn).
+    pub fn armor_is_off(&self) -> bool {
+        self.armor_off
     }
 
     /// Holds the animation clock: while frozen, [`KnightAnim::step`] advances no
@@ -496,6 +654,13 @@ impl KnightAnim {
                 self.pending.get_or_insert_default().damage += amount.max(0.0);
             }
             KnightEvent::ShieldBreak => self.pending.get_or_insert_default().shield_break = true,
+            KnightEvent::Flinch { region, push } => {
+                self.flinch.hit(region, Vec2::new(push.x, push.z));
+                if matches!(region, HitRegion::Legs { .. }) {
+                    self.squash.v -= FLINCH_DIP;
+                }
+            }
+            KnightEvent::ShedArmor => self.armor_off = true,
         }
     }
 
@@ -546,6 +711,7 @@ impl KnightAnim {
         self.wide_left = if big { WIDE_TIME_BIG } else { WIDE_TIME };
         self.blink_left = 0.0;
         if hit.headshot {
+            self.dented = true;
             self.hat_speed = self.hat_speed.max(0.0) + HAT_POP;
             let coin = if self.rng.chance(0.5) { 1.0 } else { -1.0 };
             // Knocked away from the side the shot struck (the push carries
@@ -570,7 +736,11 @@ impl KnightAnim {
             self.ko_time = 0.0;
             if let Some(hit) = self.pending.take() {
                 self.take_push = hit.push.normalize_or(Vec2::Y);
+                // The killing headshot dents the helmet that flies off.
+                self.dented |= hit.headshot;
             }
+            // His armor comes apart (`fx::armor` flings it off).
+            self.armor_off = true;
             self.squash.v -= LAND_SQUASH * 0.8;
             self.hat_height = 0.0;
             self.hat_speed = 0.0;
@@ -641,6 +811,7 @@ impl KnightAnim {
             self.hat_spin.step(0.0, 90.0, 7.0, h);
             self.knock.step(Vec2::ZERO, KNOCK_K, KNOCK_C, h);
             self.tip.step(tip_goal, TIP_K, TIP_C, h);
+            self.flinch.step(h);
             if released {
                 self.take.step(0.0, TAKE_K, TAKE_C, h);
             }
@@ -700,6 +871,9 @@ impl KnightAnim {
         self.air = 0.0;
         self.wide_left = 0.0;
         self.blink_left = 0.0;
+        self.flinch = Flinch::default();
+        self.dented = false;
+        self.armor_off = false;
         self.pop = Some(Spring { x: 0.0, v: 0.0 });
     }
 
@@ -828,6 +1002,18 @@ impl KnightAnim {
         } else {
             EyeState::Open
         };
+        // The directional flinch, on top: the parts nearest the hit knocked
+        // back along the shot (a hand or boot hanging below its pivot swings
+        // its far end along the push; the torso and head lean their tops).
+        let f = &self.flinch;
+        let fp = Vec3::new(f.push.x, 0.0, f.push.y);
+        let torso = swing(fp, f.lean.x) * Quat::from_rotation_y(f.twist.x) * torso;
+        let head = swing(fp, f.head.x) * head;
+        for i in 0..2 {
+            arms[i] = swing(fp, -f.arms[i].x) * arms[i];
+            legs[i] = swing(fp, -f.legs[i].x) * legs[i];
+        }
+
         KnightPose {
             scale,
             tilt,
@@ -843,10 +1029,12 @@ impl KnightAnim {
             hat,
             hat_tip,
             hat_scale: 1.0 + HAT_SWELL * lift,
-            hat_visible: !self.downed,
+            hat_visible: !self.downed && !self.armor_off,
             eyes,
             visible: !(self.downed && self.ko_time >= KO_TIME),
             take,
+            dented: self.dented,
+            armor: !self.armor_off,
         }
     }
 }
@@ -1047,6 +1235,51 @@ pub fn write_pose<F1: QueryFilter, F2: QueryFilter>(
                 v.set_if_neq(show(*state == pose.eyes));
             }
         }
+    }
+}
+
+/// The armor that comes off a knight when he goes down (M4, D105): its parts'
+/// names in the model, in [`KnightArmorRig`]'s order. The helmet comes first.
+pub const ARMOR_PARTS: [&str; 5] = ["Helmet", "GauntletL", "GauntletR", "BootL", "BootR"];
+
+/// On a rigged knight figure: his armor parts (added by `fx::armor` once the
+/// knight is rigged).
+#[derive(Component, Debug, Clone)]
+pub struct KnightArmorRig {
+    /// Each [`ARMOR_PARTS`] node (where the part is).
+    pub nodes: [Entity; ARMOR_PARTS.len()],
+    /// What to hide when the part comes off: the helmet's own mesh (so his
+    /// eyes stay), the limbs' nodes.
+    pub shown: [Entity; ARMOR_PARTS.len()],
+    /// The dented helmet, a hidden sibling of the helmet's mesh until a
+    /// headshot (when the dented model exists).
+    pub dent: Option<Entity>,
+}
+
+/// Shows a knight's armor as `pose` says: on or off, the helmet dented or not.
+pub fn write_armor<F: QueryFilter>(
+    pose: &KnightPose,
+    rig: &KnightArmorRig,
+    visibility: &mut Query<&mut Visibility, F>,
+) {
+    let show = |v: bool| {
+        if v {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        }
+    };
+    let dented = pose.dented && rig.dent.is_some();
+    for (i, &entity) in rig.shown.iter().enumerate() {
+        let on = pose.armor && (i != 0 || !dented);
+        if let Ok(mut v) = visibility.get_mut(entity) {
+            v.set_if_neq(show(on));
+        }
+    }
+    if let Some(dent) = rig.dent
+        && let Ok(mut v) = visibility.get_mut(dent)
+    {
+        v.set_if_neq(show(pose.armor && dented));
     }
 }
 

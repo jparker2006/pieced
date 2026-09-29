@@ -76,6 +76,8 @@ pub const EMBEDDED_MODELS: &[EmbeddedModel] = embedded_models![
     "knight",
     // The prop the knight's hat becomes when he is eliminated (src/fx/hat.rs).
     "knight_hat",
+    // The helmet a headshot dents (M4; src/fx/armor.rs).
+    "knight_helmet_dent",
     "plank_splinter",
     "pump",
     "ramp_plank",

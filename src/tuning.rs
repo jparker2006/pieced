@@ -29,6 +29,9 @@ pub struct Tuning {
     pub orb: crate::orb::OrbTuning,
     #[serde(skip)]
     pub waves: crate::waves::WavesTuning,
+    /// Kill feedback feel (M4 chunk 1): designer numbers, never persisted.
+    #[serde(skip)]
+    pub kills: crate::fx::kills::KillFeelTuning,
 }
 
 impl Tuning {
@@ -61,6 +64,9 @@ impl Tuning {
         t.combat = d.combat;
         (t.combat.aim_friction, t.combat.aim_friction_strength) = friction;
         t.dummy = d.dummy;
+        // The kill hitstop is a designer feel number (M4), not a menu one.
+        t.feedback.hitstop_on_kill = d.feedback.hitstop_on_kill;
+        t.feedback.hitstop_frames = d.feedback.hitstop_frames;
         t
     }
 
