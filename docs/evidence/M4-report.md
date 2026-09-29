@@ -15,7 +15,7 @@ Every number here names its source (session folder or test), the commit, and the
 | A4 Knight animation | PENDING | |
 | A5 Presentation, building juice and camera | PENDING | |
 | A6 Target board (V1–V8 each ≥ 4) | PENDING | |
-| A7 Performance (wave ≥ 6, battery, Low Power Mode, presented frames) | PENDING | |
+| A7 Performance (wave ≥ 6, battery, Low Power Mode, presented frames) | PENDING (close) | `20260929-215209` (`da732d7`, battery and LPM on every sample, 11 min 18 s): presented mean **16.73** ✓, **99.59% < 18** ✓, but 147 frames > 25 ms ✗, and it reached wave 5, not 6 ✗ |
 | A8 Launch (warm < 5 s ×3; Play → controllable < 1 s) | PENDING | |
 | A9 Final verdict (fun ≥ 4.5, AAA feel ≥ 4, no unfair deaths) | PENDING | |
 | A10 No regressions | PENDING | |
@@ -27,7 +27,9 @@ Every number here names its source (session folder or test), the commit, and the
 | 1 | Hit feedback and kills | `40ef03c` | **4** | **3.5** | About right | **None** | "I think AAA games just have a certain thing about them that make them feel like real studio premium games and were not quite there yet". Smoothness: "It felt the same smoothness" | `20260929-024538` (battery 18→15%, LPM on, builds paused; 369 s; wave 4, score 3,850, 20 eliminations, 21.6% accuracy, 18 headshots) |
 | 2 | Weapons (music not yet in) | `c0561c5` | **4** | **4** | About right | **None** | "the guns looks super AAA, everything else (background, knights, etc) need to now too!" | `20260929-060802` (battery, LPM on, builds paused, `--knobs pipelined=on`; 375 s; wave 4, score 4,000, 22 eliminations) |
 | 3 | Audio and music | `6ca867d` | **4** | **4** | About right | **None** | Nothing named: "super fun with music" | `20260929-063236` (AC power, LPM on, pipelined on; 197 s; wave 3, score 2,400). **Not a clean performance session**: load 10 rising to 43 while headless art work that had started after quiet mode came on kept running |
+| 3b | Interim: art rounds 1–3 and the perf follow-up (pipelined by default) | `da732d7` | **4** | **4** | About right | **None** | "it was super fun the guns looks great!" | `20260929-215209` (battery 25/25, LPM 25/25, builds paused; 678 s counted; wave 5, score 6,250, 32 eliminations, 35 headshots) |
 | Budget | | | 4.5 | 1.5 | 2.0 | 2.0 | 0.5 | 1.0 | ≤ 12.0 |
+| 2026-09-29 | `da732d7` | `20260929-215209` (battery, LPM, pipelined) | 4.33/5.25 | in world | in world | 0.61/1.32 | 1.58/1.81 | 0.93/1.42 | **7.53/8.68** |
 | 2026-09-29 | `3a22f97` (offscreen, load 8–13) | offscreen full wave, 3 runs, before → after | 4.58/7.79 → 3.84/5.79 | in world | in world | 0.72/1.44 → 0.79/1.69 | 1.50/3.59 → **1.16/1.46** | 1.53/3.30 → **1.02/2.16** | 8.34/13.27 → **6.81/9.36** |
 | 2026-09-28 | `c0561c5` | `20260929-060802` (battery, LPM, pipelined on) | 4.19 / 5.16 | in world | in world | 0.65 / 1.33 | **2.17 / 2.83** | **2.35 / 3.44** | 9.41 / **10.83** |
 
@@ -334,3 +336,9 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - **Timing-mark bug fixed:** the UI camera's `CameraOutputMode::Skip` made Bevy drop the view.
   - The offscreen totals are in the GPU table. UI (1.16) is still over its 0.5 budget: clearing and storing the HUD at 7.6 MP. Post is at budget by mean.
 - 2026-09-29: **chunk 4 dispatched with the chibi knight** (`m4-knight`: D121 silhouette, then the authored clips), and a play build for Jake is building from `da732d7`.
+- 2026-09-29 14:52–15:04: **interim play session** (release from `da732d7`: art rounds 1–3 plus the perf follow-up; pipelined by default; launched with quiet mode; battery, Low Power Mode on). Jake, quoted: "done playing, 4, 4, about right, no unfair deaths it was super fun the guns looks great!" He reached wave 5 (score 6,250, 32 eliminations, 35 headshots).
+  - **Frames (presented): nearly qualifying.** `PIECED_S2`: mean 16.73 ✓, p99 17.00, **99.59% < 18 ✓**, 147 frames > 25 ms ✗. By CPU dt: 16.73 mean, 96.81%, 393 frames. Battery and Low Power Mode were on for all 25 samples, and the load stayed at 4.2–6.4.
+  - **GPU:** total 7.53/8.68 ms, well inside 12; UI 1.58 and world 4.33 are slightly over their slices.
+  - **The remaining spikes are CPU hitches, not GPU.** Of the 393 CPU spikes, 62% are `pre` (window and input events, state changes; 7.9 ms on spikes against 0.5 on normal frames), 20% are `idle` (the OS) and 15% `acquire`. The entity count grew from 7,666 to 8,448 over 10 minutes, probably built pieces; to be checked.
+  - **Input-to-present latency** (the first real numbers): presses 40.9 ms median, 50.0 p95; trackpad look 34.6 median, 39.6 p95. The spec's ≤ 33 ms comes from M1's G3, which measured input-to-*submit* (24.3 ms then). This measure ends at *present*, so it isn't directly comparable. Asked Jake as Q122 whether to keep pipelining.
+  - **Launch:** 3,332 ms cold; Play → controllable 35 ms.
