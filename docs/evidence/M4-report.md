@@ -10,7 +10,7 @@ Every number here names its source (session folder or test), the commit, and the
 |---|---|---|
 | A0 Carried gates closed (M3 W7/W8, M2 S2/S3, W0) | PENDING | |
 | A1 Hit feedback and kills | **PASS** (`c227c3d`) | Merged `c227c3d`. On `aec1fe2`, `scripts/cargo.sh test --locked` had 629 passed, 0 failed, 16 ignored (52 suites), including `tests/kill_feedback.rs` 18/18 and the gameplay pin. Clippy `-D warnings`, `fmt --check` and `build-art.sh --check` are clean. Play-test 1 recorded: fun 4, AAA feel 3.5, about right, no unfair deaths |
-| A2 Weapons | PENDING (tests pass; play-test 2 due) | Merged `3a84e94` from `4d6ccf9`. `tests/viewmodel.rs` has 24 tests: every animation inside its gameplay time, and shots and look bit-identical with and without the kick. The full suite, clippy and fmt are clean (two hud audio tests flaked once and passed on rerun); the gameplay pin passes |
+| A2 Weapons | **PASS** (`3a84e94`) | Merged `3a84e94` from `4d6ccf9`. `tests/viewmodel.rs` has 24 tests: every animation inside its gameplay time, and shots and look bit-identical with and without the kick. The full suite, clippy and fmt are clean (two hud audio tests flaked once and passed on rerun); the gameplay pin passes. Play-test 2 recorded: fun 4, AAA feel 4, "the guns looks super AAA" |
 | A3 Audio and music | PENDING | |
 | A4 Knight animation | PENDING | |
 | A5 Presentation, building juice and camera | PENDING | |
@@ -25,7 +25,9 @@ Every number here names its source (session folder or test), the commit, and the
 | Date | Commit | Session (power, LPM) | World | Outlines | Far | Effects | UI | Post | Total p95 |
 |---|---|---|---|---|---|---|---|---|---|
 | 1 | Hit feedback and kills | `40ef03c` | **4** | **3.5** | About right | **None** | "I think AAA games just have a certain thing about them that make them feel like real studio premium games and were not quite there yet". Smoothness: "It felt the same smoothness" | `20260929-024538` (battery 18→15%, LPM on, builds paused; 369 s; wave 4, score 3,850, 20 eliminations, 21.6% accuracy, 18 headshots) |
+| 2 | Weapons (music not yet in) | `c0561c5` | **4** | **4** | About right | **None** | "the guns looks super AAA, everything else (background, knights, etc) need to now too!" | `20260929-060802` (battery, LPM on, builds paused, `--knobs pipelined=on`; 375 s; wave 4, score 4,000, 22 eliminations) |
 | Budget | | | 4.5 | 1.5 | 2.0 | 2.0 | 0.5 | 1.0 | ≤ 12.0 |
+| 2026-09-28 | `c0561c5` | `20260929-060802` (battery, LPM, pipelined on) | 4.19 / 5.16 | in world | in world | 0.65 / 1.33 | **2.17 / 2.83** | **2.35 / 3.44** | 9.41 / **10.83** |
 
 ## Target board
 
@@ -181,3 +183,12 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
     - the ADS poses read as "a brown tube" next to V2;
     - the glove is a thumbless fist, and a pinch variant won't fit the 2k glove budget (1,904 now);
     - the pump looks slightly small next to V3.
+- 2026-09-28 23:08–23:15: **play-test 2** (release `pieced-play` from `c0561c5`: chunks 0–2 without music; launched with `--knobs pipelined=on` and quiet mode; battery, Low Power Mode on). Jake, quoted: "done playing, 4, 4, about right, no unfair deaths / the guns looks super AAA, everything else (background, knights, etc) need to now too!" He reached wave 4 (score 4,000). **A2 PASS.**
+  - **Pipelined rendering fixes most of the pacing.** `PIECED_S2 FAIL`: mean 17.40 ms, p99 34.65, 956 frames > 25 ms, 92.21% < 18. Play-test 1 had 25.63 ms, 7,509 frames and 41.3%.
+  - **GPU** (`sessions.py --gpu`, the first on-hardware per-pass numbers): the total is 9.41 mean and 10.83 p95, within 12. It's over 12 ms on 0.6% of timed frames. The acquire wait averages 0.00 ms.
+  - **Over budget:** UI 2.17/2.83 (the full-screen composite of the 3D image at Retina size) and post 2.35/3.44 (FXAA and the copies into each output). The timer costs 0.39 ms per timed frame.
+  - **Launch:** 4,834 ms cold; Play → controllable 55 ms.
+  - **Next:**
+    - Make `pipelined=on` the default once input-to-present latency is logged and shown to be ≤ 33 ms (G3). This session suggests it's worth it, and Jake's feel was unchanged.
+    - Cut the UI and post full-screen passes: composite once at render size, and run FXAA on the render target, not the output.
+    - The art slice starts now, on Jake's direction that the world and the knights need to reach the guns' level.
