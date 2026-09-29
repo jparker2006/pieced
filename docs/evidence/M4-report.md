@@ -164,3 +164,6 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 - 2026-09-28: **chunks 2 (weapons, `m4-weapons`) and 3 (audio and music, `m4-audio-music`) dispatched in parallel** (D120), after pruning (8 → 16 GB free).
   - Chunk 3 owns all audio, including the layered gun shots.
   - Chunk 3 will add Bevy's `vorbis` feature (the `lewton` crate) for OGG. That needs Jake's OK before merging.
+- 2026-09-28: Jake: "yes to lewton, and turn on pipelined for play-test 2".
+  - Bevy's `vorbis` feature (the `lewton` decoder) is OK'd for chunk 3.
+  - Play-test 2 launches with `--knobs pipelined=on`. The default changes only if the presented-frame numbers improve and input latency stays ≤ 33 ms.
