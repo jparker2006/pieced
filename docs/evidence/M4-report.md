@@ -89,3 +89,24 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 - 2026-09-28: **music downloaded with Jake's OK** ("yes, download them").
   - The five CC-BY 4.0 Freesound high-quality OGG previews (about 180 kbps, 4.9 MB in total), each license re-checked on its page.
   - Committed as sources in `art/music/src/` with `CREDITS.md` (`98730d9`). Chunk 3 trims, loops and credits them in `assets/ASSETS.md`.
+- 2026-09-28: **disk ran out** (1.7 GB free); `scripts/cargo.sh` refuses to build under 3 GB.
+  - Pruning freed nothing, because all 15 GB of the debug cache was live builder output.
+  - With Jake's OK ("you run it for me be careful"), the stale M3 `release/` cache (4.7 GB) was deleted, after checking that `pieced-play` sits outside it. Free disk went to 6.2 GB. The next play build recompiles the release dependencies.
+- 2026-09-28: **chunk 1 nearly done, on branch `m4-hit-feedback`** (WIP commit `2c3f18d` and later). The builder reported:
+  - kill confirm, the X marker and a 2-frame hitstop that holds only `FreezableTime`;
+  - directional flinch, sparks and 2–4 armor chips;
+  - the headshot ding and a dented helmet (`knight_helmet_dent`, 1,516 triangles);
+  - physical deaths through the reusable chunk sim `fx/chunks.rs`;
+  - popups and callouts.
+
+  The full suite passed (51 suites, 0 failed, pin and TTK unchanged), and `tests/kill_feedback.rs` is 16/16. Clippy and fmt are clean. Still open: the dent and wave-bonus tests and `tests/kill_offscreen.rs` (compile and run), the review render against V2 and V4, and a rerun of `build-art.sh --check` after a determinism fix.
+- 2026-09-28: **paused** (Jake losing connection). Both builders were asked to commit their work in progress and stop.
+
+## Resume here (next session)
+
+1. `git worktree list`. Chunk 1 is on `m4-hit-feedback` (`.claude/worktrees/agent-a1a8ca69e7eb45ea8`); chunk 0 is on the `.claude/worktrees/agent-ab9440989154b3d5b` worktree's branch. Read each branch's last commit message for what's left.
+2. `df -h ~`: need more than 4 GB free. Run `scripts/prune-target.sh` first.
+3. **Chunk 1:** dispatch a `pieced-builder` into its worktree to finish the open items above. Then `--no-ff` merge to `main` after the test suite, clippy, fmt and `build-art --check`. Build `pieced-play` (release, low priority) and send Jake **play-test 1** with the five questions.
+4. **Chunk 0:** it changed `Cargo.toml`. If that adds a crate, **ask Jake before merging** (brief: anything new). Otherwise finish, merge, and tell Jake that sessions now report GPU time.
+5. Then the art slice (board captures in `tests/m4_board.rs`) and chunk 2 (weapons), at most two builds at once.
+6. Music sources are ready in `art/music/src/` for chunk 3. The board V1–V8 is approved.
