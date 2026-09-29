@@ -381,7 +381,7 @@ fn pose_wands(
         }
         if let Some(mut halo) = wand.tip.and_then(|t| halos.get_mut(t).ok()) {
             // A wide flare (M4-V5): the crystal blazes as he winds up.
-            let want = Halo::new(CRYSTAL_GLOW, 0.3 + 0.95 * glow, 0.3 + 2.9 * glow);
+            let want = Halo::new(CRYSTAL_GLOW, 0.35 + 1.35 * glow, 0.4 + 3.6 * glow);
             if *halo != want {
                 *halo = want;
             }

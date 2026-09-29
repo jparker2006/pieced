@@ -72,7 +72,7 @@ use std::f32::consts::{PI, TAU};
 pub const KNIGHT_MODEL: &str = "knight";
 /// Rim multiplier for the knight's toon material: a strong warm rim so he reads
 /// against the purple sky.
-pub const KNIGHT_RIM: f32 = 2.0;
+pub const KNIGHT_RIM: f32 = 1.3;
 
 // ---------------------------------------------------------------------------
 // Tuning (the spec's feel numbers live here; they are presentation only)

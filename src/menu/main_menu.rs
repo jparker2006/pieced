@@ -96,9 +96,9 @@ pub const HERO_PLINTH: Vec3 = Vec3::new(-3.0, 0.0, 15.5);
 /// The plinth is the brick wall model squashed into a knee-high block (its
 /// width, height and depth scales), capped with a plank slab (the floor
 /// model, squashed thin) for a crisp top edge.
-const PLINTH_SCALE: Vec3 = Vec3::new(0.52, 0.32, 3.3);
+const PLINTH_SCALE: Vec3 = Vec3::new(0.95, 0.32, 3.3);
 const PLINTH_HEIGHT: f32 = 3.0 * PLINTH_SCALE.y;
-const CAP_SCALE: Vec3 = Vec3::new(0.56, 0.6, 0.29);
+const CAP_SCALE: Vec3 = Vec3::new(0.99, 0.6, 0.29);
 /// The floor model's half thickness (m).
 const CAP_HALF: f32 = 0.1;
 /// The knight's feet, on the cap.
@@ -111,10 +111,10 @@ pub const HERO_FEET: Vec3 = Vec3::new(
 /// distance and height; the view's bearing and pitch: low and close, looking
 /// up at him with the castle over his shoulder.
 const HERO_BEARING: f32 = 17.0;
-const HERO_DISTANCE: f32 = 5.2;
-const HERO_EYE_Y: f32 = 1.7;
+const HERO_DISTANCE: f32 = 3.7;
+const HERO_EYE_Y: f32 = 1.45;
 const VIEW_BEARING: f32 = 7.0;
-const VIEW_PITCH: f32 = 10.0;
+const VIEW_PITCH: f32 = 15.0;
 
 /// Unit vector along the ground at `deg` clockwise from north (-Z).
 fn bearing(deg: f32) -> Vec3 {

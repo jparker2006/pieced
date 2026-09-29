@@ -51,10 +51,10 @@ pub const BEAM_TOP_RADIUS: f32 = 0.7;
 /// The rune circle's radius (m), and how fast it turns (rad/s).
 pub const CIRCLE_RADIUS: f32 = 3.4;
 pub const CIRCLE_SPIN: f32 = 0.5;
-/// Glow tints: the knights' violet magic (never the player's blue, never the
-/// orbs' orange).
-pub const BEAM_TINT: Color = Color::srgb(0.86, 0.62, 1.0);
-pub const CIRCLE_TINT: Color = Color::srgb(1.0, 0.55, 0.95);
+/// Glow tints (never the player's blue, never the orbs' orange). M4 art (V1, V7): the beams and circles are warm gold light, like the
+/// targets' tractor beams (the crystal and poofs stay violet).
+pub const BEAM_TINT: Color = Color::srgb(1.0, 0.86, 0.5);
+pub const CIRCLE_TINT: Color = Color::srgb(1.0, 0.78, 0.36);
 pub const CRYSTAL_GLOW: Color = Color::srgb(0.72, 0.38, 1.0);
 /// The beam's and circle's peak glow intensities.
 pub const BEAM_INTENSITY: f32 = 1.4;
@@ -477,8 +477,24 @@ fn clock(ships: &Ships, tick: u64, alpha: f32) -> [Option<(Sortie, f32)>; MAX_SH
     })
 }
 
+/// How far a ship banks toward the camera (rad; M4 art, V1 and V7): the
+/// edge nearest the eye dips, so the gilded top shows from the island, not
+/// just the flat underside.
+pub const SHIP_BANK: f32 = 0.26;
+
+/// The bank toward `eye` for a ship at `at`: a turn about the horizontal axis
+/// across the line to the eye, dipping the near edge.
+pub fn bank_toward(at: Vec3, eye: Vec3) -> Quat {
+    let to_eye = (eye - at).with_y(0.0);
+    let Some(dir) = to_eye.try_normalize() else {
+        return Quat::IDENTITY;
+    };
+    Quat::from_axis_angle(Vec3::Y.cross(dir), SHIP_BANK)
+}
+
 #[allow(clippy::type_complexity)]
 fn pose_ships(
+    camera: Query<&GlobalTransform, With<crate::render::MainCamera>>,
     ships: Option<Res<Ships>>,
     tick: Option<Res<SimTick>>,
     fixed: Res<Time<Fixed>>,
@@ -515,11 +531,14 @@ fn pose_ships(
     let now = clock(&ships, tick.0, alpha);
     let spin = time.elapsed_secs_wrapped() * CIRCLE_SPIN;
 
+    let eye = camera.iter().next().map(GlobalTransform::translation);
     for (ship, mut transform, mut visibility) in &mut models {
         match now[ship.slot] {
             Some((sortie, t)) => {
-                transform.translation = sortie.position(t);
-                transform.rotation = ship_rotation(&sortie, t);
+                let at = sortie.position(t);
+                transform.translation = at;
+                let bank = eye.map_or(Quat::IDENTITY, |e| bank_toward(at, e));
+                transform.rotation = bank * ship_rotation(&sortie, t);
                 visibility.set_if_neq(Visibility::Inherited);
             }
             None => {
@@ -656,6 +675,18 @@ mod tests {
         assert_eq!(beam_level(&s, 4.5), 1.0);
         assert!(beam_level(&s, s.last_landing() + 0.1) < 0.5);
         assert_eq!(beam_level(&s, s.last_landing() + 0.2), 0.0);
+    }
+
+    #[test]
+    fn ships_bank_their_near_edge_down_toward_the_eye() {
+        let at = Vec3::new(0.0, 14.0, -10.0);
+        let eye = Vec3::new(0.0, 1.6, 10.0);
+        let q = bank_toward(at, eye);
+        // The rim point nearest the eye (toward +Z) dips; the far one rises.
+        let near = q * Vec3::Z * 7.0;
+        let far = q * Vec3::NEG_Z * 7.0;
+        assert!(near.y < -1.0 && far.y > 1.0, "{near} {far}");
+        assert_eq!(bank_toward(at, at + Vec3::Y), Quat::IDENTITY);
     }
 
     #[test]
