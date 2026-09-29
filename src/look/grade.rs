@@ -18,7 +18,7 @@ pub const GRADE_PIVOT: f32 = 0.45;
 /// Added (gamma-2 space) to the darkest tones...
 pub const GRADE_COOL: Vec3 = Vec3::new(-0.008, 0.0, 0.018);
 /// ...blending to this on the brightest.
-pub const GRADE_WARM: Vec3 = Vec3::new(0.024, 0.012, -0.02);
+pub const GRADE_WARM: Vec3 = Vec3::new(0.032, 0.018, -0.026);
 
 /// The shader's grade: linear rgb in, linear rgb out (clamped to 0..1).
 pub fn grade(linear: Vec3) -> Vec3 {

@@ -139,6 +139,30 @@ pub struct FigureWand {
     pub since_release: f32,
     /// The glow step on the crystal now.
     step: usize,
+    /// The sparks swirling round the tip through a wind-up (M4-V5), and
+    /// their spin (rad). Dark (so they cost nothing) while idle.
+    pub swirl: [Option<Entity>; SWIRL_SPARKS],
+    swirl_phase: f32,
+}
+
+/// Glowing sparks circling the wand's tip through a wind-up, their spin
+/// (rad/s), and their orbit's radius (m, in the tip's space) at the start and
+/// the end of the wind-up.
+pub const SWIRL_SPARKS: usize = 3;
+pub const SWIRL_SPIN: f32 = 11.0;
+pub const SWIRL_RADIUS: (f32, f32) = (0.06, 0.16);
+
+/// Where swirl spark `i` sits (tip space: the wand points along -Z) and its
+/// halo, at wind-up `progress` (0..=1) and spin `phase`; `None` when idle.
+pub fn swirl_spark(i: usize, progress: Option<f32>, phase: f32) -> (Vec3, Halo) {
+    let Some(p) = progress else {
+        return (Vec3::ZERO, Halo::new(CRYSTAL_GLOW, 0.1, 0.0));
+    };
+    let p = p.clamp(0.0, 1.0);
+    let a = phase + std::f32::consts::TAU * i as f32 / SWIRL_SPARKS as f32;
+    let r = SWIRL_RADIUS.0 + (SWIRL_RADIUS.1 - SWIRL_RADIUS.0) * p;
+    let at = Vec3::new(a.cos() * r, a.sin() * r, -0.02 - 0.04 * p);
+    (at, Halo::new(CRYSTAL_GLOW, 0.12 + 0.14 * p, 0.8 + 2.4 * p))
 }
 
 /// The crystal's glow materials, idle to full, shared by every wand.
@@ -223,6 +247,8 @@ fn attach_wands(
             tip: None,
             since_release: f32::MAX,
             step: usize::MAX,
+            swirl: [None; SWIRL_SPARKS],
+            swirl_phase: 0.0,
         });
     }
 }
@@ -272,6 +298,19 @@ fn dress_wands(
             commands
                 .entity(tip)
                 .insert(Halo::new(CRYSTAL_GLOW, 0.3, 0.3));
+            for (i, slot) in wand.swirl.iter_mut().enumerate() {
+                let (at, halo) = swirl_spark(i, None, 0.0);
+                *slot = Some(
+                    commands
+                        .spawn((
+                            Name::new("Wand swirl spark"),
+                            halo,
+                            Transform::from_translation(at),
+                            ChildOf(tip),
+                        ))
+                        .id(),
+                );
+            }
         }
     }
 }
@@ -341,9 +380,28 @@ fn pose_wands(
             }
         }
         if let Some(mut halo) = wand.tip.and_then(|t| halos.get_mut(t).ok()) {
-            let want = Halo::new(CRYSTAL_GLOW, 0.3 + 0.55 * glow, 0.3 + 2.6 * glow);
+            // A wide flare (M4-V5): the crystal blazes as he winds up.
+            let want = Halo::new(CRYSTAL_GLOW, 0.3 + 0.95 * glow, 0.3 + 2.9 * glow);
             if *halo != want {
                 *halo = want;
+            }
+        }
+        if progress.is_some() {
+            wand.swirl_phase = (wand.swirl_phase + SWIRL_SPIN * dt) % std::f32::consts::TAU;
+        }
+        let phase = wand.swirl_phase;
+        for (i, spark) in wand.swirl.into_iter().enumerate() {
+            let Some(spark) = spark else { continue };
+            let (at, want) = swirl_spark(i, progress, phase);
+            if let Ok(mut halo) = halos.get_mut(spark)
+                && *halo != want
+            {
+                *halo = want;
+            }
+            if progress.is_some()
+                && let Ok(mut t) = transforms.get_mut(spark)
+            {
+                t.translation = at;
             }
         }
     }
@@ -372,6 +430,16 @@ mod tests {
         assert_eq!(glow_amount(None, 0.0), 1.0);
         assert_eq!(glow_amount(None, FLARE_TIME), 0.0);
         assert_eq!(glow_amount(None, f32::MAX), 0.0);
+    }
+
+    #[test]
+    fn the_swirl_circles_the_tip_only_while_winding_up() {
+        let (_, idle) = swirl_spark(0, None, 1.0);
+        assert_eq!(idle.intensity, 0.0);
+        let (a, early) = swirl_spark(0, Some(0.1), 0.0);
+        let (b, late) = swirl_spark(1, Some(0.9), 0.0);
+        assert!(late.intensity > early.intensity && late.size > early.size);
+        assert!(b.truncate().length() > a.truncate().length());
     }
 
     #[test]

@@ -14,7 +14,9 @@
 // Must match HALO_MAX_INTENSITY in halo.rs.
 const MAX_INTENSITY: f32 = 8.0;
 // Must match HALO_NEAR_FADE in halo.rs.
-const NEAR_FADE: vec2<f32> = vec2<f32>(0.9, 1.7);
+const NEAR_FADE: vec2<f32> = vec2<f32>(0.42, 0.8);
+// Halos smaller than this (m) never fade: the guns' own glows.
+const NEAR_FADE_MIN_SIZE: f32 = 0.6;
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var halo_texture: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var halo_sampler: sampler;
@@ -64,7 +66,8 @@ fn vertex(v: Vertex) -> VertexOutput {
     // size over its distance, from NEAR_FADE.x to NEAR_FADE.y. The guns'
     // own glows (a chamber crystal, a muzzle flash) stay well under it.
     let reach = size / max(eye_distance, 1e-3);
-    let near = 1.0 - smoothstep(NEAR_FADE.x, NEAR_FADE.y, reach);
+    let near = select(1.0 - smoothstep(NEAR_FADE.x, NEAR_FADE.y, reach), 1.0,
+        size < NEAR_FADE_MIN_SIZE);
 
     var out: VertexOutput;
     out.position = position_world_to_clip(world);

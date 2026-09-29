@@ -93,18 +93,28 @@ pub struct BestLine;
 /// Where the hero knight's plinth stands: in the arena's south, off the
 /// build grid's edges, the castle (azimuth 30° from the spawn) behind it.
 pub const HERO_PLINTH: Vec3 = Vec3::new(-3.0, 0.0, 15.5);
-/// The plinth is the brick wall model squashed into a block: its width,
-/// height and depth scales.
-const PLINTH_SCALE: Vec3 = Vec3::new(0.62, 0.45, 3.6);
-/// The knight's feet, on the plinth's top.
-pub const HERO_FEET: Vec3 = Vec3::new(HERO_PLINTH.x, 3.0 * PLINTH_SCALE.y, HERO_PLINTH.z);
+/// The plinth is the brick wall model squashed into a knee-high block (its
+/// width, height and depth scales), capped with a plank slab (the floor
+/// model, squashed thin) for a crisp top edge.
+const PLINTH_SCALE: Vec3 = Vec3::new(0.52, 0.32, 3.3);
+const PLINTH_HEIGHT: f32 = 3.0 * PLINTH_SCALE.y;
+const CAP_SCALE: Vec3 = Vec3::new(0.56, 0.6, 0.29);
+/// The floor model's half thickness (m).
+const CAP_HALF: f32 = 0.1;
+/// The knight's feet, on the cap.
+pub const HERO_FEET: Vec3 = Vec3::new(
+    HERO_PLINTH.x,
+    PLINTH_HEIGHT + 2.0 * CAP_HALF * CAP_SCALE.y,
+    HERO_PLINTH.z,
+);
 /// The camera's bearing to the knight (degrees clockwise from north), its
-/// distance and height; the view's bearing and pitch.
+/// distance and height; the view's bearing and pitch: low and close, looking
+/// up at him with the castle over his shoulder.
 const HERO_BEARING: f32 = 17.0;
-const HERO_DISTANCE: f32 = 5.0;
-const HERO_EYE_Y: f32 = 1.9;
-const VIEW_BEARING: f32 = 9.0;
-const VIEW_PITCH: f32 = 11.0;
+const HERO_DISTANCE: f32 = 5.2;
+const HERO_EYE_Y: f32 = 1.7;
+const VIEW_BEARING: f32 = 7.0;
+const VIEW_PITCH: f32 = 10.0;
 
 /// Unit vector along the ground at `deg` clockwise from north (-Z).
 fn bearing(deg: f32) -> Vec3 {
@@ -176,6 +186,16 @@ fn spawn_hero(
     if let Some(block) = spawn_model(&mut commands, &library, "wall_brick", plinth) {
         commands
             .entity(block)
+            .insert((Outline::default(), ChildOf(root)));
+    }
+    let cap = Transform::from_translation(
+        HERO_PLINTH + Vec3::Y * (PLINTH_HEIGHT + CAP_HALF * CAP_SCALE.y),
+    )
+    .looking_to(to_camera, Vec3::Y)
+    .with_scale(CAP_SCALE);
+    if let Some(slab) = spawn_model(&mut commands, &library, "floor_plank", cap) {
+        commands
+            .entity(slab)
             .insert((Outline::default(), ChildOf(root)));
     }
     // He turns a little toward the castle, his wand arm to the camera.
@@ -520,7 +540,7 @@ mod tests {
         for eye in [start, later] {
             // Inside the arena, low over the grass.
             let p = eye.translation;
-            assert!(p.x.abs() < 24.0 && p.z.abs() < 24.0 && (1.5..3.0).contains(&p.y));
+            assert!(p.x.abs() < 24.0 && p.z.abs() < 24.0 && (1.0..3.0).contains(&p.y));
             let ahead = eye.forward().as_vec3();
             let right = eye.right().as_vec3();
             // The knight's chest a little right of the middle, ahead.

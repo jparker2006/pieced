@@ -1156,7 +1156,9 @@ impl Emitter<'_> {
     }
 
     /// A violet-gold burst where a pump pellet lands, a white star over it
-    /// (T04's stars on the knight), sparks and sparkles flung off.
+    /// (T04's stars on the knight), sparks and sparkles flung off. Small
+    /// cores and long rays (M4 art, V3): ten of them on a knight at 3 m read
+    /// as a hollow starburst he's flung out of, not a disc hiding him.
     fn pellet_impact(&mut self, point: Vec3, normal: Vec3) {
         let d = self.dist(point);
         let n = normal.normalize_or(Vec3::Y);
@@ -1165,9 +1167,9 @@ impl Emitter<'_> {
         self.pop(
             point,
             mesh,
-            apparent_size(0.45, d, 0.036),
-            0.16,
-            1.3,
+            apparent_size(0.26, d, 0.022),
+            0.14,
+            1.15,
             0.2,
             3.0,
         );
@@ -1179,9 +1181,9 @@ impl Emitter<'_> {
         self.pop(
             point,
             star,
-            apparent_size(0.36, d, 0.03),
-            0.18,
-            1.7,
+            apparent_size(0.2, d, 0.018),
+            0.16,
+            1.6,
             0.22,
             -2.0,
         );
@@ -1190,7 +1192,7 @@ impl Emitter<'_> {
             self.assets.streak_gold.clone(),
         ];
         let w = apparent_size(0.03, d, 0.0026);
-        self.sparks(point, out, 1.0, 3, (3.5, 7.0), &sparks, w, w * 5.0);
+        self.sparks(point, out, 1.0, 4, (5.0, 9.0), &sparks, w, w * 7.0);
         let twinkles = [
             self.assets.sparkle_gold.clone(),
             self.assets.sparkle_violet.clone(),
@@ -1661,7 +1663,9 @@ impl Emitter<'_> {
     /// The elimination poof (T08): a big puffy cloud, little puffs rolling
     /// out, gold stars flung up, sparkles and a flash.
     fn poof(&mut self, feet: Vec3) {
-        let center = feet + Vec3::Y * 1.1;
+        // M4 art (V4): the cloud billows round his legs rather than swallowing
+        // him, so his knocked-out take and the helmet popping off read over it.
+        let center = feet + Vec3::Y * 0.62;
         let toward = (self.eye - center).with_y(0.0).normalize_or(Vec3::Z);
         let k = self.rng.pick(2);
         let mut cloud = Spark::new(center, &self.assets.clouds[k].clone());
@@ -1670,8 +1674,7 @@ impl Emitter<'_> {
         cloud.p.drag = 1.0;
         cloud.p.rot = Quat::from_rotation_y(self.roll());
         cloud.p.spin = Vec3::Y * self.rng.range(-0.6, 0.6);
-        // Big enough to swallow him whole (T08).
-        cloud.p.size = Vec3::splat(1.45);
+        cloud.p.size = Vec3::splat(1.05);
         cloud.p.birth_scale = 0.25;
         cloud.p.life = 0.95;
         cloud.p.shrink_start = 0.55;
@@ -1716,8 +1719,8 @@ impl Emitter<'_> {
             self.assets.sparkle_violet.clone(),
             self.assets.sparkle_gold.clone(),
         ];
-        self.sparkles(center, 1.2, 18, 0.2, &meshes);
-        self.flash(center, HALO_POOF, 2.6, 1.8, 0.25, 0.4);
+        self.sparkles(center + Vec3::Y * 0.4, 1.2, 18, 0.2, &meshes);
+        self.flash(center, HALO_POOF, 1.8, 1.4, 0.25, 0.4);
     }
 }
 

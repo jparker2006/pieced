@@ -196,11 +196,15 @@ fn update_status(
     >,
     mut memory: Local<StatusMemory>,
     mut parts: Query<StatusParts>,
+    callouts: Query<&super::kills::KillCallout>,
 ) {
     let Some(player) = player else {
         return;
     };
     let (health, tool, loadout, aimed, edit) = player.into_inner();
+    // A multi-kill callout owns the space by the crosshair: the aimed piece's
+    // name and bar step aside while it shows (M4 art, V4).
+    let calling = callouts.iter().any(|c| c.callout.is_some());
     let editing = edit.is_some_and(EditMode::is_editing);
     let hud = &tuning.hud;
     let dt = time.delta_secs();
@@ -468,7 +472,7 @@ fn update_status(
             }
             El::PieceGroup => {
                 if let Some(mut v) = vis {
-                    set_visible(&mut v, aimed.is_some_and(|a| a.0.is_some()));
+                    set_visible(&mut v, !calling && aimed.is_some_and(|a| a.0.is_some()));
                 }
             }
             El::PieceFill => {

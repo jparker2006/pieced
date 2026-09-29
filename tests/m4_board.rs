@@ -145,8 +145,27 @@ fn composite_ui(app: &mut App) -> Handle<Image> {
     image
 }
 
-/// Keeps the player alive with full bars (the knights keep shooting at him).
+/// While set, no knight in play may cast (checked every frame), so no stray
+/// orb bursts over the player's view in the shooting views.
+static HUSHED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn set_hushed(on: bool) {
+    HUSHED.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Keeps the player alive with full bars (the knights keep shooting at him),
+/// and the knights quiet while [`HUSHED`].
 fn heal(app: &mut App) {
+    if HUSHED.load(std::sync::atomic::Ordering::Relaxed) {
+        let world = app.world_mut();
+        let mut q = world.query_filtered::<(&mut GruntStats, &mut Wand), With<PoolGrunt>>();
+        for (mut stats, mut wand) in q.iter_mut(world) {
+            stats.reaction = 1.0e6;
+            stats.fire_interval = 1.0e6;
+            wand.windup = None;
+            wand.cooldown = 1.0e6;
+        }
+    }
     if let Some(p) = player_entity(app.world_mut())
         && let Some(mut health) = app.world_mut().get_mut::<Health>(p)
     {
@@ -335,16 +354,7 @@ fn knights(app: &mut App, n: usize, limit: usize) -> Vec<Entity> {
 /// Stops every knight in play from casting (so no stray orb bursts over the
 /// player's view), and clears the orbs already flying.
 fn hush(app: &mut App) {
-    for k in in_play(app) {
-        if let Some(mut stats) = app.world_mut().get_mut::<GruntStats>(k) {
-            stats.reaction = 1.0e6;
-            stats.fire_interval = 1.0e6;
-        }
-        if let Some(mut wand) = app.world_mut().get_mut::<Wand>(k) {
-            wand.windup = None;
-            wand.cooldown = 1.0e6;
-        }
-    }
+    set_hushed(true);
     frames(app, 90);
 }
 
@@ -510,7 +520,7 @@ fn review(app: &mut App, board: &mut Board) {
     frames(app, 2);
     aim(app, b + Vec3::Y * HEAD_CENTER);
     fire(app);
-    frames(app, 6);
+    frames(app, 10);
     capture(app, board, "V4-headshot-kill");
 
     // V3: the pump blasts a knight at 3 m (a heavy hit, not a kill: he's
@@ -519,7 +529,7 @@ fn review(app: &mut App, board: &mut Board) {
     let k = knights(app, 1, 1800);
     hush(app);
     put_player(app, SPAWN);
-    let a = me + bearing(-10.0) * 3.4;
+    let a = me + bearing(-10.0) * 2.8;
     stand(app, k[0], a, 500.0);
     frames(app, 20);
     stand(app, k[0], a, 500.0);
@@ -540,7 +550,8 @@ fn review(app: &mut App, board: &mut Board) {
     frames(app, 2);
     capture(app, board, "X-knight-close");
 
-    // V6: boxed up, looking out of a wide window at knights firing orbs.
+    // V6: boxed up, looking out of a window at knights firing orbs.
+    set_hushed(false);
     put_player(app, SPAWN);
     let c = GridCell::new(6, 9, 0);
     let mut front = None;
@@ -571,12 +582,23 @@ fn review(app: &mut App, board: &mut Board) {
     }
     for _ in 0..150 {
         put_player(app, SPAWN);
-        look(app, 0.0, -2.0);
+        look(app, 0.0, 3.0);
         app.update();
     }
     capture(app, board, "V6-boxup-fight");
 
-    // V8: the main menu over its orbit.
+    // V8: the main menu's hero shot. (The hats the board's kills left on the
+    // lawn go: a player's menu opens on a fresh island.)
+    {
+        let world = app.world_mut();
+        let hats: Vec<Entity> = world
+            .query_filtered::<Entity, With<pieced::fx::hat::HatProp>>()
+            .iter(world)
+            .collect();
+        for hat in hats {
+            world.entity_mut(hat).insert(Visibility::Hidden);
+        }
+    }
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::Menu);
