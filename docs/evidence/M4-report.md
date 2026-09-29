@@ -106,7 +106,7 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 
 1. `git worktree list`. Chunk 1 is on `m4-hit-feedback` (`.claude/worktrees/agent-a1a8ca69e7eb45ea8`); chunk 0 is on the `.claude/worktrees/agent-ab9440989154b3d5b` worktree's branch. Read each branch's last commit message for what's left.
 2. `df -h ~`: need more than 4 GB free. Run `scripts/prune-target.sh` first.
-3. **Chunk 1:** dispatch a `pieced-builder` into its worktree to finish the open items above. Then `--no-ff` merge to `main` after the test suite, clippy, fmt and `build-art --check`. Build `pieced-play` (release, low priority) and send Jake **play-test 1** with the five questions.
+3. **Chunk 1** is paused at `9763ad0` on `m4-hit-feedback`. Since `2c3f18d`, the dent and armor-hiding bug on the rigged knight is fixed (the helmet mesh had no visibility component to toggle), `tests/kill_feedback.rs` is 18/18, and the dent asset builds identically every time. Left: run and review `tests/kill_offscreen.rs` against V2 and V4, then rerun `build-art.sh --check` and the full test suite, clippy and fmt on `9763ad0`. Dispatch a `pieced-builder` into its worktree for these. Then `--no-ff` merge to `main` after the test suite, clippy, fmt and `build-art --check`. Build `pieced-play` (release, low priority) and send Jake **play-test 1** with the five questions.
 4. **Chunk 0** is on branch `worktree-agent-ab9440989154b3d5b`, at `20cca05`.
    - **Done:**
      - Per-pass GPU timing through `src/gpu_timing.rs`. Metal can't timestamp inside a pass, so the marks sit between passes. It was checked offscreen on the real GPU: world 4.4 ms, effects 0.8, UI 0.35, post 1.2.
