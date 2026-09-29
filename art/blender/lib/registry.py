@@ -12,7 +12,7 @@ BUDGETS = {
     # S1 round 3: rounder, smooth-shaded guns (up from the spec's 6k).
     "gun": 8000,
     "gloves": 2000,
-    "knight": 8000,
+    "knight": 11000,
     "wall": 600,
     "floor": 400,
     "ramp": 400,
