@@ -28,6 +28,7 @@ Every number here names its source (session folder or test), the commit, and the
 | 2 | Weapons (music not yet in) | `c0561c5` | **4** | **4** | About right | **None** | "the guns looks super AAA, everything else (background, knights, etc) need to now too!" | `20260929-060802` (battery, LPM on, builds paused, `--knobs pipelined=on`; 375 s; wave 4, score 4,000, 22 eliminations) |
 | 3 | Audio and music | `6ca867d` | **4** | **4** | About right | **None** | Nothing named: "super fun with music" | `20260929-063236` (AC power, LPM on, pipelined on; 197 s; wave 3, score 2,400). **Not a clean performance session**: load 10 rising to 43 while headless art work that had started after quiet mode came on kept running |
 | Budget | | | 4.5 | 1.5 | 2.0 | 2.0 | 0.5 | 1.0 | ≤ 12.0 |
+| 2026-09-29 | `3a22f97` (offscreen, load 8–13) | offscreen full wave, 3 runs, before → after | 4.58/7.79 → 3.84/5.79 | in world | in world | 0.72/1.44 → 0.79/1.69 | 1.50/3.59 → **1.16/1.46** | 1.53/3.30 → **1.02/2.16** | 8.34/13.27 → **6.81/9.36** |
 | 2026-09-28 | `c0561c5` | `20260929-060802` (battery, LPM, pipelined on) | 4.19 / 5.16 | in world | in world | 0.65 / 1.33 | **2.17 / 2.83** | **2.35 / 3.44** | 9.41 / **10.83** |
 
 ## Target board
@@ -326,3 +327,10 @@ Paused at the usage limit. Both builders were told to commit their work in progr
     - the V8 cap and UVs;
     - the knight's silhouette, depending on Q121.
 - 2026-09-29: **D121:** the helmet may visually overhang the head hitbox by up to +45% of its radius (about 9 cm). It's cosmetic, and the hitboxes and numbers are unchanged. Jake: "rec". S5's helmet tolerance becomes 0.09 m, and the body keeps 5 cm.
+- 2026-09-29: **perf follow-up merged** (`da732d7`, from `3a22f97`: 700 passed, 0 failed, 22 ignored; clippy, fmt and `test_sessions.py` 12/12 clean).
+  - **Pipelined rendering is the default** (`--knobs pipelined=off` turns it off).
+  - **One UI pass at window size:** the old 2D pass and the full-screen image of the 3D view are gone, and the world camera skips its copy when it shares the viewmodel's texture.
+  - **Input-to-present latency** for presses and look is in the session log (`sessions.py --latency`), not yet measured with real input.
+  - **Timing-mark bug fixed:** the UI camera's `CameraOutputMode::Skip` made Bevy drop the view.
+  - The offscreen totals are in the GPU table. UI (1.16) is still over its 0.5 budget: clearing and storing the HUD at 7.6 MP. Post is at budget by mean.
+- 2026-09-29: **chunk 4 dispatched with the chibi knight** (`m4-knight`: D121 silhouette, then the authored clips), and a play build for Jake is building from `da732d7`.
