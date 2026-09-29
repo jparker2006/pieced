@@ -211,6 +211,15 @@ impl AttachPoint {
     }
 }
 
+/// A keyed clip in a model (M4, D104: the knight's), in glTF order: clip `i`
+/// is the file's `GltfAssetLabel::Animation(i)`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct ClipInfo {
+    pub name: String,
+    /// Seconds.
+    pub duration: f32,
+}
+
 /// `assets/models/<name>.json`, written by `art/blender/lib/export.py`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Sidecar {
@@ -224,6 +233,9 @@ pub struct Sidecar {
     pub bounds: Bounds,
     pub parts: BTreeMap<String, PartInfo>,
     pub attach: BTreeMap<String, AttachPoint>,
+    /// The model's authored clips (`art/blender/build.py`), if it has any.
+    #[serde(default)]
+    pub clips: Vec<ClipInfo>,
 }
 
 impl Sidecar {
@@ -251,6 +263,9 @@ pub struct Model {
     pub file: String,
     pub scene: Handle<WorldAsset>,
     pub sidecar: Sidecar,
+    /// Its authored clips by name (M4, D104; the knight's), loaded when the
+    /// app animates (`AnimationPlugin`); empty otherwise.
+    pub clips: Vec<(String, Handle<AnimationClip>)>,
 }
 
 /// Every model by name. Inserted at `Startup`; [`ModelLibrary::is_ready`] once
@@ -392,7 +407,12 @@ fn register_embedded(app: &mut App) {
 #[derive(Resource)]
 struct LoadStarted(std::time::Instant);
 
-fn start_loading(mut commands: Commands, assets: Res<AssetServer>, mut gate: ResMut<BootGate>) {
+fn start_loading(
+    mut commands: Commands,
+    assets: Res<AssetServer>,
+    mut gate: ResMut<BootGate>,
+    animation: Option<Res<Assets<AnimationClip>>>,
+) {
     let manifest = parse_manifest(MANIFEST_JSON).expect("assets/models/manifest.json parses");
     let mut library = ModelLibrary::default();
     for entry in manifest {
@@ -410,14 +430,35 @@ fn start_loading(mut commands: Commands, assets: Res<AssetServer>, mut gate: Res
             }
         };
         let path = format!("embedded://{EMBEDDED_DIR}/{}", entry.file);
+        // Only a model with clips loads its animations (and only when the
+        // app animates): the loader then puts an `AnimationPlayer` on its
+        // root node and animation targets on the named nodes.
+        let animated = animation.is_some() && !sidecar.clips.is_empty();
+        let settings = move |s: &mut GltfLoaderSettings| {
+            s.load_cameras = false;
+            s.load_lights = false;
+            s.load_animations = animated;
+        };
         let scene = assets
             .load_builder()
-            .with_settings(|s: &mut GltfLoaderSettings| {
-                s.load_cameras = false;
-                s.load_lights = false;
-                s.load_animations = false;
-            })
-            .load(GltfAssetLabel::Scene(0).from_asset(path));
+            .with_settings(settings)
+            .load(GltfAssetLabel::Scene(0).from_asset(path.clone()));
+        let clips = if animated {
+            sidecar
+                .clips
+                .iter()
+                .enumerate()
+                .map(|(i, clip)| {
+                    let handle = assets
+                        .load_builder()
+                        .with_settings(settings)
+                        .load(GltfAssetLabel::Animation(i).from_asset(path.clone()));
+                    (clip.name.clone(), handle)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         library.models.insert(
             entry.name.clone(),
             Model {
@@ -425,6 +466,7 @@ fn start_loading(mut commands: Commands, assets: Res<AssetServer>, mut gate: Res
                 file: entry.file,
                 scene,
                 sidecar,
+                clips,
             },
         );
     }

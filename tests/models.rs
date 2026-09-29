@@ -240,9 +240,9 @@ fn spec_budget(kind: &str) -> u32 {
         "gun" => 8000,
         "gloves" => 2000,
         // M4 art (the coordinator's raised budgets, backed by the offscreen
-        // full-wave GPU timer): the detailed knight, round tree puffs and
-        // rounder rocks.
-        "knight" => 11000,
+        // full-wave GPU timer): the detailed knight (12k from chunk 4, see
+        // docs/M4-SPEC.md → Chunk 4), round tree puffs and rounder rocks.
+        "knight" => 12000,
         "wall" => 600,
         "floor" | "ramp" => 400,
         // M2 Amendment A (D43, D44): the cone, and the edit tile sets (a set

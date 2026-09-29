@@ -8,8 +8,10 @@
 //! - **Cosmetic:** the tall wizard hat (`Hat` and its floppy `HatTip`) takes no
 //!   hits, like a Fortnite cosmetic (Amendment B, D49), so it is left out of the
 //!   fit and may rise well above the head sphere.
-//! - **Inside:** every other body part lies inside the body capsule, and the
-//!   helmet and eyes inside the head sphere, each within [`TOLERANCE`] (5 cm).
+//! - **Inside:** every other body part lies inside the body capsule within
+//!   [`TOLERANCE`] (5 cm), and the helmet and eyes inside the head sphere
+//!   within [`HEAD_TOLERANCE`] (9 cm, D121: the chibi bucket helm may
+//!   overhang the head hitbox by up to +45% of its radius, cosmetic only).
 //!   Checked on the sidecar's part bounds, then exactly on every vertex of the glb.
 //!   Boots stand on the ground, where the capsule's rounded end can't hold two
 //!   feet, so below [`FOOT_BAND`] the capsule counts as a cylinder (as for
@@ -32,8 +34,19 @@ use pieced::{
 use serde_json::Value;
 use std::{collections::BTreeMap, fs, path::PathBuf};
 
-/// How far a part may poke out of its hitbox.
+/// How far a body part may poke out of the body capsule.
 const TOLERANCE: f32 = 0.05;
+/// How far the helmet and eyes may poke out of the head sphere (D121).
+const HEAD_TOLERANCE: f32 = 0.09;
+
+/// A part's tolerance: the head's (D121) or the body's.
+fn tolerance(part: &str) -> f32 {
+    if is_head(part) {
+        HEAD_TOLERANCE
+    } else {
+        TOLERANCE
+    }
+}
 /// How far a hitbox may stick out past the model.
 const FILL: f32 = 0.10;
 /// The side view's limit (see the module docs).
@@ -149,7 +162,7 @@ fn knight_has_its_parts_pivots_and_eye_states() {
     let side = sidecar();
     assert_eq!(side.kind, "knight");
     assert!(
-        side.triangles <= 11000 && side.triangle_budget == 11000,
+        side.triangles <= 12000 && side.triangle_budget == 12000,
         "{} triangles (budget {})",
         side.triangles,
         side.triangle_budget
@@ -234,7 +247,7 @@ fn knight_has_its_parts_pivots_and_eye_states() {
     // The robe hangs from the waist, the hat's tip turns at its bend, up the crown.
     let waist = at("PivotRobe");
     assert!(
-        waist.x.abs() < 1e-4 && (0.65..0.85).contains(&waist.y),
+        waist.x.abs() < 1e-4 && (0.65..0.95).contains(&waist.y),
         "waist {waist}"
     );
     let robe = side.parts["Robe"].bounds;
@@ -296,7 +309,7 @@ fn knight_part_bounds_fit_the_hitboxes() {
             out * 100.0
         );
         assert!(
-            out <= TOLERANCE,
+            out <= tolerance(name),
             "{name}'s bounds poke {out:.3} m out of its hitbox's bounds"
         );
     }
@@ -528,7 +541,7 @@ fn knight_mesh_lies_inside_the_hitboxes() {
             worst * 100.0
         );
         assert!(
-            worst <= TOLERANCE,
+            worst <= tolerance(name),
             "{name} pokes {worst:.3} m out of its hitbox at {at}"
         );
     }

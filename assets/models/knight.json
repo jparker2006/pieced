@@ -3,18 +3,18 @@
   "kind": "knight",
   "source": "art/blender/assets/knight.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 9490,
-  "triangle_budget": 11000,
+  "triangles": 9406,
+  "triangle_budget": 12000,
   "bounds": {
     "min": [
-      -0.366,
+      -0.378,
       0.0,
-      -0.3011
+      -0.3553
     ],
     "max": [
-      0.366,
-      2.215,
-      0.3318
+      0.378,
+      2.3089,
+      0.3362
     ]
   },
   "parts": {
@@ -22,57 +22,59 @@
       "parent": "PivotLegL",
       "bounds": {
         "min": [
-          -0.265,
+          -0.2718,
           0.0,
           -0.24
         ],
         "max": [
-          -0.0425,
+          -0.0405,
           0.6682,
-          0.116
+          0.12
         ]
       },
-      "triangles": 600,
+      "triangles": 452,
       "colors": [
         "gun_iron",
-        "knight_steel"
+        "knight_steel",
+        "knight_steel_dark"
       ]
     },
     "BootR": {
       "parent": "PivotLegR",
       "bounds": {
         "min": [
-          0.0425,
+          0.0405,
           0.0,
           -0.24
         ],
         "max": [
-          0.265,
+          0.2718,
           0.6682,
-          0.116
+          0.12
         ]
       },
-      "triangles": 600,
+      "triangles": 452,
       "colors": [
         "gun_iron",
-        "knight_steel"
+        "knight_steel",
+        "knight_steel_dark"
       ]
     },
     "Cape": {
       "parent": "PivotCape",
       "bounds": {
         "min": [
-          -0.3372,
-          0.33,
-          0.0532
+          -0.2956,
+          0.7,
+          0.0472
         ],
         "max": [
-          0.3372,
+          0.2956,
           1.29,
-          0.3111
+          0.2773
         ]
       },
-      "triangles": 608,
+      "triangles": 540,
       "colors": [
         "knight_purple",
         "knight_purple_shadow",
@@ -83,14 +85,14 @@
       "parent": "Helmet",
       "bounds": {
         "min": [
-          -0.1111,
-          1.6526,
-          -0.1566
+          -0.1392,
+          1.6398,
+          -0.194
         ],
         "max": [
-          -0.0129,
-          1.6807,
-          -0.1396
+          -0.0268,
+          1.6715,
+          -0.175
         ]
       },
       "triangles": 56,
@@ -102,14 +104,14 @@
       "parent": "Helmet",
       "bounds": {
         "min": [
-          0.0129,
-          1.6526,
-          -0.1566
+          0.0268,
+          1.6398,
+          -0.194
         ],
         "max": [
-          0.1111,
-          1.6807,
-          -0.1396
+          0.1392,
+          1.6715,
+          -0.175
         ]
       },
       "triangles": 56,
@@ -121,14 +123,14 @@
       "parent": "Helmet",
       "bounds": {
         "min": [
-          -0.1158,
-          1.597,
-          -0.1626
+          -0.1442,
+          1.578,
+          -0.199
         ],
         "max": [
-          -0.0082,
-          1.747,
-          -0.0976
+          -0.0218,
+          1.746,
+          -0.134
         ]
       },
       "triangles": 204,
@@ -141,14 +143,14 @@
       "parent": "Helmet",
       "bounds": {
         "min": [
-          0.0082,
-          1.597,
-          -0.1626
+          0.0218,
+          1.578,
+          -0.199
         ],
         "max": [
-          0.1158,
-          1.747,
-          -0.0976
+          0.1442,
+          1.746,
+          -0.134
         ]
       },
       "triangles": 204,
@@ -161,14 +163,14 @@
       "parent": "Helmet",
       "bounds": {
         "min": [
-          -0.1212,
-          1.591,
-          -0.1641
+          -0.1503,
+          1.5713,
+          -0.2005
         ],
         "max": [
-          -0.0028,
-          1.753,
-          -0.0966
+          -0.0157,
+          1.7527,
+          -0.133
         ]
       },
       "triangles": 160,
@@ -181,14 +183,14 @@
       "parent": "Helmet",
       "bounds": {
         "min": [
-          0.0028,
-          1.591,
-          -0.1641
+          0.0157,
+          1.5713,
+          -0.2005
         ],
         "max": [
-          0.1212,
-          1.753,
-          -0.0966
+          0.1503,
+          1.7527,
+          -0.133
         ]
       },
       "triangles": 160,
@@ -201,14 +203,14 @@
       "parent": "Helmet",
       "bounds": {
         "min": [
-          -0.1051,
-          1.6256,
-          -0.1563
+          -0.1318,
+          1.6099,
+          -0.1936
         ],
         "max": [
-          -0.0189,
-          1.7184,
-          -0.1399
+          -0.0342,
+          1.7141,
+          -0.1754
         ]
       },
       "triangles": 40,
@@ -220,14 +222,14 @@
       "parent": "Helmet",
       "bounds": {
         "min": [
-          0.0189,
-          1.6256,
-          -0.1563
+          0.0342,
+          1.6099,
+          -0.1936
         ],
         "max": [
-          0.1051,
-          1.7184,
-          -0.1399
+          0.1318,
+          1.7141,
+          -0.1754
         ]
       },
       "triangles": 40,
@@ -239,20 +241,21 @@
       "parent": "PivotArmL",
       "bounds": {
         "min": [
-          -0.366,
-          0.6089,
-          -0.1304
+          -0.378,
+          0.5948,
+          -0.1451
         ],
         "max": [
-          -0.1436,
-          1.2151,
-          0.0979
+          -0.1417,
+          1.2155,
+          0.0999
         ]
       },
-      "triangles": 696,
+      "triangles": 708,
       "colors": [
         "knight_purple",
         "knight_steel",
+        "knight_steel_dark",
         "star_gold"
       ]
     },
@@ -260,20 +263,21 @@
       "parent": "PivotArmR",
       "bounds": {
         "min": [
-          0.1436,
-          0.6089,
-          -0.1304
+          0.1417,
+          0.5948,
+          -0.1451
         ],
         "max": [
-          0.366,
-          1.2151,
-          0.0979
+          0.378,
+          1.2155,
+          0.0999
         ]
       },
-      "triangles": 696,
+      "triangles": 708,
       "colors": [
         "knight_purple",
         "knight_steel",
+        "knight_steel_dark",
         "star_gold"
       ]
     },
@@ -281,14 +285,14 @@
       "parent": "PivotHat",
       "bounds": {
         "min": [
-          -0.2964,
-          1.7654,
-          -0.3011
+          -0.3498,
+          1.7783,
+          -0.3553
         ],
         "max": [
-          0.2896,
-          2.1423,
-          0.2849
+          0.3417,
+          2.2231,
+          0.3362
         ]
       },
       "triangles": 928,
@@ -303,14 +307,14 @@
       "parent": "PivotHatTip",
       "bounds": {
         "min": [
-          -0.034,
-          2.0762,
-          -0.0019
+          -0.0401,
+          2.145,
+          -0.0022
         ],
         "max": [
-          0.2066,
-          2.215,
-          0.1166
+          0.2438,
+          2.3089,
+          0.1376
         ]
       },
       "triangles": 212,
@@ -322,34 +326,37 @@
       "parent": "PivotHead",
       "bounds": {
         "min": [
-          -0.2381,
-          1.415,
-          -0.1781
+          -0.2325,
+          1.405,
+          -0.2011
         ],
         "max": [
-          0.2381,
-          1.825,
-          0.1781
+          0.2325,
+          1.813,
+          0.2027
         ]
       },
-      "triangles": 778,
+      "triangles": 1060,
       "colors": [
         "knight_steel",
-        "pupil_black"
+        "knight_steel_dark",
+        "knight_steel_hi",
+        "pupil_black",
+        "star_gold"
       ]
     },
     "Robe": {
       "parent": "PivotRobe",
       "bounds": {
         "min": [
-          -0.362,
-          0.3,
-          -0.2927
+          -0.354,
+          0.27,
+          -0.3046
         ],
         "max": [
-          0.3627,
-          0.752,
-          0.3318
+          0.3543,
+          0.815,
+          0.3235
         ]
       },
       "triangles": 808,
@@ -363,17 +370,17 @@
       "parent": "knight",
       "bounds": {
         "min": [
-          -0.3415,
+          -0.364,
           0.545,
-          -0.2098
+          -0.2135
         ],
         "max": [
-          0.3415,
+          0.364,
           1.442,
-          0.1736
+          0.178
         ]
       },
-      "triangles": 2644,
+      "triangles": 2618,
       "colors": [
         "crystal_violet",
         "gold_rings",
@@ -381,7 +388,10 @@
         "knight_purple",
         "knight_purple_shadow",
         "knight_steel",
-        "star_gold"
+        "knight_steel_dark",
+        "knight_steel_hi",
+        "star_gold",
+        "stock"
       ]
     }
   },
@@ -432,7 +442,7 @@
       "parent": "PivotHead",
       "position": [
         0.0,
-        1.788,
+        1.805,
         0.0
       ],
       "rotation": [
@@ -445,9 +455,9 @@
     "PivotHatTip": {
       "parent": "Hat",
       "position": [
-        0.028,
-        2.123,
-        0.06
+        0.033,
+        2.2003,
+        0.0708
       ],
       "rotation": [
         0.0,
@@ -502,7 +512,7 @@
       "parent": "Torso",
       "position": [
         0.0,
-        0.745,
+        0.83,
         0.0
       ],
       "rotation": [
@@ -512,5 +522,71 @@
         1.0
       ]
     }
-  }
+  },
+  "clips": [
+    {
+      "name": "BeamLand",
+      "duration": 0.5
+    },
+    {
+      "name": "DeathBack",
+      "duration": 0.35
+    },
+    {
+      "name": "DeathCrumple",
+      "duration": 0.35
+    },
+    {
+      "name": "DeathSpin",
+      "duration": 0.35
+    },
+    {
+      "name": "Hero",
+      "duration": 2.4
+    },
+    {
+      "name": "Idle",
+      "duration": 2.0
+    },
+    {
+      "name": "Run",
+      "duration": 0.6
+    },
+    {
+      "name": "StrafeL",
+      "duration": 0.6
+    },
+    {
+      "name": "StrafeR",
+      "duration": 0.6
+    },
+    {
+      "name": "VictoryHop",
+      "duration": 0.5
+    },
+    {
+      "name": "VoidFall",
+      "duration": 0.6
+    },
+    {
+      "name": "WindUp",
+      "duration": 0.4
+    },
+    {
+      "name": "FlinchHead",
+      "duration": 0.3
+    },
+    {
+      "name": "FlinchL",
+      "duration": 0.3
+    },
+    {
+      "name": "FlinchR",
+      "duration": 0.3
+    },
+    {
+      "name": "FlinchChest",
+      "duration": 0.3
+    }
+  ]
 }
