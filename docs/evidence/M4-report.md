@@ -146,3 +146,4 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
   - **Next:** the chunk 0 builder was redirected to bisect the GPU cost between `fb039a3` and `c227c3d` offscreen with the per-pass timer (chunk 1 is the prime suspect), fix it, and pin it with a test.
 - 2026-09-28: **play-test 1, the rest of Jake's answers.** On smoothness: "It felt the same smoothness". On what's off: "I think AAA games just have a certain thing about them that make them feel like real studio premium games and were not quite there yet".
   - The builder was told he felt no choppiness, so it checks whether the frame "regression" is a measurement or pacing change from chunk 1's time handling (the hitstop now uses `HitstopFrozen`), not only GPU cost.
+- 2026-09-28: **D120:** chunks 2 (weapons) and 3 (music) run together after the regression check, and play-test 2 covers both. Jake: "yes do weapons and music together".
