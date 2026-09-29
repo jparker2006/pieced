@@ -357,15 +357,18 @@ fn setup_render_target(
 fn resize_world_target(
     window: Option<Single<&Window, With<PrimaryWindow>>>,
     tuning: Res<Tuning>,
+    dynres: Option<Res<crate::perf::DynamicResolution>>,
     target: Option<ResMut<WorldTarget>>,
     mut images: ResMut<Assets<Image>>,
 ) {
     let (Some(window), Some(mut target)) = (window, target) else {
         return;
     };
+    // `dynres=on` (M4, D100) scales the Battery preset between 0.8 and 1.0.
+    let dynamic = dynres.map_or(1.0, |d| d.scale);
     let size = target_size(
         &window,
-        tuning.graphics.render_scale,
+        tuning.graphics.render_scale * dynamic,
         pixel_cap(&tuning.graphics),
     );
     if size == target.size {

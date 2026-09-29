@@ -28,6 +28,10 @@
 //! Milestone 4 knobs:
 //! - `gpu=on|off|N`: GPU pass timing ([`crate::gpu_timing`]) on every frame,
 //!   never, or 1 frame in N (default: `PerfTuning::gpu_every`, 8).
+//! - The D100 levers ([`crate::perf`]), off by default until Jake's sessions
+//!   show they're needed: `farres=half|full` (the far layer at half
+//!   resolution), `dynres=on|off` (dynamic resolution on Battery),
+//!   `overdraw=cap|off` (glows capped by screen coverage).
 
 use crate::{look::OutlineBackend, tuning::Tuning, viewmodel::ViewmodelCamera};
 use bevy::{pbr::DistanceFog, prelude::*};
@@ -57,9 +61,31 @@ pub struct PerfKnobs {
     pub pipelined: Option<bool>,
     /// GPU pass timing on 1 frame in N (`gpu=on` = 1, `gpu=off` = 0, `gpu=N`).
     pub gpu: Option<u32>,
+    /// The far layer at half resolution (`farres=half`; `full` = off).
+    pub farres_half: Option<bool>,
+    /// Dynamic resolution on the Battery preset (`dynres=on`).
+    pub dynres: Option<bool>,
+    /// The overdraw cap on glows (`overdraw=cap`).
+    pub overdraw_cap: Option<bool>,
 }
 
 impl PerfKnobs {
+    /// The Milestone 4 knobs that set [`crate::perf::PerfTuning`].
+    pub fn apply_perf(&self, perf: &mut crate::perf::PerfTuning) {
+        if let Some(every) = self.gpu {
+            perf.gpu_every = every;
+        }
+        if let Some(on) = self.farres_half {
+            perf.far_half_res = on;
+        }
+        if let Some(on) = self.dynres {
+            perf.dynres = on;
+        }
+        if let Some(on) = self.overdraw_cap {
+            perf.overdraw_cap = on;
+        }
+    }
+
     pub fn from_args(args: &[String]) -> Option<Self> {
         let raw = args
             .iter()
@@ -101,6 +127,9 @@ impl PerfKnobs {
                 "latency" => knobs.latency = value.parse().ok().filter(|n| (1..=3).contains(n)),
                 "pipelined" => knobs.pipelined = Some(on),
                 "gpu" => knobs.gpu = value.parse().ok().or(Some(u32::from(on))),
+                "farres" => knobs.farres_half = Some(matches!(value, "half" | "on")),
+                "dynres" => knobs.dynres = Some(on),
+                "overdraw" => knobs.overdraw_cap = Some(matches!(value, "cap" | "on")),
                 other => eprintln!("unknown knob '{other}'"),
             }
         }
@@ -120,10 +149,11 @@ impl Plugin for PerfKnobsPlugin {
         if let (Some(cap), Some(mut tuning)) = (cap, app.world_mut().get_resource_mut::<Tuning>()) {
             tuning.feedback.max_particles = cap;
         }
-        let gpu = app.world().get_resource::<PerfKnobs>().and_then(|k| k.gpu);
-        if let (Some(every), Some(mut tuning)) = (gpu, app.world_mut().get_resource_mut::<Tuning>())
+        let knobs = app.world().get_resource::<PerfKnobs>().cloned();
+        if let (Some(knobs), Some(mut tuning)) =
+            (knobs, app.world_mut().get_resource_mut::<Tuning>())
         {
-            tuning.perf.gpu_every = every;
+            knobs.apply_perf(&mut tuning.perf);
         }
         app.add_systems(Update, apply_knobs.run_if(resource_exists::<PerfKnobs>));
     }
@@ -210,6 +240,28 @@ mod tests {
         assert_eq!(PerfKnobs::parse("gpu=off").gpu, Some(0));
         assert_eq!(PerfKnobs::parse("gpu=4").gpu, Some(4));
         assert_eq!(PerfKnobs::parse("").pipelined, None);
+    }
+
+    #[test]
+    fn milestone_4_levers_set_the_perf_tuning() {
+        let k = PerfKnobs::parse("farres=half,dynres=on,overdraw=cap,gpu=2");
+        let mut perf = crate::perf::PerfTuning::default();
+        assert!(
+            !perf.far_half_res && !perf.dynres && !perf.overdraw_cap,
+            "all off by default"
+        );
+        k.apply_perf(&mut perf);
+        assert!(perf.far_half_res && perf.dynres && perf.overdraw_cap);
+        assert_eq!(perf.gpu_every, 2);
+        let off = PerfKnobs::parse("farres=full,dynres=off,overdraw=off");
+        off.apply_perf(&mut perf);
+        assert!(!perf.far_half_res && !perf.dynres && !perf.overdraw_cap);
+        // The knob lands before Startup, like the particle cap.
+        let mut app = App::new();
+        app.init_resource::<Tuning>()
+            .insert_resource(PerfKnobs::parse("dynres"))
+            .add_plugins(PerfKnobsPlugin);
+        assert!(app.world().resource::<Tuning>().perf.dynres);
     }
 
     #[test]

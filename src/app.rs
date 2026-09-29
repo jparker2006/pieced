@@ -105,6 +105,7 @@ impl PluginGroup for ClientPlugins {
             .add(TelemetryPlugin)
             .add(crate::profile::FrameProfilePlugin)
             .add(crate::gpu_timing::GpuTimingPlugin)
+            .add(crate::perf::PerfPlugin)
             .add(InputAdapterPlugin)
             .add(InputProbePlugin)
             .add(RenderSetupPlugin)

@@ -48,6 +48,7 @@ use crate::{
     look::{FarHaze, FarMaterial, Halo, LookSettings, ModelDressed, ModelLook, warmup::Warmup},
     models::{ModelLibrary, spawn_model},
     palette::cartoon,
+    perf::far_res::FarCamera,
     perf_knobs::PerfKnobs,
     render::MainCamera,
 };
@@ -241,7 +242,8 @@ fn attach_galaxy_skybox(
     spin: Option<Res<GalaxySpin>>,
     clock: Res<SkyClock>,
     cameras: Query<Entity, (With<MainCamera>, Without<GalaxySky>)>,
-    with_sky: Query<(), (With<MainCamera>, With<GalaxySky>)>,
+    far_cameras: Query<Entity, (With<FarCamera>, Without<GalaxySky>)>,
+    with_sky: Query<(), (Or<(With<MainCamera>, With<FarCamera>)>, With<GalaxySky>)>,
     mut boot: ResMut<FarBoot>,
 ) {
     if !with_sky.is_empty() {
@@ -252,7 +254,12 @@ fn attach_galaxy_skybox(
         return;
     }
     let rotation = spin.map_or(Quat::IDENTITY, |s| galaxy_rotation(&s, clock.seconds));
-    for camera in &cameras {
+    // With `farres=half` the far layer's own camera draws the galaxy.
+    let far = far_cameras.iter().next();
+    for camera in far
+        .into_iter()
+        .chain(cameras.iter().filter(|_| far.is_none()))
+    {
         commands.entity(camera).insert((
             Skybox {
                 image: Some(texture.image.clone()),
