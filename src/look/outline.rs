@@ -68,9 +68,13 @@ pub const TAPER_START: f32 = 8.0;
 /// across the arena).
 pub const TAPER_KEEP: f32 = 0.65;
 /// Outlines start fading here (meters from the camera)...
-pub const FADE_START: f32 = 25.0;
+///
+/// M4 lever (D100, pre-approved): 15–25 m, from M2's 25–40 m. Fewer hull
+/// draws past 25 m (they are culled once faded) and less ink overdraw in the
+/// middle distance, where it is a few pixels wide anyway.
+pub const FADE_START: f32 = 15.0;
 /// ...and are gone here.
-pub const FADE_END: f32 = 40.0;
+pub const FADE_END: f32 = 25.0;
 
 /// Ink outline on a mesh entity (one with `Mesh3d`). Works on any render layer,
 /// including the viewmodel's: the outline copies the entity's `RenderLayers`.
@@ -828,21 +832,22 @@ mod tests {
     }
 
     #[test]
-    fn width_is_about_3_px_near_tapers_and_fades_between_25_and_40_m() {
+    fn width_is_about_3_px_near_tapers_and_fades_between_15_and_25_m() {
         let w = |d: f32| outline_width_px(DEFAULT_WIDTH_PX, d, REFERENCE_HEIGHT_PX);
         // Thick confident ink up close (D47: 2× the M1 1.5 px).
         assert_eq!(DEFAULT_WIDTH_PX, 3.0);
         assert_eq!(w(0.5), DEFAULT_WIDTH_PX);
         assert_eq!(w(TAPER_START), DEFAULT_WIDTH_PX);
-        assert!(w(10.0) > DEFAULT_WIDTH_PX * 0.95);
+        assert!(w(9.0) > DEFAULT_WIDTH_PX * 0.95);
         // It tapers through the middle distance so small things don't bloat...
-        assert!(w(18.0) < w(10.0) && w(18.0) > w(FADE_START));
+        assert!(w(12.0) < w(9.0) && w(12.0) > w(FADE_START));
         assert!((w(FADE_START) - DEFAULT_WIDTH_PX * TAPER_KEEP).abs() < 1e-5);
-        // ...then fades out over the same distances as before.
-        assert!((w(32.5) - DEFAULT_WIDTH_PX * TAPER_KEEP * 0.5).abs() < 1e-5);
-        assert!(w(30.0) > w(35.0));
+        // ...then fades out between 15 and 25 m (M4, D100).
+        assert_eq!((FADE_START, FADE_END), (15.0, 25.0));
+        assert!((w(20.0) - DEFAULT_WIDTH_PX * TAPER_KEEP * 0.5).abs() < 1e-5);
+        assert!(w(18.0) > w(22.0));
         assert_eq!(w(FADE_END), 0.0);
-        assert_eq!(w(80.0), 0.0);
+        assert_eq!(w(30.0), 0.0);
         // Constant on screen: twice the pixels on a target twice as tall.
         let hi = outline_width_px(DEFAULT_WIDTH_PX, 5.0, REFERENCE_HEIGHT_PX * 2.0);
         assert!((hi - 2.0 * DEFAULT_WIDTH_PX).abs() < 1e-5);

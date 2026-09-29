@@ -179,6 +179,12 @@ use warmup::Warmup;
 
 pub struct LookPlugin;
 
+/// The halo billboard systems (attach, sync, the halos setting), in
+/// `PostUpdate`. Systems that adjust halo sprites afterwards (the overdraw
+/// cap, `crate::perf`) run after it.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HaloSystems;
+
 impl Plugin for LookPlugin {
     fn build(&self, app: &mut App) {
         register_shaders(app);
@@ -245,7 +251,8 @@ impl Plugin for LookPlugin {
                     halo::sync_halo_sprites,
                     halo::apply_halo_setting,
                 )
-                    .chain(),
+                    .chain()
+                    .in_set(HaloSystems),
                 warmup::place_warmup_items.after(CameraFollowSet),
             )
                 .before(TransformSystems::Propagate),

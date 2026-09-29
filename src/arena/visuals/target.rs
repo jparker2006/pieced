@@ -247,7 +247,15 @@ pub fn animate_knights(
     mut transforms: Query<&mut Transform, Without<TargetFigure>>,
     mut visibility: Query<&mut Visibility, Without<TargetFigure>>,
     mut commands: Commands,
+    lod: (
+        Option<Res<crate::tuning::Tuning>>,
+        Query<&GlobalTransform, With<crate::render::MainCamera>>,
+        Local<crate::perf::AnimLod>,
+    ),
 ) {
+    let (tuning, camera, mut lod) = lod;
+    let camera = camera.iter().next().map(GlobalTransform::translation);
+    let perf = tuning.map(|t| t.perf.clone()).unwrap_or_default();
     // World directions into an owner's model space (its figure faces its yaw).
     let local = |owner: Entity, v: Vec3| {
         let yaw = owners
@@ -311,9 +319,18 @@ pub fn animate_knights(
     // A kill's hitstop holds the knights too (M4).
     let dt = HitstopFrozen::delta(hitstop.as_deref(), time.delta_secs());
     for (entity, figure, mut anim, rig, armor, mut shown) in &mut figures {
+        let mut hit_now = false;
         for (_, event) in events.iter().filter(|(who, _)| *who == figure.owner) {
             anim.event(*event);
+            hit_now = true;
         }
+        // M4 lever (D100): knights beyond 20 m animate at 30 Hz.
+        let distance = camera
+            .zip(positions.get(figure.owner).ok())
+            .map_or(0.0, |(c, p)| c.distance(p.translation()));
+        let Some(dt) = lod.step(entity, dt, distance, hit_now, &perf) else {
+            continue;
+        };
         let input = match owners.get(figure.owner) {
             // A knight coming down a ship's beam is out of play (downed) but
             // shows, legs dangling (D82).

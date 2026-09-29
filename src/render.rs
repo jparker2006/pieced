@@ -12,7 +12,7 @@ use bevy::{
     prelude::*,
     render::{
         Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
-        render_resource::{Extent3d, TextureFormat},
+        render_resource::{Extent3d, TextureFormat, TextureUsages},
     },
     window::{PresentMode, PrimaryWindow},
 };
@@ -82,6 +82,10 @@ pub const UI_LAYER: usize = 31;
 /// on the same target.
 pub const MAIN_CAMERA_ORDER: isize = -2;
 pub const VIEWMODEL_CAMERA_ORDER: isize = -1;
+/// The far layer's own camera (`farres=half`) draws before the world camera.
+pub const FAR_CAMERA_ORDER: isize = -3;
+/// The UI camera draws last, onto the window.
+pub const UI_CAMERA_ORDER: isize = 10;
 
 pub const NEAR_PLANE: f32 = 0.05;
 pub const FAR_PLANE: f32 = 1500.0;
@@ -286,12 +290,15 @@ fn setup_render_target(
             )
         })
         .unwrap_or(UVec2::new(1470, 956));
-    let image = images.add(Image::new_target_texture(
+    let mut image = Image::new_target_texture(
         size.x,
         size.y,
         TextureFormat::Rgba8Unorm,
         Some(TextureFormat::Rgba8UnormSrgb),
-    ));
+    );
+    // COPY_SRC lets the GPU timing's end-of-camera marks wait on it.
+    image.texture_descriptor.usage |= TextureUsages::COPY_SRC;
+    let image = images.add(image);
     commands.insert_resource(WorldTarget {
         image: image.clone(),
         size,
@@ -326,9 +333,12 @@ fn setup_render_target(
         // anti-aliases its own edges, so 4x MSAA here would only cost bandwidth.
         Msaa::Off,
         Camera {
-            order: 10,
+            order: UI_CAMERA_ORDER,
             ..default()
         },
+        // COPY_DST lets the GPU timing's last mark wait for the final copy
+        // into the drawable (`crate::gpu_timing`).
+        bevy::camera::CameraMainTextureUsages::default().with(TextureUsages::COPY_DST),
     ));
     commands.spawn((
         Name::new("World view"),
@@ -347,15 +357,18 @@ fn setup_render_target(
 fn resize_world_target(
     window: Option<Single<&Window, With<PrimaryWindow>>>,
     tuning: Res<Tuning>,
+    dynres: Option<Res<crate::perf::DynamicResolution>>,
     target: Option<ResMut<WorldTarget>>,
     mut images: ResMut<Assets<Image>>,
 ) {
     let (Some(window), Some(mut target)) = (window, target) else {
         return;
     };
+    // `dynres=on` (M4, D100) scales the Battery preset between 0.8 and 1.0.
+    let dynamic = dynres.map_or(1.0, |d| d.scale);
     let size = target_size(
         &window,
-        tuning.graphics.render_scale,
+        tuning.graphics.render_scale * dynamic,
         pixel_cap(&tuning.graphics),
     );
     if size == target.size {

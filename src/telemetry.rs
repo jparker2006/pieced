@@ -100,6 +100,12 @@ impl Plugin for TelemetryPlugin {
             .add_systems(StartupMark::Start, |mut p: ResMut<BootPhases>| {
                 p.startup_start_ms.get_or_insert(now_ms());
             })
+            .add_systems(StartupMark::PreEnd, |mut p: ResMut<BootPhases>| {
+                p.prestartup_end_ms.get_or_insert(now_ms());
+            })
+            .add_systems(StartupMark::MainEnd, |mut p: ResMut<BootPhases>| {
+                p.startup_main_end_ms.get_or_insert(now_ms());
+            })
             .add_systems(StartupMark::End, |mut p: ResMut<BootPhases>| {
                 p.startup_end_ms.get_or_insert(now_ms());
             })
@@ -119,6 +125,8 @@ impl Plugin for TelemetryPlugin {
         {
             let mut order = app.world_mut().resource_mut::<MainScheduleOrder>();
             order.insert_startup_before(PreStartup, StartupMark::Start);
+            order.insert_startup_after(PreStartup, StartupMark::PreEnd);
+            order.insert_startup_after(Startup, StartupMark::MainEnd);
             order.insert_startup_after(PostStartup, StartupMark::End);
         }
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
@@ -140,6 +148,10 @@ impl Plugin for TelemetryPlugin {
 #[derive(bevy::ecs::schedule::ScheduleLabel, Debug, Clone, PartialEq, Eq, Hash)]
 enum StartupMark {
     Start,
+    /// After `PreStartup`.
+    PreEnd,
+    /// After `Startup` (before `PostStartup`).
+    MainEnd,
     End,
 }
 
@@ -272,6 +284,10 @@ pub struct BootPhases {
     pub plugins_ready_ms: Option<f64>,
     /// The `Startup` schedules began (the window was just created).
     pub startup_start_ms: Option<f64>,
+    /// `PreStartup` ended (M4: Startup is split to find its 0.4–0.6 s).
+    pub prestartup_end_ms: Option<f64>,
+    /// `Startup` itself ended (`PostStartup` follows).
+    pub startup_main_end_ms: Option<f64>,
     /// The `Startup` schedules ended.
     pub startup_end_ms: Option<f64>,
     pub window_ms: Option<f64>,
@@ -321,6 +337,8 @@ impl BootPhases {
             ("app_built", self.app_built_ms),
             ("plugins_ready", self.plugins_ready_ms),
             ("startup_start", self.startup_start_ms),
+            ("prestartup_end", self.prestartup_end_ms),
+            ("startup_main_end", self.startup_main_end_ms),
             ("startup_end", self.startup_end_ms),
         ] {
             if let Some(ms) = ms {

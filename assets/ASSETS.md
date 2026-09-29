@@ -152,6 +152,7 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 | `shaders/grade.wgsl` | hand-written, used by `src/look/grade.rs` | Import-only colour grade (`pieced::grade`): vibrance, contrast, split tone |
 | `shaders/ink.wgsl` | hand-written, used by `src/look/outline.rs` | Inverted-hull ink outlines, screen-space width, mid-distance taper, distance fade |
 | `shaders/far.wgsl` | hand-written, used by `src/look/far.rs` | Unlit far layer with baked AO, colour grade and distance haze |
+| `shaders/far_backdrop.wgsl` | hand-written, used by `src/perf/far_res.rs` | `farres=half`: the far layer's half-resolution image drawn behind the world |
 | `shaders/halo.wgsl` | hand-written, used by `src/look/halo.rs` | Additive camera-facing glow billboards |
 | `shaders/blob.wgsl` | hand-written, used by `src/look/blob.rs` | Soft blob shadows under characters and props |
 | `shaders/ground.wgsl` | hand-written, used by `src/look/ground.rs` | The island's toon-lit grass with the glowing build grid in world space |

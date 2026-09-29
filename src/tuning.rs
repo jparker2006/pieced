@@ -29,6 +29,10 @@ pub struct Tuning {
     pub orb: crate::orb::OrbTuning,
     #[serde(skip)]
     pub waves: crate::waves::WavesTuning,
+    /// Designer performance settings (M4 chunk 0): GPU timing and the D100
+    /// levers. Never persisted, like the Waves sections.
+    #[serde(skip)]
+    pub perf: crate::perf::PerfTuning,
     /// Kill feedback feel (M4 chunk 1): designer numbers, never persisted.
     #[serde(skip)]
     pub kills: crate::fx::kills::KillFeelTuning,
