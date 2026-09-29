@@ -67,6 +67,14 @@ pub const WEAPON_SWITCH: CueSpec = spec(0.25, -11.0);
 pub const WEAPON_DRAW: CueSpec = spec(0.40, -11.0);
 pub const ADS_IN: CueSpec = spec(0.22, -12.0);
 pub const ADS_OUT: CueSpec = spec(0.20, -12.0);
+// The reload and rack beats (M4, D106), cued by the viewmodel's animation.
+pub const CHAMBER_OPEN: CueSpec = spec(0.2, -12.0);
+pub const CRYSTAL_GRAB: CueSpec = spec(0.14, -12.0);
+pub const CRYSTAL_SLOT: CueSpec = spec(0.26, -11.0);
+pub const CHAMBER_SHUT: CueSpec = spec(0.22, -11.0);
+pub const CRYSTAL_CHARGE: CueSpec = spec(0.42, -11.0);
+pub const RACK_PULL: CueSpec = spec(0.32, -11.0);
+pub const RACK_CLACK: CueSpec = spec(0.26, -10.0);
 // Hits.
 pub const BODY_HIT: CueSpec = spec(0.11, -11.0);
 pub const HEADSHOT: CueSpec = spec(0.55, -11.0);
@@ -656,6 +664,145 @@ pub fn ads_out() -> Vec<f32> {
     click(&mut b, 0.045, 1600.0, 2.0, 0.0008, 0.35, 80);
     partials(&mut b, 0.045, &[(1450.0, 1.0, 0.007)], 0.2);
     b.master(ADS_OUT.rms_db)
+}
+
+/// Rifle reload: the glass chamber slides open (a glassy scrape up, a tick,
+/// a faint ring).
+pub fn chamber_open() -> Vec<f32> {
+    let mut b = Buffer::new(0.19);
+    click(&mut b, 0.0, 2600.0, 2.0, 0.0008, 0.5, 131);
+    noise_bp(
+        &mut b,
+        0.004,
+        0.07,
+        0.6,
+        132,
+        4.0,
+        |t| 1900.0 + 1600.0 * (t / 0.06).min(1.0),
+        |t| (PI * (t / 0.07).min(1.0)).sin(),
+    );
+    glass(&mut b, 0.06, note(98.0), 0.03, 0.35);
+    b.master(CHAMBER_OPEN.rms_db)
+}
+
+/// Rifle reload: the glove closes on a fresh crystal (a soft leathery thud
+/// and a small crystal tick).
+pub fn crystal_grab() -> Vec<f32> {
+    let mut b = Buffer::new(0.13);
+    noise_lp(
+        &mut b,
+        0.0,
+        0.05,
+        1.0,
+        133,
+        |_| 700.0,
+        |t| ad(t, 0.004, 0.012),
+    );
+    thump(&mut b, 0.0, 160.0, 240.0, 0.006, 0.014, 0.5);
+    ping(&mut b, 0.012, note(103.0), 0.012, 0.3);
+    b.master(CRYSTAL_GRAB.rms_db)
+}
+
+/// Rifle reload: the fresh crystal clicks into its socket (a click, a seat
+/// thump and a bright glass pair).
+pub fn crystal_slot() -> Vec<f32> {
+    let mut b = Buffer::new(0.25);
+    click(&mut b, 0.0, 2000.0, 1.8, 0.0015, 0.8, 134);
+    thump(&mut b, 0.0, 180.0, 300.0, 0.008, 0.018, 0.5);
+    glass(&mut b, 0.0, note(96.0), 0.04, 0.6);
+    glass(&mut b, 0.004, note(103.0), 0.03, 0.4);
+    b.master(CRYSTAL_SLOT.rms_db)
+}
+
+/// Rifle reload: the glass chamber snaps shut (a sharp snap over a low
+/// glass knock).
+pub fn chamber_shut() -> Vec<f32> {
+    let mut b = Buffer::new(0.21);
+    click(&mut b, 0.0, 3200.0, 2.2, 0.001, 0.9, 135);
+    thump(&mut b, 0.0, 200.0, 360.0, 0.006, 0.016, 0.45);
+    glass(&mut b, 0.002, note(91.0), 0.045, 0.55);
+    b.master(CHAMBER_SHUT.rms_db)
+}
+
+/// Rifle reload done: the crystal charges (a hum rising an octave, C4 to C5)
+/// and flashes (a bright chord and a sparkle).
+pub fn crystal_charge() -> Vec<f32> {
+    let mut b = Buffer::new(0.4);
+    let rise = 0.18;
+    let (mut o1, mut o2, mut trem) = (Osc::default(), Osc::default(), Osc::default());
+    b.add(0.0, rise + 0.03, 0.5, |t| {
+        let x = (t / rise).min(1.0);
+        let f = note(60.0) * 2f32.powf(x.powf(1.4));
+        let shimmer = 1.0 + 0.2 * trem.sine(9.0 + 16.0 * x);
+        (o1.sine(f) + 0.4 * o2.sine(2.0 * f))
+            * shimmer
+            * (0.3 + 0.7 * x)
+            * attack(t, 0.02)
+            * release(t, rise + 0.03, 0.03)
+    });
+    chime(&mut b, rise, note(96.0), 0.09, 0.45);
+    chime(&mut b, rise + 0.006, note(100.0), 0.08, 0.3);
+    sparkle(
+        &mut b,
+        rise + 0.02,
+        0.1,
+        4,
+        (100.0, 108.0),
+        0.02,
+        0.18,
+        false,
+        136,
+    );
+    b.master(CRYSTAL_CHARGE.rms_db)
+}
+
+/// Pump rack, pulled: the gold rings whirr up as the grip slides back (a
+/// rising, fluttering spin over a metal slide).
+pub fn rack_pull() -> Vec<f32> {
+    let mut b = Buffer::new(0.31);
+    let spin = 0.28;
+    let (mut o1, mut o2, mut lfo) = (Osc::default(), Osc::default(), Osc::default());
+    b.add(0.0, spin, 0.5, |t| {
+        let x = t / spin;
+        let freq = 480.0 * 2f32.powf(1.4 * x);
+        let flutter = (0.5 + 0.5 * lfo.sine(14.0 + 34.0 * x)).powi(2);
+        (o1.sine(freq) + 0.4 * o2.sine(freq * 2.756))
+            * flutter
+            * attack(t, 0.03)
+            * release(t, spin, 0.04)
+    });
+    noise_bp(
+        &mut b,
+        0.0,
+        0.12,
+        0.45,
+        137,
+        2.0,
+        |t| 1300.0 + 700.0 * (t / 0.1).min(1.0),
+        |t| ad(t, 0.005, 0.04),
+    );
+    click(&mut b, 0.0, 2200.0, 2.0, 0.001, 0.4, 138);
+    b.master(RACK_PULL.rms_db)
+}
+
+/// Pump rack, slammed home: a heavy brass clack (a hard click, a low knock
+/// and short metal modes) and the lock's tick.
+pub fn rack_clack() -> Vec<f32> {
+    let mut b = Buffer::new(0.25);
+    click(&mut b, 0.0, 2500.0, 1.6, 0.0014, 1.0, 139);
+    thump(&mut b, 0.0, 140.0, 280.0, 0.01, 0.03, 0.9);
+    partials(
+        &mut b,
+        0.0,
+        &[
+            (1180.0, 1.0, 0.03),
+            (1960.0, 0.6, 0.02),
+            (2950.0, 0.35, 0.012),
+        ],
+        0.45,
+    );
+    click(&mut b, 0.03, 4200.0, 2.0, 0.0012, 0.5, 140);
+    b.master(RACK_CLACK.rms_db)
 }
 
 // ---------------------------------------------------------------------------

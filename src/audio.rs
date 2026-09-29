@@ -42,6 +42,7 @@ use crate::{
         PieceKind, Player, ShotFired, WeaponKind,
     },
     tuning::Tuning,
+    viewmodel::{WeaponBeat, WeaponCue},
 };
 use bevy::{
     audio::{AudioSinkPlayback, SpatialScale, Volume},
@@ -216,6 +217,20 @@ pub enum Sfx {
     AdsIn,
     /// Leaving the sights: the shift, softer and falling.
     AdsOut,
+    /// Rifle reload: the glass chamber slides open.
+    ChamberOpen,
+    /// Rifle reload: the glove grabs a fresh crystal.
+    CrystalGrab,
+    /// Rifle reload: the crystal clicks into its socket.
+    CrystalSlot,
+    /// Rifle reload: the chamber snaps shut.
+    ChamberShut,
+    /// Rifle reload done: the crystal charges up and flashes.
+    CrystalCharge,
+    /// Pump: the rack pulled back, the rings whirring up.
+    RackPull,
+    /// Pump: the rack slammed home.
+    RackClack,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -232,7 +247,7 @@ pub enum SfxCategory {
 }
 
 impl Sfx {
-    pub const ALL: [Sfx; 41] = [
+    pub const ALL: [Sfx; 48] = [
         Sfx::RifleShot,
         Sfx::PumpShot,
         Sfx::PumpRack,
@@ -274,6 +289,13 @@ impl Sfx {
         Sfx::WeaponDraw,
         Sfx::AdsIn,
         Sfx::AdsOut,
+        Sfx::ChamberOpen,
+        Sfx::CrystalGrab,
+        Sfx::CrystalSlot,
+        Sfx::ChamberShut,
+        Sfx::CrystalCharge,
+        Sfx::RackPull,
+        Sfx::RackClack,
     ];
 
     /// The cue for a piece event: walls are brick (clunk, crack, crumble); floors
@@ -312,7 +334,10 @@ impl Sfx {
         use Sfx::*;
         match self {
             RifleShot | PumpShot | PumpRack | RifleMagOut | RifleMagIn | PumpShell
-            | WeaponSwitch | WeaponDraw | AdsIn | AdsOut => reverb::Room::TIGHT,
+            | WeaponSwitch | WeaponDraw | AdsIn | AdsOut | ChamberOpen | CrystalGrab
+            | CrystalSlot | ChamberShut | CrystalCharge | RackPull | RackClack => {
+                reverb::Room::TIGHT
+            }
             HitTick | HeadshotDing | ShieldHit | ShieldBreak | Elimination | KillConfirm
             | HelmetDing => reverb::Room::HIT,
             BrickPlace | BrickCrack | BrickBreak => reverb::Room::STONE,
@@ -382,6 +407,13 @@ impl Sfx {
             Sfx::WeaponDraw => bank::weapon_draw(),
             Sfx::AdsIn => bank::ads_in(),
             Sfx::AdsOut => bank::ads_out(),
+            Sfx::ChamberOpen => bank::chamber_open(),
+            Sfx::CrystalGrab => bank::crystal_grab(),
+            Sfx::CrystalSlot => bank::crystal_slot(),
+            Sfx::ChamberShut => bank::chamber_shut(),
+            Sfx::CrystalCharge => bank::crystal_charge(),
+            Sfx::RackPull => bank::rack_pull(),
+            Sfx::RackClack => bank::rack_clack(),
         }
     }
 
@@ -447,6 +479,13 @@ impl Sfx {
             WeaponDraw => bank::WEAPON_DRAW,
             AdsIn => bank::ADS_IN,
             AdsOut => bank::ADS_OUT,
+            ChamberOpen => bank::CHAMBER_OPEN,
+            CrystalGrab => bank::CRYSTAL_GRAB,
+            CrystalSlot => bank::CRYSTAL_SLOT,
+            ChamberShut => bank::CHAMBER_SHUT,
+            CrystalCharge => bank::CRYSTAL_CHARGE,
+            RackPull => bank::RACK_PULL,
+            RackClack => bank::RACK_CLACK,
         }
     }
 
@@ -454,7 +493,10 @@ impl Sfx {
         use Sfx::*;
         match self {
             RifleShot | PumpShot | PumpRack | RifleMagOut | RifleMagIn | PumpShell
-            | WeaponSwitch | WeaponDraw | AdsIn | AdsOut => SfxCategory::Weapons,
+            | WeaponSwitch | WeaponDraw | AdsIn | AdsOut | ChamberOpen | CrystalGrab
+            | CrystalSlot | ChamberShut | CrystalCharge | RackPull | RackClack => {
+                SfxCategory::Weapons
+            }
             HitTick | HeadshotDing | ShieldHit | ShieldBreak | Elimination => SfxCategory::Hits,
             BrickPlace | PlankPlace | BrickCrack | PlankCrack | BrickBreak | PlankBreak
             | Rejected => SfxCategory::Building,
@@ -489,11 +531,10 @@ impl Sfx {
     /// | piece breaks | −16 |
     /// | orb whoosh, void yelp | −17 |
     /// | rifle cast, piece places and cracks | −18 |
-    /// | orb cast (a knight's fwoom), ship hum | −19 |
-    /// | pump rack, reload, rejected, ship beam, armor clatter | −20 |
-    /// | pump shell, weapon draw | −21 |
-    /// | weapon switch, ADS in and out | −22 |
-
+    /// | orb cast (a knight's fwoom), ship hum, the rack's clack | −19 |
+    /// | pump rack, reload, rejected, ship beam, armor clatter, the reload's slot, shut and charge, the rack's pull | −20 |
+    /// | pump shell, weapon draw, the chamber opening | −21 |
+    /// | weapon switch, ADS in and out, the crystal grab | −22 |
     /// | land, slide | −22 |
     /// | jump | −26 |
     /// | footstep | −27 |
@@ -507,9 +548,11 @@ impl Sfx {
             OrbWhoosh | VoidYelp => -17.0,
             RifleShot | BrickPlace | PlankPlace | BrickCrack | PlankCrack => -18.0,
             OrbCast | ShipHum => -19.0,
-            PumpRack | RifleMagOut | RifleMagIn | Rejected | ShipBeam | ArmorClatter => -20.0,
-            PumpShell | WeaponDraw => -21.0,
-            WeaponSwitch | AdsIn | AdsOut | Land | Slide => -22.0,
+            RackClack => -19.0,
+            PumpRack | RifleMagOut | RifleMagIn | Rejected | ShipBeam | ArmorClatter
+            | CrystalSlot | ChamberShut | CrystalCharge | RackPull => -20.0,
+            PumpShell | WeaponDraw | ChamberOpen => -21.0,
+            WeaponSwitch | AdsIn | AdsOut | CrystalGrab | Land | Slide => -22.0,
             Jump => -26.0,
             Footstep => -27.0,
         }
@@ -625,9 +668,16 @@ impl Plugin for GameAudioPlugin {
         // Synthesis (and the rooms baked into every cue) starts now, on its own
         // thread, so it overlaps the renderer and window setup; the bank is
         // filed the frame it's done and never waited on (launch, W8, M4).
+        // The gun's handling sounds follow the viewmodel's animation beats
+        // (chunk 2) when it's there; headless apps fall back to the reload
+        // and switch cues.
+        if app.is_plugin_added::<crate::viewmodel::ViewmodelPlugin>() {
+            app.init_resource::<WeaponBeatSounds>();
+        }
         app.init_resource::<PlayQueue>()
             .add_message::<KillConfirmed>()
             .add_message::<ArmorClattered>()
+            .add_message::<WeaponCue>()
             .insert_resource(SoundBankJob::start())
             .add_systems(Startup, hold_boot_for_the_bank)
             .add_observer(attach_listener);
@@ -648,6 +698,15 @@ impl Plugin for GameAudioPlugin {
             )
                 .chain()
                 .after(KillFeedbackSet),
+        )
+        // The viewmodel announces its beats in PostUpdate: they play the same
+        // frame (Bevy starts sounds after transform propagation).
+        .add_systems(
+            PostUpdate,
+            (queue_weapon_beats, play_queued)
+                .chain()
+                .after(crate::viewmodel::ViewmodelSet)
+                .before(bevy::transform::TransformSystems::Propagate),
         );
         wand::build(app);
     }
@@ -656,6 +715,7 @@ impl Plugin for GameAudioPlugin {
 /// A playing sound effect (public so the session log can count voices).
 #[derive(Component, Debug, Clone, Copy)]
 pub struct Voice {
+    sfx: Sfx,
     priority: u8,
     started: f64,
     /// Volume before master volume (so master changes apply live).
@@ -692,6 +752,13 @@ impl Default for PlayQueue {
             variation: 0,
             takes: [0; Sfx::ALL.len()],
         }
+    }
+}
+
+impl Voice {
+    /// The cue this voice plays.
+    pub fn sfx(&self) -> Sfx {
+        self.sfx
     }
 }
 
@@ -753,6 +820,47 @@ pub fn pitch_spread(sfx: Sfx) -> f32 {
 pub fn pitch_variation(sfx: Sfx, n: u32) -> f32 {
     let h = n.wrapping_mul(2_654_435_761) >> 16;
     1.0 + pitch_spread(sfx) * ((h % 1001) as f32 / 500.0 - 1.0)
+}
+
+/// Present when the viewmodel drives the gun's handling sounds with its
+/// animation beats ([`WeaponCue`], chunk 2): the draw, ADS, every reload beat
+/// and the rack.
+#[derive(Resource, Debug, Default, Clone, Copy)]
+pub struct WeaponBeatSounds;
+
+/// The layered sound for each of the gun's animation beats (D106).
+pub fn beat_sound(beat: WeaponBeat) -> Sfx {
+    match beat {
+        WeaponBeat::Draw => Sfx::WeaponDraw,
+        WeaponBeat::AdsIn => Sfx::AdsIn,
+        WeaponBeat::AdsOut => Sfx::AdsOut,
+        WeaponBeat::ChamberOpen => Sfx::ChamberOpen,
+        WeaponBeat::CrystalPop => Sfx::RifleMagOut,
+        WeaponBeat::CrystalGrab => Sfx::CrystalGrab,
+        WeaponBeat::CrystalSlot => Sfx::CrystalSlot,
+        WeaponBeat::ChamberShut => Sfx::ChamberShut,
+        WeaponBeat::CrystalCharged => Sfx::CrystalCharge,
+        WeaponBeat::ShardPush => Sfx::PumpShell,
+        WeaponBeat::RackPull => Sfx::RackPull,
+        WeaponBeat::RackClack => Sfx::RackClack,
+    }
+}
+
+/// The player's gun, beat by beat, as the viewmodel animates it.
+fn queue_weapon_beats(
+    time: Res<Time<Real>>,
+    beats: Option<Res<WeaponBeatSounds>>,
+    mut cues: MessageReader<WeaponCue>,
+    mut queue: ResMut<PlayQueue>,
+) {
+    if beats.is_none() {
+        cues.clear();
+        return;
+    }
+    let now = time.elapsed_secs_f64();
+    for cue in cues.read() {
+        queue.push(beat_sound(cue.beat), None, now);
+    }
 }
 
 /// The sounds a confirmed kill adds over its hit (M4, D105): the kill chime,
@@ -861,9 +969,11 @@ fn attach_listener(add: On<Add, MainCamera>, mut commands: Commands) {
         .insert(SpatialListener::new(0.25));
 }
 
+#[allow(clippy::too_many_arguments)]
 fn queue_combat_sounds(
     time: Res<Time<Real>>,
     tuning: Res<Tuning>,
+    beats: Option<Res<WeaponBeatSounds>>,
     player: Option<Single<Entity, With<Player>>>,
     start_tick: Option<Res<FrameStartTick>>,
     mut stats: Option<ResMut<HitFeedbackStats>>,
@@ -882,8 +992,11 @@ fn queue_combat_sounds(
             WeaponKind::Rifle => queue.push(Sfx::RifleShot, at, now),
             WeaponKind::Pump => {
                 queue.push(Sfx::PumpShot, at, now);
-                let delay = tuning.audio.pump_rack_delay.max(0.0) as f64;
-                queue.push_with(Sfx::PumpRack, at, 1.0, delay, now);
+                // The player's own rack follows the viewmodel's beats.
+                if at.is_some() || beats.is_none() {
+                    let delay = tuning.audio.pump_rack_delay.max(0.0) as f64;
+                    queue.push_with(Sfx::PumpRack, at, 1.0, delay, now);
+                }
             }
         }
     }
@@ -980,6 +1093,7 @@ fn queue_piece_sounds(
 
 fn queue_cue_sounds(
     time: Res<Time<Real>>,
+    beats: Option<Res<WeaponBeatSounds>>,
     player: Option<Single<Entity, With<Player>>>,
     transforms: Query<&Transform>,
     mut cues: MessageReader<GameCue>,
@@ -1030,6 +1144,22 @@ fn queue_cue_sounds(
             GameCue::VoidFall { .. } => continue,
         };
         let own = Some(who) == player;
+        // With the viewmodel, the player's gun handling plays on its beats
+        // ([`queue_weapon_beats`]) instead.
+        let handling = matches!(
+            cue,
+            GameCue::ReloadStart { .. }
+                | GameCue::ReloadShell { .. }
+                | GameCue::ReloadDone { .. }
+                | GameCue::AdsChanged { .. }
+                | GameCue::WeaponSwitch {
+                    tool: ActiveTool::Weapon(_),
+                    ..
+                }
+        );
+        if own && handling && beats.is_some() {
+            continue;
+        }
         if !own && sfx.category() != SfxCategory::Movement {
             // Other characters are heard moving; their gear stays quiet for now.
             continue;
@@ -1180,6 +1310,7 @@ pub(crate) fn play_queued(
             Name::new("Sfx"),
             AudioPlayer::new(bank.take(request.sfx, request.take)),
             Voice {
+                sfx: request.sfx,
                 priority,
                 started: now,
                 level,

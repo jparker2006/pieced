@@ -454,7 +454,7 @@ fn every_cue_rings_on_in_its_baked_room() {
     assert_eq!(Sfx::PlankPlace.room(), Room::WOOD);
     assert_eq!(Sfx::OrbCast.room(), Room::WORLD);
     assert_eq!(Sfx::WaveCleared.room(), Room::HALL);
-    assert!(Room::TIGHT.rt60 < Room::WORLD.rt60);
+    const { assert!(Room::TIGHT.rt60 < Room::WORLD.rt60) };
 }
 
 #[test]

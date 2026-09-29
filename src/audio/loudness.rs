@@ -33,7 +33,7 @@ fn k_weighting(rate: f64) -> [Biquad; 2] {
     // Stage 1: a high shelf (+4 dB above ~1.7 kHz, the head's acoustics).
     let (g, f0, q) = (
         3.999_843_853_973_347,
-        1681.974_450_955_533,
+        1_681.974_450_955_533,
         0.707_175_236_955_419_6,
     );
     let k = (PI * f0 / rate).tan();

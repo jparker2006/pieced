@@ -425,9 +425,9 @@ fn the_death_sting_is_the_battle_chord_falling_away() {
     // below the stab.
     let w = (0.12 * SR) as usize;
     let stab = &x[(0.08 * SR) as usize..][..w];
-    let mid = &x[(music::DEATH_STAB + 0.6 * music::DEATH_FALL) as usize * 0
-        + ((music::DEATH_STAB + 0.6 * music::DEATH_FALL) * SR) as usize..][..w];
-    let late = &x[((music::DEATH_STAB + 0.85 * music::DEATH_FALL) * SR) as usize..][..w];
+    let at = |fraction: f32| ((music::DEATH_STAB + fraction * music::DEATH_FALL) * SR) as usize;
+    let mid = &x[at(0.6)..][..w];
+    let late = &x[at(0.85)..][..w];
     let (s_mid, s_late) = (spectral_shift(stab, mid), spectral_shift(stab, late));
     println!("death sting: spectrum {s_mid} semitones down at 60% of the fall, {s_late} at 85%");
     assert!(
@@ -977,6 +977,7 @@ struct Script {
     seed: u64,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn drive_script(
     mut script: ResMut<Script>,
     mut summary: ResMut<RunSummary>,
@@ -1008,14 +1009,14 @@ fn drive_script(
     } else {
         RunPhase::Break { ends_tick: 0 }
     };
-    summary.new_best = script.seed % 2 == 0;
+    summary.new_best = script.seed.is_multiple_of(2);
     run.alive = ((in_cycle / 300) % 9) as u32;
     let who = *player;
     if fighting {
-        if f % 10 == 0 {
+        if f.is_multiple_of(10) {
             shots.write(ShotFired {
                 shooter: who,
-                weapon: if f % 70 == 0 {
+                weapon: if f.is_multiple_of(70) {
                     WeaponKind::Pump
                 } else {
                     WeaponKind::Rifle
@@ -1025,22 +1026,22 @@ fn drive_script(
                 tick: f,
             });
         }
-        if f % 20 == 0 {
+        if f.is_multiple_of(20) {
             damage.write(DamageDealt {
                 source: Some(who),
                 target: who,
                 target_kind: DamageTarget::Character,
                 amount: 10.0,
-                headshot: f % 60 == 0,
+                headshot: f.is_multiple_of(60),
                 to_shield: 0.0,
-                shield_broke: f % 240 == 0,
+                shield_broke: f.is_multiple_of(240),
                 killed: false,
                 point: Vec3::ZERO,
                 normal: Vec3::Y,
                 tick: f,
             });
         }
-        if f % 90 == 0 {
+        if f.is_multiple_of(90) {
             kills.write(KillConfirmed {
                 victim: who,
                 at: Vec3::ZERO,
@@ -1051,7 +1052,7 @@ fn drive_script(
             });
         }
     }
-    if f % 120 == 0 {
+    if f.is_multiple_of(120) {
         pieces.write(PieceChanged {
             entity: who,
             kind: PieceKind::Wall,
@@ -1139,6 +1140,114 @@ fn five_minutes_of_waves_allocate_nothing_per_event() {
         "the audio allocated {} times over 5 minutes",
         with.saturating_sub(base)
     );
+}
+
+// ---------------------------------------------------------------------------
+// The gun's handling plays on the viewmodel's beats (chunk 2's WeaponCue)
+// ---------------------------------------------------------------------------
+
+fn sounding(app: &mut App) -> Vec<pieced::audio::Sfx> {
+    let world = app.world_mut();
+    let mut sfx: Vec<_> = world
+        .query::<&Voice>()
+        .iter(world)
+        .map(Voice::sfx)
+        .collect();
+    sfx.sort_by_key(|s| *s as usize);
+    sfx
+}
+
+fn handling_app(beats: bool) -> (App, Entity) {
+    let mut app = audio_app(false);
+    app.add_plugins(GameAudioPlugin);
+    if beats {
+        app.init_resource::<pieced::audio::WeaponBeatSounds>();
+    }
+    let player = app.world_mut().spawn((Player, Transform::default())).id();
+    app.finish();
+    app.cleanup();
+    app.world().resource::<SoundBankJob>().wait();
+    app.update();
+    assert!(app.world().contains_resource::<SoundBank>());
+    (app, player)
+}
+
+#[test]
+fn the_guns_handling_plays_on_the_viewmodels_beats() {
+    use pieced::{
+        audio::{Sfx, beat_sound},
+        viewmodel::{WeaponBeat, WeaponCue},
+    };
+    let beats = [
+        WeaponBeat::Draw,
+        WeaponBeat::AdsIn,
+        WeaponBeat::AdsOut,
+        WeaponBeat::ChamberOpen,
+        WeaponBeat::CrystalPop,
+        WeaponBeat::CrystalGrab,
+        WeaponBeat::CrystalSlot,
+        WeaponBeat::ChamberShut,
+        WeaponBeat::CrystalCharged,
+        WeaponBeat::ShardPush,
+        WeaponBeat::RackPull,
+        WeaponBeat::RackClack,
+    ];
+    // Every beat has its own layered sound.
+    let sounds: BTreeSet<usize> = beats.iter().map(|b| beat_sound(*b) as usize).collect();
+    assert_eq!(sounds.len(), beats.len());
+
+    // With the viewmodel: each beat sounds on the frame it's announced.
+    let (mut app, player) = handling_app(true);
+    for beat in beats {
+        app.world_mut().write_message(WeaponCue {
+            weapon: WeaponKind::Rifle,
+            beat,
+        });
+        app.update();
+        assert!(
+            sounding(&mut app).contains(&beat_sound(beat)),
+            "{beat:?} plays {:?}",
+            beat_sound(beat)
+        );
+    }
+    // ...and the old reload cues stay quiet, so nothing doubles.
+    let before = sounding(&mut app).len();
+    for cue in [
+        GameCue::ReloadStart {
+            who: player,
+            weapon: WeaponKind::Rifle,
+        },
+        GameCue::ReloadDone {
+            who: player,
+            weapon: WeaponKind::Pump,
+        },
+        GameCue::AdsChanged {
+            who: player,
+            ads: true,
+        },
+    ] {
+        app.world_mut().write_message(cue);
+    }
+    app.update();
+    assert_eq!(
+        sounding(&mut app).len(),
+        before,
+        "the beats own the handling sounds"
+    );
+
+    // Without the viewmodel (headless), the reload cues still sound, and
+    // stray beats are ignored.
+    let (mut app, player) = handling_app(false);
+    app.world_mut().write_message(WeaponCue {
+        weapon: WeaponKind::Pump,
+        beat: WeaponBeat::RackClack,
+    });
+    app.world_mut().write_message(GameCue::ReloadStart {
+        who: player,
+        weapon: WeaponKind::Rifle,
+    });
+    app.update();
+    assert_eq!(sounding(&mut app), vec![Sfx::RifleMagOut]);
 }
 
 /// Renders the break loop and the death sting to WAV files for listening and
