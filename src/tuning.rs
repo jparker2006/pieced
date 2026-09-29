@@ -36,6 +36,10 @@ pub struct Tuning {
     /// Kill feedback feel (M4 chunk 1): designer numbers, never persisted.
     #[serde(skip)]
     pub kills: crate::fx::kills::KillFeelTuning,
+    /// Weapon feel (M4 chunk 2): the draw, ADS weight, breathing and the
+    /// render-only camera kick. Designer numbers, never persisted.
+    #[serde(skip)]
+    pub weapons: crate::viewmodel::WeaponFeelTuning,
     /// The adaptive score's designer numbers (M4 chunk 3): crossfades, ducks,
     /// mix levels. Never persisted; the Music and Effects sliders live in
     /// `audio`.
