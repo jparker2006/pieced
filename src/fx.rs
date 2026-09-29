@@ -1,8 +1,10 @@
 //! Effects: the spells ([`spells`]: bolts, pump sparks, impacts by type,
-//! shield shimmer and break, the elimination poof and the dropped hat), and
-//! here the piece-break debris, camera shake and hitstop. (The muzzle flashes
-//! live on the viewmodel layer, in [`crate::viewmodel`]; [`spells`] restyles
-//! them.)
+//! metal sparks and armor chips, shield shimmer and break, the elimination
+//! poof and the dropped hat), kill confirmation and the hitstop ([`kills`]),
+//! armor flying off a downed knight and the dented helmet ([`armor`], on the
+//! physics-lite [`chunks`]), and here the piece-break debris and camera
+//! shake. (The muzzle flashes live on the viewmodel layer, in
+//! [`crate::viewmodel`]; [`spells`] restyles them.)
 //!
 //! Every mesh and material is built once at startup, and every effect draws
 //! from fixed pools of hidden entities sized by [`FeedbackTuning`]'s caps
@@ -13,10 +15,14 @@
 //! Every effect clock, the spells' included, reads
 //! [`FreezableTime`](crate::shared::FreezableTime), so lifetimes, fades, bolt
 //! flight and shake stand still while the gallery holds a moment
-//! ([`GalleryFreeze`](crate::shared::GalleryFreeze)).
+//! ([`GalleryFreeze`](crate::shared::GalleryFreeze)) or a kill holds the
+//! frame ([`HitstopFrozen`](crate::shared::HitstopFrozen)).
 
+pub mod armor;
 pub mod chamber;
+pub mod chunks;
 pub mod hat;
+pub mod kills;
 pub mod material;
 pub mod orbs;
 pub mod potions;
@@ -28,7 +34,7 @@ use crate::{
     building::{CONE_HEIGHT, Piece, ramp_surface_height, visuals::PieceDebris},
     palette,
     render::{CameraFollowSet, MainCamera},
-    shared::{Eliminated, PieceChange, PieceChanged, PieceKind, Player, ShotFired, WeaponKind},
+    shared::{PieceChange, PieceChanged, PieceKind, Player, ShotFired, WeaponKind},
     tuning::Tuning,
     viewmodel::{
         MuzzlePoint, ViewmodelSet,
@@ -40,13 +46,15 @@ use bevy::{
     render::render_resource::Face,
 };
 use serde::{Deserialize, Serialize};
-use sim::{FxRng, Hitstop, Particle, Shake, SlotPool, fade_step};
+use sim::{FxRng, Particle, Shake, SlotPool, fade_step};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct FeedbackTuning {
     /// 0 disables camera shake entirely.
     pub camera_shake: f32,
+    /// Kills hold presentation (never gameplay) for this many rendered frames
+    /// ([`kills`]). Designer numbers: `Tuning::load_or_default` resets them.
     pub hitstop_on_kill: bool,
     pub hitstop_frames: u32,
     pub viewmodel_sway: bool,
@@ -191,7 +199,6 @@ impl FxPools {
 #[derive(Resource)]
 struct FxState {
     shake: Shake,
-    hitstop: Hitstop,
     rng: FxRng,
 }
 
@@ -199,7 +206,6 @@ impl Default for FxState {
     fn default() -> Self {
         Self {
             shake: Shake::default(),
-            hitstop: Hitstop::default(),
             rng: FxRng::new(0xF00D),
         }
     }
@@ -250,7 +256,8 @@ impl Plugin for FxPlugin {
                     .after(ViewmodelSet)
                     .before(TransformSystems::Propagate),
             )
-            .add_systems(Last, end_hitstop_frame)
+            .add_plugins(kills::KillFeedbackPlugin)
+            .add_plugins(armor::ArmorPlugin)
             .add_plugins(spells::SpellsPlugin)
             .add_plugins(orbs::OrbFxPlugin)
             .add_plugins(potions::PotionFxPlugin);
@@ -657,8 +664,8 @@ fn shake_camera(
     }
 }
 
-/// Piece-break debris and the hitstop on eliminations. (Shots, hits and
-/// eliminations look like spells: see [`spells`].)
+/// Piece-break debris. (Shots, hits and eliminations look like spells: see
+/// [`spells`]; kills hold the frame through [`kills`]' hitstop.)
 fn emit_fx(
     tuning: Res<Tuning>,
     assets: Option<Res<FxAssets>>,
@@ -666,9 +673,7 @@ fn emit_fx(
     mut state: ResMut<FxState>,
     mut removed: ResMut<RemovedPieces>,
     debris: Option<Res<PieceDebris>>,
-    mut virtual_time: ResMut<Time<Virtual>>,
     mut changes: MessageReader<PieceChanged>,
-    mut eliminated: MessageReader<Eliminated>,
     player: Option<Single<(Entity, &Transform), With<Player>>>,
 ) {
     let (Some(assets), Some(mut pools)) = (assets, pools) else {
@@ -676,7 +681,7 @@ fn emit_fx(
     };
     let feedback = &tuning.feedback;
     let eye = player.map_or(Vec3::ZERO, |p| p.1.translation + Vec3::Y * 1.6);
-    let FxState { hitstop, rng, .. } = &mut *state;
+    let FxState { rng, .. } = &mut *state;
     let mut fx = Emitter {
         pools: &mut pools,
         assets: &assets,
@@ -689,12 +694,6 @@ fn emit_fx(
         if change.change == PieceChange::Destroyed {
             let piece = removed.0.get(&change.entity).map(|(p, _)| *p);
             fx.piece_debris(piece, change.kind, change.center, eye, debris.as_deref());
-        }
-    }
-
-    for _ in eliminated.read() {
-        if feedback.hitstop_on_kill && hitstop.trigger(feedback.hitstop_frames) {
-            virtual_time.pause();
         }
     }
 
@@ -760,12 +759,6 @@ fn simulate_fx(
             tf.rotation = slot.p.render_rotation();
             tf.scale = slot.p.scale().max(Vec3::splat(1e-4));
         }
-    }
-}
-
-fn end_hitstop_frame(mut state: ResMut<FxState>, mut virtual_time: ResMut<Time<Virtual>>) {
-    if state.hitstop.end_frame() {
-        virtual_time.unpause();
     }
 }
 

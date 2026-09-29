@@ -96,6 +96,15 @@ pub const NEW_BEST: CueSpec = spec(1.00, -10.0);
 pub const SHIP_HUM: CueSpec = spec(1.0, -11.0);
 pub const SHIP_BEAM: CueSpec = spec(1.0, -11.0);
 pub const VOID_YELP: CueSpec = spec(1.0, -10.0);
+// Kill feedback (M4 chunk 1).
+pub const KILL_CONFIRM: CueSpec = spec(0.55, -11.0);
+pub const HELMET_DING: CueSpec = spec(0.65, -11.0);
+pub const ARMOR_CLATTER: CueSpec = spec(0.36, -12.0);
+pub const MULTI_KILL: CueSpec = spec(0.95, -11.0);
+
+/// Clatter takes (round-robin) and multi-kill sting levels (double .. rampage).
+pub const CLATTER_VARIANTS: u32 = 3;
+pub const MULTI_KILL_LEVELS: u32 = 4;
 
 /// Round-robin takes for the cues that repeat fastest (the rifle fires six times a
 /// second; footsteps never stop), so repeats never sound machine-gunned.
@@ -1252,4 +1261,127 @@ pub fn void_yelp() -> Vec<f32> {
         (tone + breath) * attack(t, 0.02) * (1.0 - 0.5 * x) * release(t, fall, 0.12)
     });
     b.master(VOID_YELP.rms_db)
+}
+
+// ---------------------------------------------------------------------------
+// Kill feedback (M4 chunk 1, D105)
+// ---------------------------------------------------------------------------
+
+/// The kill confirm, over the hit sound: a low bonk, then a bright
+/// "cha-ching": a metal click with a chime on E7, and a ringing coin chime on
+/// C8 with a shimmer of coins. Distinct from every hit: longer, higher and
+/// two-stepped.
+pub fn kill_confirm() -> Vec<f32> {
+    let mut b = Buffer::new(0.52);
+    bonk(&mut b, 0.0, 0.8, 0.6, 501);
+    // "Cha".
+    click(&mut b, 0.012, 3800.0, 2.0, 0.0012, 0.6, 502);
+    chime(&mut b, 0.012, note(100.0), 0.05, 0.55);
+    // "Ching".
+    let ching = 0.075;
+    click(&mut b, ching, 5200.0, 2.5, 0.001, 0.5, 503);
+    chime(&mut b, ching, note(108.0), 0.16, 0.8);
+    chime(&mut b, ching + 0.004, note(103.0), 0.12, 0.35);
+    sparkle(
+        &mut b,
+        ching + 0.02,
+        0.18,
+        6,
+        (103.0, 115.0),
+        0.03,
+        0.22,
+        false,
+        504,
+    );
+    b.master(KILL_CONFIRM.rms_db)
+}
+
+/// A headshot rings the helmet: a struck steel shell (a clank, then
+/// inharmonic bell partials on A6) that rings out bright over the headshot's
+/// bonk.
+pub fn helmet_ding() -> Vec<f32> {
+    let mut b = Buffer::new(0.62);
+    snap(&mut b, 0.0, 4000.0, 0.0008, 0.6, 511);
+    click(&mut b, 0.0, 2600.0, 3.0, 0.0015, 0.7, 512);
+    let f = note(93.0);
+    partials(
+        &mut b,
+        0.001,
+        &[
+            (f, 1.0, 0.16),
+            (f * 1.007, 0.5, 0.14),
+            (f * 2.32, 0.55, 0.09),
+            (f * 4.25, 0.3, 0.05),
+            (f * 5.4, 0.22, 0.035),
+            (f * 6.9, 0.12, 0.02),
+        ],
+        0.9,
+    );
+    b.master(HELMET_DING.rms_db)
+}
+
+/// Armor landing on the grass: two or three quick metallic clanks as it
+/// bounces and settles. `variant` picks one of [`CLATTER_VARIANTS`] takes.
+pub fn armor_clatter(variant: u32) -> Vec<f32> {
+    let v = variant % CLATTER_VARIANTS;
+    let mut b = Buffer::new(0.34);
+    let mut r = Noise::new(520 + u64::from(v));
+    let hits = [(0.0, 1.0), (0.11, 0.55), (0.19, 0.3)];
+    let count = if v == 1 { 2 } else { 3 };
+    for (k, &(at, amp)) in hits.iter().take(count).enumerate() {
+        let at = (at + r.range(-0.015, 0.015)).max(0.0);
+        let f = r.range(900.0, 1500.0) * [1.0, 1.12, 0.9][v as usize];
+        snap(&mut b, at, 3000.0, 0.0008, 0.5 * amp, 530 + k as u64);
+        partials(
+            &mut b,
+            at,
+            &[
+                (f, 1.0, 0.025),
+                (f * 2.41, 0.6, 0.018),
+                (f * 3.87, 0.35, 0.012),
+                (f * 5.2, 0.2, 0.008),
+            ],
+            amp,
+        );
+        thump(&mut b, at, 160.0, 320.0, 0.006, 0.012, 0.35 * amp);
+    }
+    b.master(ARMOR_CLATTER.rms_db)
+}
+
+/// The multi-kill sting: a quick rising fanfare of `level + 2` notes up the
+/// pentatonic (C6 E6 G6 C7 E7) that lands on a held chime, bigger and
+/// brighter each level ("Double!" .. "Rampage!").
+pub fn multi_kill(level: u32) -> Vec<f32> {
+    let level = level % MULTI_KILL_LEVELS;
+    let notes = [84.0, 88.0, 91.0, 96.0, 100.0];
+    let count = level as usize + 2;
+    let step = 0.065;
+    let mut b = Buffer::new(0.9);
+    for (i, &m) in notes.iter().take(count).enumerate() {
+        let at = step * i as f32;
+        let freq = note(m);
+        let mut o = Osc::default();
+        let last = i + 1 == count;
+        let len = if last { 0.5 } else { 0.1 };
+        b.add(at, len, 0.35, |t| {
+            o.soft_square(freq, 1.3) * attack(t, 0.006) * decay(t, 0.12) * release(t, len, 0.05)
+        });
+        chime(&mut b, at, freq * 2.0, if last { 0.2 } else { 0.06 }, 0.35);
+    }
+    let top = step * (count - 1) as f32;
+    if level >= 2 {
+        thump(&mut b, 0.0, 110.0, 240.0, 0.03, 0.06, 0.5);
+    }
+    sparkle(
+        &mut b,
+        top + 0.02,
+        0.35,
+        4 + 2 * level,
+        (100.0, 115.0),
+        0.05,
+        0.2,
+        false,
+        540 + u64::from(level),
+    );
+    b.master(MULTI_KILL.rms_db)
 }

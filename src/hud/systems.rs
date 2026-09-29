@@ -17,6 +17,7 @@ use super::{
 use crate::{
     building::{AimedPiece, EditMode},
     combat::{CombatStats, Loadout},
+    fx::kills::{KillConfirmed, KillFeedbackSet, KillFeedbackStats},
     menu::MenuState,
     palette,
     render::{CameraFollowSet, CurrentFov, MainCamera},
@@ -38,7 +39,9 @@ pub(super) fn build(app: &mut App) {
                 toggle_perf_overlay,
                 update_status,
                 update_crosshair,
-                (hit_feedback, draw_hitmarker).chain(),
+                (hit_feedback, draw_hitmarker)
+                    .chain()
+                    .after(KillFeedbackSet),
             ),
         )
         .add_systems(
@@ -114,7 +117,7 @@ fn piece_name(kind: PieceKind) -> &'static str {
 
 /// The HUD's size in logical pixels: the UI camera's viewport (the window, or
 /// the image it draws into offscreen), else the primary window.
-fn screen_size(
+pub(super) fn screen_size(
     ui: &Query<&Camera, With<IsDefaultUiCamera>>,
     window: &Query<&Window, With<PrimaryWindow>>,
 ) -> Option<Vec2> {
@@ -640,6 +643,8 @@ fn update_crosshair(
 struct Hitmarker {
     kind: Option<MarkerKind>,
     age: f32,
+    /// A kill's big X is gold: the kill was a headshot (M4).
+    gold: bool,
 }
 
 /// The layers of one pooled number's glyphs, for restyling on a hit.
@@ -711,9 +716,20 @@ fn hit_feedback(
     mut numbers: Query<(Entity, &mut DamageNumber, &mut Visibility, &Children)>,
     mut glyphs: Query<GlyphParts, Without<DamageNumber>>,
     mut counter: Local<u32>,
+    mut kills: MessageReader<KillConfirmed>,
+    mut kill_stats: Option<ResMut<KillFeedbackStats>>,
 ) {
     let player = player.map(|p| *p);
     marker.age += time.delta_secs();
+    // Every confirmed kill (a void knock-off too) shows the big X (M4).
+    for kill in kills.read() {
+        marker.kind = Some(MarkerKind::Kill);
+        marker.age = 0.0;
+        marker.gold = kill.headshot;
+        if let Some(stats) = kill_stats.as_mut() {
+            stats.markers_same_frame += u32::from(kill.tick > start.0);
+        }
+    }
     for hit in damage.read() {
         if player.is_none() || hit.source != player || hit.amount <= 0.0 {
             continue;
@@ -730,6 +746,9 @@ fn hit_feedback(
                 marker.age < life
             });
             if !live || marker.kind.is_none_or(|k| kind >= k) {
+                if kind == MarkerKind::Kill && !(live && marker.kind == Some(MarkerKind::Kill)) {
+                    marker.gold = hit.headshot;
+                }
                 marker.kind = Some(kind);
             }
             marker.age = 0.0;
@@ -793,11 +812,33 @@ fn draw_hitmarker(
     let t = if life > 0.0 { marker.age / life } else { 1.0 };
     let show = marker.kind.is_some() && t < 1.0;
     let alpha = if t < 0.5 { 1.0 } else { (1.0 - t) * 2.0 }.clamp(0.0, 1.0);
-    let pop = 1.0 + 0.3 * (1.0 - (marker.age / 0.06).clamp(0.0, 1.0));
+    let settle = (marker.age / 0.06).clamp(0.0, 1.0);
+    // The kill's X stamps in bigger and settles (M4).
+    let pop = if kind == MarkerKind::Kill {
+        1.0 + 0.55 * (1.0 - settle) * (1.0 - settle)
+    } else {
+        1.0 + 0.3 * (1.0 - settle)
+    };
+    // (Bar thickness, bar length) scales, distance from the centre (px),
+    // fill, ink. The kill's is one big bold X, its arms nearly meeting.
     let (size, distance, fill, edge) = match kind {
-        MarkerKind::Hit => (1.0, 9.5, palette::HIT_WHITE, INK.with_alpha(0.85)),
-        MarkerKind::Headshot => (1.1, 10.5, palette::HEADSHOT, INK.with_alpha(0.9)),
-        MarkerKind::Kill => (1.5, 14.0, palette::HIT_WHITE, Color::srgb(0.95, 0.16, 0.14)),
+        MarkerKind::Hit => (Vec2::ONE, 9.5, palette::HIT_WHITE, INK.with_alpha(0.85)),
+        MarkerKind::Headshot => (
+            Vec2::splat(1.1),
+            10.5,
+            palette::HEADSHOT,
+            INK.with_alpha(0.9),
+        ),
+        MarkerKind::Kill => (
+            Vec2::new(1.6, 2.6),
+            14.5,
+            if marker.gold {
+                palette::HEADSHOT
+            } else {
+                palette::HIT_WHITE
+            },
+            INK,
+        ),
     };
     let scale = tuning.hud.crosshair_scale.clamp(0.5, 3.0);
     for (el, mut bg, mut outline, mut transform, mut vis) in &mut bars {
@@ -818,7 +859,7 @@ fn draw_hitmarker(
         let offset = dir * distance * pop * scale;
         let target = UiTransform {
             translation: Val2::px(offset.x, offset.y),
-            scale: Vec2::splat(size * pop * scale),
+            scale: size * pop * scale,
             rotation: Rot2::radians((-dir.x).atan2(dir.y)),
         };
         if *transform != target {
@@ -826,9 +867,10 @@ fn draw_hitmarker(
         }
         set_bg(&mut bg, fill.with_alpha(alpha));
         let edge = edge.with_alpha(edge.alpha() * alpha);
-        if outline.color != edge {
+        let width = px(if kind == MarkerKind::Kill { 1.4 } else { 1.5 });
+        if outline.color != edge || outline.width != width {
             outline.color = edge;
-            outline.width = px(if kind == MarkerKind::Kill { 2.0 } else { 1.5 });
+            outline.width = width;
         }
     }
 }

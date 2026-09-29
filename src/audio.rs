@@ -18,6 +18,10 @@ pub mod wand;
 
 use crate::{
     building::Piece,
+    fx::{
+        armor::ArmorClattered,
+        kills::{Callout, KillConfirmed, KillFeedbackSet, KillFeedbackStats},
+    },
     hud::{FrameStartTick, HitFeedbackStats},
     render::MainCamera,
     shared::{
@@ -83,7 +87,7 @@ impl AudioTuning {
     fn category_gain(&self, category: SfxCategory) -> f32 {
         match category {
             SfxCategory::Weapons => self.weapons_volume,
-            SfxCategory::Hits => self.hits_volume,
+            SfxCategory::Hits | SfxCategory::Confirm => self.hits_volume,
             SfxCategory::Building => self.building_volume,
             SfxCategory::Movement => self.movement_volume,
             // The run's beats follow the master volume only.
@@ -167,6 +171,16 @@ pub enum Sfx {
     ShipBeam,
     /// A knight knocked into the void: a yip and a falling slide whistle (D78).
     VoidYelp,
+    /// The kill confirm (M4, D105): a bonk and a bright "cha-ching" of two
+    /// coin chimes, over the hit sound.
+    KillConfirm,
+    /// A headshot rings the helmet: a bright metallic "ding" (M4).
+    HelmetDing,
+    /// Armor clattering on its first bounce (spatial; at most four at once).
+    ArmorClatter,
+    /// A multi-kill callout's sting: take 0 "Double!" .. 3 "Rampage!",
+    /// rising and growing with the chain.
+    MultiKill,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,10 +191,13 @@ pub enum SfxCategory {
     Movement,
     /// The run's own beats: potions, wave clears, the next wave, a new best.
     Run,
+    /// Kill confirmation layered over the hits (M4): the kill chime and the
+    /// helmet ding. They follow the hits volume.
+    Confirm,
 }
 
 impl Sfx {
-    pub const ALL: [Sfx; 34] = [
+    pub const ALL: [Sfx; 38] = [
         Sfx::RifleShot,
         Sfx::PumpShot,
         Sfx::PumpRack,
@@ -215,6 +232,10 @@ impl Sfx {
         Sfx::ShipHum,
         Sfx::ShipBeam,
         Sfx::VoidYelp,
+        Sfx::KillConfirm,
+        Sfx::HelmetDing,
+        Sfx::ArmorClatter,
+        Sfx::MultiKill,
     ];
 
     /// The cue for a piece event: walls are brick (clunk, crack, crumble); floors
@@ -273,14 +294,21 @@ impl Sfx {
             Sfx::ShipHum => bank::ship_hum(),
             Sfx::ShipBeam => bank::ship_beam(),
             Sfx::VoidYelp => bank::void_yelp(),
+            Sfx::KillConfirm => bank::kill_confirm(),
+            Sfx::HelmetDing => bank::helmet_ding(),
+            Sfx::ArmorClatter => bank::armor_clatter(take),
+            Sfx::MultiKill => bank::multi_kill(take),
         }
     }
 
     /// Round-robin takes in the bank (the fastest-repeating cues get several).
+    /// The multi-kill sting's takes are its levels, picked, not cycled.
     pub fn takes(self) -> u32 {
         match self {
             Sfx::RifleShot => bank::RIFLE_VARIANTS,
             Sfx::Footstep => bank::FOOTSTEP_VARIANTS,
+            Sfx::ArmorClatter => bank::CLATTER_VARIANTS,
+            Sfx::MultiKill => bank::MULTI_KILL_LEVELS,
             _ => 1,
         }
     }
@@ -328,6 +356,10 @@ impl Sfx {
             ShipHum => bank::SHIP_HUM,
             ShipBeam => bank::SHIP_BEAM,
             VoidYelp => bank::VOID_YELP,
+            KillConfirm => bank::KILL_CONFIRM,
+            HelmetDing => bank::HELMET_DING,
+            ArmorClatter => bank::ARMOR_CLATTER,
+            MultiKill => bank::MULTI_KILL,
         }
     }
 
@@ -345,6 +377,11 @@ impl Sfx {
             PotionGulp | WaveCleared | WaveStart | NewBest => SfxCategory::Run,
             // The ships and the void sit with the knights' casts.
             ShipHum | ShipBeam | VoidYelp => SfxCategory::Weapons,
+            KillConfirm | HelmetDing => SfxCategory::Confirm,
+            // The knights' armor sits with their casts; the callout's sting
+            // with the run's beats.
+            ArmorClatter => SfxCategory::Weapons,
+            MultiKill => SfxCategory::Run,
         }
     }
 
@@ -356,8 +393,8 @@ impl Sfx {
     ///
     /// | Cues | Mix (dBFS) |
     /// |---|---|
-    /// | headshot, shield break, elimination, new best | −13 |
-    /// | wave cleared | −14 |
+    /// | headshot, shield break, elimination, new best, kill confirm | −13 |
+    /// | wave cleared, helmet ding, multi-kill sting | −14 |
     /// | potion gulp | −15 |
     /// | next wave | −16 |
     /// | body hit, shield hit | −14 |
@@ -366,7 +403,7 @@ impl Sfx {
     /// | orb whoosh, void yelp | −17 |
     /// | rifle cast, piece places and cracks | −18 |
     /// | orb cast (a knight's fwoom), ship hum | −19 |
-    /// | pump rack, reload, rejected, ship beam | −20 |
+    /// | pump rack, reload, rejected, ship beam, armor clatter | −20 |
     /// | pump shell | −21 |
     /// | weapon switch | −22 |
     /// | land, slide | −22 |
@@ -375,14 +412,14 @@ impl Sfx {
     pub fn mix_db(self) -> f32 {
         use Sfx::*;
         match self {
-            HeadshotDing | ShieldBreak | Elimination | NewBest => -13.0,
-            HitTick | ShieldHit | WaveCleared => -14.0,
+            HeadshotDing | ShieldBreak | Elimination | NewBest | KillConfirm => -13.0,
+            HitTick | ShieldHit | WaveCleared | HelmetDing | MultiKill => -14.0,
             PumpShot | OrbBonk | WandWarning | PotionGulp => -15.0,
             BrickBreak | PlankBreak | WaveStart => -16.0,
             OrbWhoosh | VoidYelp => -17.0,
             RifleShot | BrickPlace | PlankPlace | BrickCrack | PlankCrack => -18.0,
             OrbCast | ShipHum => -19.0,
-            PumpRack | RifleMagOut | RifleMagIn | Rejected | ShipBeam => -20.0,
+            PumpRack | RifleMagOut | RifleMagIn | Rejected | ShipBeam | ArmorClatter => -20.0,
             PumpShell => -21.0,
             WeaponSwitch | Land | Slide => -22.0,
             Jump => -26.0,
@@ -404,7 +441,11 @@ impl Sfx {
         }
         match self.category() {
             SfxCategory::Hits => 3,
-            SfxCategory::Weapons | SfxCategory::Building | SfxCategory::Run => 2,
+            // The kill layers ride on their hit (which is protected).
+            SfxCategory::Weapons
+            | SfxCategory::Building
+            | SfxCategory::Run
+            | SfxCategory::Confirm => 2,
             SfxCategory::Movement => 1,
         }
     }
@@ -500,6 +541,8 @@ impl Plugin for GameAudioPlugin {
             .spawn(render_bank)
             .ok();
         app.init_resource::<PlayQueue>()
+            .add_message::<KillConfirmed>()
+            .add_message::<ArmorClattered>()
             .insert_resource(SoundBankJob(std::sync::Mutex::new(job)))
             .add_systems(Startup, build_sound_bank)
             .add_observer(attach_listener)
@@ -507,13 +550,15 @@ impl Plugin for GameAudioPlugin {
                 Update,
                 (
                     queue_combat_sounds,
+                    queue_kill_sounds,
                     queue_piece_sounds,
                     queue_cue_sounds,
                     queue_run_sounds,
                     play_queued,
                     apply_live_volume,
                 )
-                    .chain(),
+                    .chain()
+                    .after(KillFeedbackSet),
             );
         wand::build(app);
     }
@@ -580,7 +625,7 @@ impl PlayQueue {
         let spread = match sfx.category() {
             SfxCategory::Movement => 0.08,
             SfxCategory::Weapons | SfxCategory::Building => 0.03,
-            SfxCategory::Hits | SfxCategory::Run => 0.0,
+            SfxCategory::Hits | SfxCategory::Run | SfxCategory::Confirm => 0.0,
         };
         let speed = 1.0 + spread * ((h % 1000) as f32 / 500.0 - 1.0);
         let take = self.takes[sfx as usize];
@@ -594,6 +639,21 @@ impl PlayQueue {
             when: now + delay,
         });
     }
+
+    /// Plays a chosen take of `sfx` (the multi-kill sting's level).
+    pub(crate) fn push_take(&mut self, sfx: Sfx, at: Option<Vec3>, take: u32, now: f64) {
+        self.push(sfx, at, now);
+        if let Some(last) = self.pending.last_mut() {
+            last.take = take % sfx.takes().max(1);
+        }
+    }
+}
+
+/// The sounds a confirmed kill adds over its hit (M4, D105): the kill chime,
+/// and a multi-kill sting at the chain's level (0 double .. 3 rampage).
+pub fn kill_cues(kill: &KillConfirmed) -> (Sfx, Option<(Sfx, u32)>) {
+    let sting = Callout::for_chain(kill.chain).map(|c| (Sfx::MultiKill, c.level()));
+    (Sfx::KillConfirm, sting)
 }
 
 /// The sound bank's synthesis thread, started when the plugin builds.
@@ -672,6 +732,10 @@ fn queue_combat_sounds(
                     Sfx::HitTick
                 };
                 queue.push(base, None, now);
+                // The helmet rings (M4).
+                if hit.headshot {
+                    queue.push(Sfx::HelmetDing, None, now);
+                }
                 if hit.shield_broke {
                     queue.push(Sfx::ShieldBreak, None, now);
                 }
@@ -698,6 +762,33 @@ fn queue_combat_sounds(
         if mine(kill.by) {
             queue.push(Sfx::Elimination, None, now);
         }
+    }
+}
+
+/// The kill chime and multi-kill stings on the kill's frame, and the armor's
+/// clatter (already capped at four voices by `fx::armor`).
+fn queue_kill_sounds(
+    time: Res<Time<Real>>,
+    start_tick: Option<Res<FrameStartTick>>,
+    mut stats: Option<ResMut<KillFeedbackStats>>,
+    mut kills: MessageReader<KillConfirmed>,
+    mut clatters: MessageReader<ArmorClattered>,
+    mut queue: ResMut<PlayQueue>,
+) {
+    let now = time.elapsed_secs_f64();
+    let frame_start = start_tick.map_or(0, |t| t.0);
+    for kill in kills.read() {
+        let (chime, sting) = kill_cues(kill);
+        queue.push(chime, None, now);
+        if let Some((sting, level)) = sting {
+            queue.push_take(sting, None, level, now);
+        }
+        if let Some(stats) = stats.as_mut() {
+            stats.sounds_same_frame += u32::from(kill.tick > frame_start);
+        }
+    }
+    for clatter in clatters.read() {
+        queue.push(Sfx::ArmorClatter, Some(clatter.at), now);
     }
 }
 

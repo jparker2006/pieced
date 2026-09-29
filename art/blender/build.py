@@ -75,6 +75,15 @@ def build_one(asset, source, opts):
     root = scene.make_root(asset.name)
     asset.build(root)
     colors = export.finish_meshes(root, ao=asset.ao_settings)
+    # Parts marked `pieced_occluder` only shade the others' ambient occlusion
+    # (e.g. the rest of the knight round his dented helmet): drop them now.
+    occluders = [o for o in scene.descendants(root) if o.get("pieced_occluder")]
+    if occluders:
+        import bpy
+
+        for obj in occluders:
+            colors.pop(obj.name, None)
+            bpy.data.objects.remove(obj, do_unlink=True)
     side = export.sidecar(root, asset.kind, source, asset.budget, colors)
     if side["triangles"] > asset.budget:
         raise ValueError(f"{asset.name}: {side['triangles']} triangles is over the "

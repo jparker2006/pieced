@@ -897,8 +897,10 @@ fn animate_viewmodel(
     mut parts: Query<(&VmPart, &mut Transform, &mut Visibility)>,
     inspect: Option<Res<ViewmodelInspect>>,
     app_state: Option<Res<State<AppState>>>,
+    hitstop: Option<Res<crate::shared::HitstopFrozen>>,
 ) {
-    let dt = time.delta_secs();
+    // A kill's hitstop holds the gun too (M4); the shots themselves never wait.
+    let dt = crate::shared::HitstopFrozen::delta(hitstop.as_deref(), time.delta_secs());
     // The pause menu shows over the world alone, the gun put away (T12); so
     // does the main menu's orbit.
     let paused = app_state.is_some_and(|s| matches!(s.get(), AppState::Paused | AppState::Menu));

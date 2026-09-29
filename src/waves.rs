@@ -344,6 +344,29 @@ pub struct VoidKill {
     pub knight: Entity,
 }
 
+/// What a score award was for (M4: the popups read it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ScoreKind {
+    Kill,
+    Headshot,
+    Void,
+    /// A wave cleared (`at` is unused).
+    Wave,
+}
+
+/// Points just added to the run's score, where they were earned (a downed
+/// knight's feet). Written by the wave director as it scores; presentation
+/// only (the score itself is [`Run::score`]).
+#[derive(Message, Debug, Clone, Copy, PartialEq)]
+pub struct ScoreAwarded {
+    pub kind: ScoreKind,
+    pub points: u32,
+    pub at: Vec3,
+    /// The knight it was for (none for a wave).
+    pub knight: Option<Entity>,
+    pub tick: u64,
+}
+
 /// The first run's seed, fixed from the command line (`--seed <n>`, D83).
 /// Later runs ("Go again") draw new seeds from it.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
@@ -412,6 +435,7 @@ impl Plugin for WavesPlugin {
             .add_message::<SkipBreak>()
             .add_message::<EndRun>()
             .add_message::<VoidKill>()
+            .add_message::<ScoreAwarded>()
             .init_resource::<RunStore>()
             .init_resource::<PersonalBest>()
             .init_resource::<RunInbox>()
@@ -707,11 +731,21 @@ fn run_director(
     mut players: Query<(Entity, &Transform, &mut Health, Has<Downed>), With<Player>>,
     mut grunts: Query<PoolParts, (With<PoolGrunt>, Without<Player>)>,
     mut ships: ResMut<ships::Ships>,
+    mut awarded: MessageWriter<ScoreAwarded>,
 ) {
     let now = tick.0;
     let t = &tuning.waves;
     let run = &mut *run;
     let inbox = &mut *inbox;
+    let mut award = |kind: ScoreKind, points: u32, at: Vec3, knight: Option<Entity>| {
+        awarded.write(ScoreAwarded {
+            kind,
+            points,
+            at,
+            knight,
+            tick: now,
+        });
+    };
 
     // The player's elimination ends the run (one life, D84); so does a quit.
     if !run.is_ended() {
@@ -742,6 +776,8 @@ fn run_director(
             if live {
                 run.score += t.score_void;
                 run.void_kills += 1;
+                let at = grunt.transform.translation;
+                award(ScoreKind::Void, t.score_void, at, Some(knight));
             }
         } else {
             grunt.slot.void_kill = true;
@@ -761,13 +797,17 @@ fn run_director(
                 }
                 run.eliminations += 1;
                 run.score += t.score_kill;
+                let (at, knight) = (grunt.transform.translation, Some(grunt.entity));
+                award(ScoreKind::Kill, t.score_kill, at, knight);
                 if inbox.headshot_kills.contains(&grunt.entity) {
                     run.score += t.score_headshot;
                     run.headshot_kills += 1;
+                    award(ScoreKind::Headshot, t.score_headshot, at, knight);
                 }
                 if grunt.slot.void_kill {
                     run.score += t.score_void;
                     run.void_kills += 1;
+                    award(ScoreKind::Void, t.score_void, at, knight);
                 } else if run.potion_rng.chance(t.potion_chance) {
                     drops.0.push(grunt.transform.translation);
                 }
@@ -814,6 +854,7 @@ fn run_director(
                 // Wave cleared: score it, refill the shield, take a breath (D79).
                 run.waves_cleared += 1;
                 run.score += t.score_wave * run.wave;
+                award(ScoreKind::Wave, t.score_wave * run.wave, Vec3::ZERO, None);
                 run.phase = RunPhase::Break {
                     ends_tick: now + ticks(t.break_seconds),
                 };

@@ -17,15 +17,15 @@ use crate::{
     app::BootGate,
     combat::Downed,
     knight::{
-        self, KNIGHT_MODEL, KnightAnim, KnightEvent, KnightInput, KnightModel, KnightRig,
-        RespawnSparkle, SPARKLE_TIME,
+        self, HitRegion, KNIGHT_MODEL, KnightAnim, KnightArmorRig, KnightEvent, KnightInput,
+        KnightModel, KnightRig, RespawnSparkle, SPARKLE_TIME,
     },
     look::{BlobShadow, ModelDressed, Outline},
     models::{ModelLibrary, spawn_model},
     movement::{Motor, VoidFall},
     shared::{
-        AppState, Character, DamageDealt, DamageTarget, EyeHeight, GameCue, Health, LookAngles,
-        Player, PreviousFeet, SimTick, TICK_SECONDS,
+        AppState, Character, DamageDealt, DamageTarget, EyeHeight, GameCue, Health, HitstopFrozen,
+        LookAngles, Player, PreviousFeet, SimTick, TICK_SECONDS,
     },
     waves::ships::Beaming,
 };
@@ -222,6 +222,7 @@ pub fn pose_target_figures(
 #[allow(clippy::type_complexity)]
 pub fn animate_knights(
     time: Res<Time>,
+    hitstop: Option<Res<HitstopFrozen>>,
     mut damage: MessageReader<DamageDealt>,
     mut cues: MessageReader<GameCue>,
     owners: Query<
@@ -240,6 +241,7 @@ pub fn animate_knights(
         &TargetFigure,
         &mut KnightAnim,
         Option<&KnightRig>,
+        Option<&KnightArmorRig>,
         &mut Visibility,
     )>,
     mut transforms: Query<&mut Transform, Without<TargetFigure>>,
@@ -286,6 +288,12 @@ pub fn animate_knights(
                 headshot: hit.headshot,
             },
         ));
+        // Where on him it landed, for the directional flinch (M4).
+        if let Ok(target) = positions.get(hit.target) {
+            let at = local(hit.target, hit.point - target.translation());
+            let region = HitRegion::classify(at, hit.headshot);
+            events.push((hit.target, KnightEvent::Flinch { region, push }));
+        }
         events.push((hit.target, KnightEvent::Damage { amount: hit.amount }));
         if hit.shield_broke {
             events.push((hit.target, KnightEvent::ShieldBreak));
@@ -295,11 +303,14 @@ pub fn animate_knights(
         match *cue {
             GameCue::Jump { who } => events.push((who, KnightEvent::Jump)),
             GameCue::Land { who, speed } => events.push((who, KnightEvent::Land { speed })),
+            // Flung into the void: his armor comes apart on the fall (M4).
+            GameCue::VoidFall { who } => events.push((who, KnightEvent::ShedArmor)),
             _ => {}
         }
     }
-    let dt = time.delta_secs();
-    for (entity, figure, mut anim, rig, mut shown) in &mut figures {
+    // A kill's hitstop holds the knights too (M4).
+    let dt = HitstopFrozen::delta(hitstop.as_deref(), time.delta_secs());
+    for (entity, figure, mut anim, rig, armor, mut shown) in &mut figures {
         for (_, event) in events.iter().filter(|(who, _)| *who == figure.owner) {
             anim.event(*event);
         }
@@ -331,6 +342,9 @@ pub fn animate_knights(
         });
         if let Some(rig) = rig {
             knight::write_pose(&pose, rig, &mut transforms, &mut visibility);
+        }
+        if let Some(armor) = armor {
+            knight::write_armor(&pose, armor, &mut visibility);
         }
     }
 }
