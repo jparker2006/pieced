@@ -11,7 +11,7 @@ Every number here names its source (session folder or test), the commit, and the
 | A0 Carried gates closed (M3 W7/W8, M2 S2/S3, W0) | PENDING | |
 | A1 Hit feedback and kills | **PASS** (`c227c3d`) | Merged `c227c3d`. On `aec1fe2`, `scripts/cargo.sh test --locked` had 629 passed, 0 failed, 16 ignored (52 suites), including `tests/kill_feedback.rs` 18/18 and the gameplay pin. Clippy `-D warnings`, `fmt --check` and `build-art.sh --check` are clean. Play-test 1 recorded: fun 4, AAA feel 3.5, about right, no unfair deaths |
 | A2 Weapons | **PASS** (`3a84e94`) | Merged `3a84e94` from `4d6ccf9`. `tests/viewmodel.rs` has 24 tests: every animation inside its gameplay time, and shots and look bit-identical with and without the kick. The full suite, clippy and fmt are clean (two hud audio tests flaked once and passed on rerun); the gameplay pin passes. Play-test 2 recorded: fun 4, AAA feel 4, "the guns looks super AAA" |
-| A3 Audio and music | PENDING | |
+| A3 Audio and music | PENDING (tests pass; play-test 3 due) | Merged `6ca867d` from `bbf0470`: 680 passed, 0 failed. `tests/music.rs` 16, 4 new in `tests/audio.rs`, and a new license audit in `tests/assets.rs`. Clippy, fmt and `build-music.sh --check` (byte-identical) are clean. Five CC BY 4.0 files are credited in `ASSETS.md`, and Jake picked them (D116, D119) |
 | A4 Knight animation | PENDING | |
 | A5 Presentation, building juice and camera | PENDING | |
 | A6 Target board (V1–V8 each ≥ 4) | PENDING | |
@@ -196,3 +196,17 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
   - The builder was told to treat V1, V4, V5 and V8 as hero shots, with the knight as the star, and to run at least 3 review rounds into `docs/evidence/m4/board/roundN/` with `NOTES.md`, plus model turntables in `docs/evidence/m4/art/`.
   - **Orchestrator decision on look budgets** (not gameplay, not the GPU budget): per-model triangle budgets may rise (knight to 12k, props and trees to 2×, far layer to 120k triangles) **only** while the offscreen full-wave timer keeps the world pass at ≤ 4.5 ms mean and the total at ≤ 12 ms p95. Draw counts, overdraw and full-screen passes may not grow.
   - Shadows, bloom and SSAO still need Jake.
+- 2026-09-28: **chunk 3 merged** (`6ca867d`, from `bbf0470`).
+  - **Score:**
+    - the menu plays Space Fanfare;
+    - the break, results and Practice play an **original A-minor celesta waltz** in 3/4 (celesta, harp, strings, flute), synthesized and looping seamlessly;
+    - combat plays the adventure cue, switching to the Star Wars-style battle cue at wave ≥ 6 or ≥ 6 knights alive;
+    - 1.5 s crossfades; the round-start fanfare on every wave; a death sting made from a brass chord bent down 8 semitones; the victory fanfare on NEW BEST;
+    - stings, big hits and pause duck the music.
+  - **Settings → Audio:** Master, Music, Effects and Mute, plus a credit line.
+  - **Effects:** room reverb baked into every sample at load, pitch spread, layered rifle and pump shots, and all 12 `WeaponCue` beats voiced.
+  - **Judged by analysis only** (loop seams, levels, key and meter, spectral balance); nobody has listened yet.
+  - **Encoding:** Homebrew's ffmpeg has no libvorbis, so the files use ffmpeg's built-in Vorbis encoder at q6 (about 170 kbps).
+  - **Cost:** about 33 MB of RAM for decoded music, 4.5 ms on the main thread at launch, and no GPU.
+  - Disk dropped to 3.9 GB; pruning took it to 5.5. The art builder paused its cargo builds and kept doing Blender work.
+  - The art builder may now edit the main-menu layout for V8.
