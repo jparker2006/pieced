@@ -192,3 +192,7 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
     - Make `pipelined=on` the default once input-to-present latency is logged and shown to be ≤ 33 ms (G3). This session suggests it's worth it, and Jake's feel was unchanged.
     - Cut the UI and post full-screen passes: composite once at render size, and run FXAA on the render target, not the output.
     - The art slice starts now, on Jake's direction that the world and the knights need to reach the guns' level.
+- 2026-09-28: **art slice dispatched** (`m4-art`). Jake: "I want you to seriously wow me on this art slice and blender 3d stuff."
+  - The builder was told to treat V1, V4, V5 and V8 as hero shots, with the knight as the star, and to run at least 3 review rounds into `docs/evidence/m4/board/roundN/` with `NOTES.md`, plus model turntables in `docs/evidence/m4/art/`.
+  - **Orchestrator decision on look budgets** (not gameplay, not the GPU budget): per-model triangle budgets may rise (knight to 12k, props and trees to 2×, far layer to 120k triangles) **only** while the offscreen full-wave timer keeps the world pass at ≤ 4.5 ms mean and the total at ≤ 12 ms p95. Draw counts, overdraw and full-screen passes may not grow.
+  - Shadows, bloom and SSAO still need Jake.
