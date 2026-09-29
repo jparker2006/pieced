@@ -9,7 +9,7 @@ Every number here names its source (session folder or test), the commit, and the
 | Gate | Status | Evidence |
 |---|---|---|
 | A0 Carried gates closed (M3 W7/W8, M2 S2/S3, W0) | PENDING | |
-| A1 Hit feedback and kills | PENDING | |
+| A1 Hit feedback and kills | PENDING (tests pass; play-test 1 due) | Merged `c227c3d`. On `aec1fe2`, `scripts/cargo.sh test --locked` had 629 passed, 0 failed, 16 ignored (52 suites), including `tests/kill_feedback.rs` 18/18 and the gameplay pin. Clippy `-D warnings`, `fmt --check` and `build-art.sh --check` are clean |
 | A2 Weapons | PENDING | |
 | A3 Audio and music | PENDING | |
 | A4 Knight animation | PENDING | |
@@ -120,3 +120,20 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 5. Then the art slice (board captures in `tests/m4_board.rs`) and chunk 2 (weapons), at most two builds at once.
 6. Music sources are ready in `art/music/src/` for chunk 3. The board V1–V8 is approved.
 - 2026-09-28: **Jake OK'd the direct `wgpu` dependency** for chunk 0: "yes, wgpu is fine". It is `=29.0.4` with default features off, the same wgpu Bevy 0.19.1 builds, for the timestamp query types.
+- 2026-09-28: **chunk 1 merged** (`c227c3d`, from `aec1fe2`).
+  - What's in it:
+    - kill confirm: the cha-ching sound, the X marker (gold on a headshot kill) and a 2-frame hitstop that holds only `FreezableTime`;
+    - directional flinch, metal sparks and 2–4 armor chips;
+    - the headshot ding and the dented helmet (`knight_helmet_dent`);
+    - physical deaths: the helmet and limbs fly off, bounce and clatter, gone by 1.5 s, through the reusable chunk sim `fx/chunks.rs`;
+    - "+100", "+50 HEADSHOT" and "+150 VOID" popups (Waves only);
+    - the wave bonus pops under the score;
+    - "DOUBLE!" to "RAMPAGE!" callouts, drawn below-right of the crosshair after the review render showed them overlapping the popups.
+  - Shared changes: `HitstopFrozen`, the `ScoreAwarded` message, and `Tuning::kills` (`#[serde(skip)]`). `load_or_default` now resets the hitstop numbers.
+  - Review render (`tests/kill_offscreen.rs`), compared with V2 and V4 by the builder:
+    - the body hit and the headshot kill read well;
+    - the dent is subtle at 3.5 m;
+    - on the kill frame the poof hides the flying armor, which only reads a few frames later.
+
+    Both are candidates for the art slice.
+  - Before the release build, the chunk 1 worktree was removed and stale test binaries pruned (5.7 → 12 GB free). `pieced-play` for play-test 1 is building.
