@@ -25,6 +25,20 @@ pub const HALO_SHADER_PATH: &str = "embedded://pieced/shaders/halo.wgsl";
 pub const HALO_TEXTURE_SIZE: u32 = 64;
 /// Largest intensity a halo can carry (it is packed into 8 bits).
 pub const HALO_MAX_INTENSITY: f32 = 8.0;
+/// A halo fades out as its size over its distance from the eye grows from
+/// the first to the second (`halo.wgsl`'s `NEAR_FADE`): an orb's 1.6 m fire a
+/// metre from the eye would otherwise wash the whole view (M4 art). The guns'
+/// chamber glows and muzzle flashes stay near 0.5, well under it; and the
+/// faded quads cost no fragments.
+pub const HALO_NEAR_FADE: (f32, f32) = (0.9, 1.7);
+
+/// CPU mirror of the shader's near fade: 1 (full) to 0 (gone).
+pub fn halo_near_fade(size: f32, eye_distance: f32) -> f32 {
+    let reach = size / eye_distance.max(1e-3);
+    let (a, b) = HALO_NEAR_FADE;
+    let t = ((reach - a) / (b - a)).clamp(0.0, 1.0);
+    1.0 - t * t * (3.0 - 2.0 * t)
+}
 
 /// A glow halo centered on this entity. Spawn it on its own or on any entity
 /// that should glow (a crystal node, a bolt): `commands.spawn((Halo::new(color,
@@ -280,6 +294,18 @@ pub(crate) fn apply_halo_setting(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn near_halos_fade_instead_of_washing_the_view() {
+        // An orb's fire (1.6 m) at 5 m and 3 m: full; at 1 m: gone.
+        assert_eq!(halo_near_fade(1.6, 5.0), 1.0);
+        assert!(halo_near_fade(1.6, 3.0) > 0.99);
+        assert_eq!(halo_near_fade(1.6, 0.9), 0.0);
+        // The rifle's chamber glow (0.16 m) and muzzle flash (0.3 m) at
+        // viewmodel range stay full.
+        assert_eq!(halo_near_fade(0.16, 0.3), 1.0);
+        assert_eq!(halo_near_fade(0.3, 0.5), 1.0);
+    }
 
     #[test]
     fn radial_texture_is_soft_and_bright_in_the_middle() {

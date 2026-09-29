@@ -145,8 +145,20 @@ fn composite_ui(app: &mut App) -> Handle<Image> {
     image
 }
 
+/// Keeps the player alive with full bars (the knights keep shooting at him).
+fn heal(app: &mut App) {
+    if let Some(p) = player_entity(app.world_mut())
+        && let Some(mut health) = app.world_mut().get_mut::<Health>(p)
+    {
+        let mut full = Health::full(100.0, 100.0);
+        full.shield = 100.0;
+        *health = full;
+    }
+}
+
 fn frames(app: &mut App, n: usize) {
     for _ in 0..n {
+        heal(app);
         app.update();
     }
 }
@@ -154,6 +166,12 @@ fn frames(app: &mut App, n: usize) {
 /// Captures the next rendered frame as `<name>.png` and `<name>-grey.png`.
 /// The gallery freeze holds knights, effects and the dummy while it renders.
 fn capture(app: &mut App, board: &mut Board, name: &str) {
+    capture_with(app, board, name, true);
+}
+
+/// As [`capture`]; without the freeze, the knights' brains keep acting in the
+/// captured frame (a wand wind-up would cancel under the freeze).
+fn capture_with(app: &mut App, board: &mut Board, name: &str, freeze: bool) {
     if !board.wants(name) {
         return;
     }
@@ -162,7 +180,9 @@ fn capture(app: &mut App, board: &mut Board, name: &str) {
     let _ = std::fs::remove_file(&path);
     let _ = std::fs::remove_file(&grey);
     board.written.extend([path.clone(), grey.clone()]);
-    app.world_mut().insert_resource(GalleryFreeze);
+    if freeze {
+        app.world_mut().insert_resource(GalleryFreeze);
+    }
     app.world_mut()
         .spawn(Screenshot::image(board.image.clone()))
         .observe(move |capture: On<ScreenshotCaptured>| {
@@ -268,14 +288,20 @@ fn select(app: &mut App, weapon: WeaponKind) {
     frames(app, 40);
 }
 
-/// An unbeatable player at `at`, standing still.
+/// The player at `at` with full bars, standing still.
 fn put_player(app: &mut App, at: Vec3) {
-    let p = player(app);
-    let world = app.world_mut();
-    let mut health = Health::full(1.0e9, 100.0);
-    health.shield = 100.0;
-    *world.get_mut::<Health>(p).unwrap() = health;
-    teleport(world, at);
+    heal(app);
+    teleport(app.world_mut(), at);
+}
+
+/// Holds (or lets go of) the aim key, as the input adapter reads it.
+fn hold_aim(app: &mut App, on: bool) {
+    let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
+    if on {
+        keys.press(KeyCode::ShiftLeft);
+    } else {
+        keys.release(KeyCode::ShiftLeft);
+    }
 }
 
 /// The knights in play (landed, up), in a stable order.
@@ -296,6 +322,7 @@ fn knights(app: &mut App, n: usize, limit: usize) -> Vec<Entity> {
         if k.len() >= n {
             break;
         }
+        heal(app);
         app.update();
         k = in_play(app);
     }
@@ -305,6 +332,22 @@ fn knights(app: &mut App, n: usize, limit: usize) -> Vec<Entity> {
 
 /// Stands a knight at `at` facing the player, held still (no moving, no
 /// firing), with `hp` health and no shield.
+/// Stops every knight in play from casting (so no stray orb bursts over the
+/// player's view), and clears the orbs already flying.
+fn hush(app: &mut App) {
+    for k in in_play(app) {
+        if let Some(mut stats) = app.world_mut().get_mut::<GruntStats>(k) {
+            stats.reaction = 1.0e6;
+            stats.fire_interval = 1.0e6;
+        }
+        if let Some(mut wand) = app.world_mut().get_mut::<Wand>(k) {
+            wand.windup = None;
+            wand.cooldown = 1.0e6;
+        }
+    }
+    frames(app, 90);
+}
+
 fn stand(app: &mut App, knight: Entity, at: Vec3, hp: f32) {
     let to = eye(app) - (at + Vec3::Y * 1.5);
     let mut e = app.world_mut().entity_mut(knight);
@@ -333,19 +376,6 @@ fn release(app: &mut App, knight: Entity, at: Vec3, wave: u32) {
     *e.get_mut::<GruntStats>().unwrap() = stats;
 }
 
-/// Holds a standing knight's wand `progress` (0..=1) through its wind-up.
-fn wind_up(app: &mut App, knight: Entity, progress: f32) {
-    let total = app
-        .world()
-        .resource::<pieced::tuning::Tuning>()
-        .grunt
-        .windup;
-    if let Some(mut wand) = app.world_mut().get_mut::<Wand>(knight) {
-        wand.windup = Some(total * (1.0 - progress));
-        wand.cooldown = 0.0;
-    }
-}
-
 fn set_wave(app: &mut App, wave: u32) {
     let mut run = app.world_mut().resource_mut::<Run>();
     run.wave = wave;
@@ -365,80 +395,107 @@ fn review(app: &mut App, board: &mut Board) {
         i.select = Some(ActiveTool::Weapon(WeaponKind::Rifle))
     });
     set_wave(app, 7);
+    let me = SPAWN;
 
     // V7: the wave's ships swoop down from the castle.
-    look(app, 8.0, 6.0);
+    look(app, 10.0, 9.0);
     let mut ship_frames = 0;
     for _ in 0..600 {
+        heal(app);
         app.update();
         if app.world().resource::<Ships>().live() >= 2 {
             ship_frames += 1;
-            if ship_frames > 70 {
+            if ship_frames > 150 {
                 break;
             }
         }
     }
     put_player(app, SPAWN);
-    look(app, 8.0, 6.0);
+    look(app, 10.0, 9.0);
     frames(app, 2);
     capture(app, board, "V7-wave-banner");
 
-    // V1: mid-wave, ships hovering, knights running in.
+    // V1: mid-wave, ships hovering, knights running in at 6–10 m.
     let k = knights(app, 3, 1800);
     put_player(app, SPAWN);
     look(app, 4.0, 3.0);
-    let me = SPAWN;
     let spots = [
-        me + bearing(-14.0) * 9.0,
-        me + bearing(3.0) * 7.0,
-        me + bearing(16.0) * 10.0,
+        me + bearing(-16.0) * 8.5,
+        me + bearing(2.0) * 6.5,
+        me + bearing(17.0) * 9.0,
     ];
     for (knight, at) in k.iter().zip(spots) {
         release(app, *knight, at, 7);
     }
-    frames(app, 14);
+    frames(app, 12);
     put_player(app, SPAWN);
     look(app, 4.0, 3.0);
     frames(app, 1);
     capture(app, board, "V1-spawn-midwave");
 
-    // V5: a knight about 7 m out winding up his wand, others behind.
+    // V5: a knight about 6 m out, winding up his wand at the player (his own
+    // brain fires; he just can't walk), others behind him.
     let k = knights(app, 3, 1800);
     put_player(app, SPAWN);
-    let a = me + bearing(-6.0) * 7.0;
+    let a = me + bearing(-6.0) * 4.6;
     stand(app, k[0], a, 500.0);
-    release(app, k[1], me + bearing(12.0) * 15.0, 7);
-    release(app, k[2], me + bearing(-2.0) * 18.0, 7);
-    look(app, 6.0, 0.0);
-    frames(app, 20);
-    stand(app, k[0], a, 500.0);
-    for _ in 0..6 {
-        wind_up(app, k[0], 0.75);
-        app.update();
+    let wave = GruntStats::for_wave(7, &app.world().resource::<pieced::tuning::Tuning>().grunt);
+    {
+        let mut stats = app.world_mut().get_mut::<GruntStats>(k[0]).unwrap();
+        stats.reaction = wave.reaction;
+        stats.fire_interval = wave.fire_interval;
     }
-    wind_up(app, k[0], 0.8);
-    capture(app, board, "V5-knight-windup");
+    release(app, k[1], me + bearing(14.0) * 15.0, 7);
+    release(app, k[2], me + bearing(-1.0) * 18.0, 7);
+    look(app, 8.0, 1.0);
+    let total = app
+        .world()
+        .resource::<pieced::tuning::Tuning>()
+        .grunt
+        .windup;
+    let mut wound = false;
+    for _ in 0..900 {
+        put_player(app, SPAWN);
+        look(app, 8.0, 1.0);
+        if let Some(mut t) = app.world_mut().get_mut::<Transform>(k[0]) {
+            t.translation = a;
+        }
+        app.update();
+        let progress = app
+            .world()
+            .get::<Wand>(k[0])
+            .and_then(|w| w.windup_progress(total));
+        if progress.is_some_and(|p| p >= 0.6) {
+            wound = true;
+            break;
+        }
+    }
+    println!("V5: wound up {wound}");
+    capture_with(app, board, "V5-knight-windup", false);
 
     // V2: ADS on the rifle, a body hit at about 9 m, the castle to the left.
     let k = knights(app, 3, 1800);
+    hush(app);
     put_player(app, SPAWN);
-    let a = me + bearing(52.0) * 9.0;
+    let a = me + bearing(50.0) * 8.5;
     stand(app, k[0], a, 500.0);
     aim(app, a + Vec3::Y * 1.0);
-    intent(app, |i| i.ads_held = true);
-    frames(app, 30);
+    hold_aim(app, true);
+    frames(app, 40);
     stand(app, k[0], a, 500.0);
     aim(app, a + Vec3::Y * 1.0);
     fire(app);
     frames(app, 2);
     capture(app, board, "V2-rifle-ads");
-    intent(app, |i| i.ads_held = false);
+    hold_aim(app, false);
 
-    // V4: a body kill, then a headshot kill within the chain.
+    // V4: a body kill, then a headshot kill within the chain (DOUBLE!), the
+    // second knight caught as his helmet pops, the castle behind.
     let k = knights(app, 3, 1800);
+    hush(app);
     put_player(app, SPAWN);
-    let a = me + bearing(40.0) * 8.0;
-    let b = me + bearing(50.0) * 7.0;
+    let a = me + bearing(62.0) * 9.0;
+    let b = me + bearing(40.0) * 6.5;
     stand(app, k[0], a, 1.0);
     stand(app, k[1], b, 1.0);
     frames(app, 30);
@@ -447,27 +504,29 @@ fn review(app: &mut App, board: &mut Board) {
     aim(app, a + Vec3::Y * 1.0);
     frames(app, 2);
     fire(app);
-    frames(app, 10);
+    frames(app, 40);
+    stand(app, k[1], b, 1.0);
     aim(app, b + Vec3::Y * HEAD_CENTER);
     frames(app, 2);
     aim(app, b + Vec3::Y * HEAD_CENTER);
     fire(app);
-    frames(app, 4);
-    // Look a little left and up so the castle and the flying helmet frame.
+    frames(app, 6);
     capture(app, board, "V4-headshot-kill");
 
-    // V3: the pump blasts a knight at 3 m, the castle to the right.
+    // V3: the pump blasts a knight at 3 m (a heavy hit, not a kill: he's
+    // flung back flailing), the castle to the right.
     select(app, WeaponKind::Pump);
     let k = knights(app, 1, 1800);
+    hush(app);
     put_player(app, SPAWN);
-    let a = me + bearing(-12.0) * 3.2;
-    stand(app, k[0], a, 1.0);
+    let a = me + bearing(-10.0) * 3.4;
+    stand(app, k[0], a, 500.0);
     frames(app, 20);
-    stand(app, k[0], a, 1.0);
-    aim(app, a + Vec3::Y * 1.0);
+    stand(app, k[0], a, 500.0);
+    aim(app, a + Vec3::Y * 1.1);
     frames(app, 1);
     fire(app);
-    frames(app, 3);
+    frames(app, 6);
     capture(app, board, "V3-pump-blast");
 
     // X: a knight at 3 m, still, for close review of the model.
@@ -475,41 +534,41 @@ fn review(app: &mut App, board: &mut Board) {
     put_player(app, SPAWN);
     let a = me + bearing(20.0) * 3.0;
     stand(app, k[0], a, 500.0);
-    frames(app, 30);
+    frames(app, 40);
     stand(app, k[0], a, 500.0);
     aim(app, a + Vec3::Y * 1.05);
     frames(app, 2);
     capture(app, board, "X-knight-close");
 
     // V6: boxed up, looking out of a wide window at knights firing orbs.
-    select(app, WeaponKind::Pump);
     put_player(app, SPAWN);
     let c = GridCell::new(6, 9, 0);
     let mut front = None;
-    for (facing, slot) in [
-        (Facing::North, PieceSlot::wall(c, Facing::North)),
-        (Facing::East, PieceSlot::wall(c, Facing::East)),
-        (Facing::West, PieceSlot::wall(c, Facing::West)),
-        (Facing::South, PieceSlot::wall(c, Facing::South)),
-        (Facing::North, PieceSlot::floor(GridCell::new(6, 9, 1))),
+    for slot in [
+        PieceSlot::wall(c, Facing::North),
+        PieceSlot::wall(c, Facing::East),
+        PieceSlot::wall(c, Facing::West),
+        PieceSlot::wall(c, Facing::South),
+        PieceSlot::floor(GridCell::new(6, 9, 1)),
     ] {
         match place_piece(app.world_mut(), slot) {
-            Ok(e) if slot.kind == pieced::shared::PieceKind::Wall && facing == Facing::North => {
-                front = Some(e)
-            }
+            Ok(e) if slot == PieceSlot::wall(c, Facing::North) => front = Some(e),
             Ok(_) => {}
             Err(why) => println!("V6: {slot:?} rejected: {why:?}"),
         }
     }
     if let Some(front) = front {
-        assert!(edit_piece(app.world_mut(), front, PieceEdit::of(&[3, 4, 5])));
+        assert!(edit_piece(
+            app.world_mut(),
+            front,
+            PieceEdit::of(&[3, 4, 5])
+        ));
     }
     let k = knights(app, 3, 1800);
     for (i, knight) in k.iter().take(3).enumerate() {
-        let at = me + bearing(-18.0 + 18.0 * i as f32) * (11.0 + i as f32 * 2.0);
+        let at = me + bearing(-18.0 + 18.0 * i as f32) * (10.0 + i as f32 * 2.0);
         release(app, *knight, at, 7);
     }
-    look(app, 0.0, -2.0);
     for _ in 0..150 {
         put_player(app, SPAWN);
         look(app, 0.0, -2.0);

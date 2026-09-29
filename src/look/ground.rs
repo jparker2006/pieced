@@ -57,7 +57,11 @@ pub const GRASS_DETAIL_SIZE: usize = 512;
 /// World size (m) of one blade-stroke tile: about 170 texels per metre.
 pub const GRASS_STROKE_TILE: f32 = 3.0;
 /// World size (m) of one patch-noise tile (patches a few metres across).
-pub const GRASS_PATCH_TILE: f32 = 26.0;
+pub const GRASS_PATCH_TILE: f32 = 17.0;
+/// Multiplies the lawn's vertex colours (M4 art): a touch deeper and less
+/// lime than the palette's grass, like the board's lawns (M4-V1, V5), so the
+/// painted strokes and the knights' purple read against it.
+pub const GRASS_TONE: Color = Color::srgb(0.92, 0.89, 0.9);
 
 /// The green of the grid lines' glow: a light, bright leaf green, sampled
 /// from the halo round the painted grid lines (T09's foreground).
@@ -124,11 +128,11 @@ impl Default for GroundMaterial {
     /// palette's grid-line colour inside a soft green glow.
     fn default() -> Self {
         Self {
-            base_color: Color::WHITE,
+            base_color: GRASS_TONE,
             grid_color: crate::palette::cartoon::GRID_LINE,
             glow_color: GRID_GLOW,
             grid_strength: 0.3,
-            glow_strength: 0.2,
+            glow_strength: 0.13,
             cell: CELL_SIZE,
             origin: Vec2::splat(-ARENA_HALF),
             grid_min: Vec2::splat(-ARENA_HALF),
@@ -139,11 +143,11 @@ impl Default for GroundMaterial {
             fade_end: 40.0,
             detail: Some(GRASS_DETAIL),
             patch_dark: cartoon::GRASS_SHADOW,
-            patch_dark_amount: 0.7,
+            patch_dark_amount: 0.9,
             patch_light: cartoon::GRASS_LIGHT,
             patch_light_amount: 1.0,
             stroke_strength: 0.9,
-            stroke_shade: 0.52,
+            stroke_shade: 0.46,
             grade_amount: 0.5,
             lighting: ToonLight::default(),
         }

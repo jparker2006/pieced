@@ -23,8 +23,9 @@ BUDGETS = {
     "wall_tiles": 2600,
     "floor_tiles": 700,
     "ramp_tiles": 800,
-    "tree": 1500,
-    "rock": 300,
+    # M4 art: round puffs (twice the M2 budget; the offscreen GPU timer holds).
+    "tree": 3000,
+    "rock": 600,
     "stump": 300,
     "station": 25000,
     "far_island": 1500,

@@ -90,15 +90,18 @@ def finish_rock(root, mesh):
 
 def build_rock_a(root):
     """A big, rounded leaning boulder, 1.25 m: the main crouch cover (T05, T03)."""
-    main = boulder(seed=11, size=(1.9, 1.5, 1.25), points=120, exponent=2.4, lean=0.14)
+    main = boulder(seed=11, size=(1.9, 1.5, 1.25), points=240, exponent=2.4, lean=0.14,
+                   facet_deg=4.0)
     finish_rock(root, paint_rock(rock_mesh([(main, Vector((0, 0, 0)))]), 11))
     scene.make_attach("Top", root, (0.0, 0.0, 1.25))
 
 
 def build_rock_b(root):
     """A rounder 1.05 m boulder with a small buddy rock at its front-right (T01)."""
-    main = boulder(seed=23, size=(1.45, 1.3, 1.05), points=96, exponent=2.2, lean=-0.1)
-    buddy = boulder(seed=29, size=(0.7, 0.62, 0.5), points=40, exponent=2.3, lean=0.05)
+    main = boulder(seed=23, size=(1.45, 1.3, 1.05), points=200, exponent=2.2, lean=-0.1,
+                   facet_deg=4.0)
+    buddy = boulder(seed=29, size=(0.7, 0.62, 0.5), points=70, exponent=2.3, lean=0.05,
+                    facet_deg=4.0)
     finish_rock(root, paint_rock(rock_mesh([(main, Vector((0, 0, 0))),
                                             (buddy, Vector((0.72, -0.42, 0)))]), 23))
     scene.make_attach("Top", root, (0.0, 0.0, 1.05))
@@ -216,7 +219,7 @@ def puff(bm, centre, radius, squash, segments, bands, seed, lump=0.06):
 
 def crown(root, puffs, seed, budget=1200):
     """The `Canopy` part: `puffs` = [(centre, radius, squash)], each a smooth ball
-    (10 × 7 facets for the big ones, 9 × 6 for the small).
+    (17 × 10 facets for the big ones, 14 × 9 for the small: round, painted puffs, not faceted gems).
 
     A face every corner of which lies inside another puff is hidden for good
     and dropped. Faces are painted before they are split into triangles, so the
@@ -228,7 +231,7 @@ def crown(root, puffs, seed, budget=1200):
     bm = palette.new_bmesh()
     owners = []
     for k, (c, rad, squash) in enumerate(puffs):
-        segments, bands = (10, 7) if rad >= 0.93 else (9, 6)
+        segments, bands = (17, 10) if rad >= 0.93 else (14, 9)
         for f in puff(bm, c, rad, squash, segments, bands, seed * 97 + k):
             owners.append((f, k))
     # A polygonal puff lies inside its sphere; test against a slightly smaller one.
@@ -340,7 +343,7 @@ def build_tree_a(root):
     puffs += ring_of(7, 1.5, 3.85, 0.98, 0.86, 41, cx, cy)
     puffs += ring_of(5, 0.9, 4.75, 0.92, 0.88, 42, cx, cy, phase=0.4)
     puffs += [((cx + 0.1, cy - 0.05, 5.25), 0.82, 0.9)]
-    crown(root, puffs, seed=43, budget=1500 - 330)
+    crown(root, puffs, seed=43, budget=3000 - 330)
 
 
 def build_tree_b(root):
@@ -366,7 +369,7 @@ def build_tree_b(root):
     puffs += ring_of(4, 0.85, 3.8, 0.8, 0.85, 62, 1.25, -0.15, phase=0.3)
     puffs += ring_of(4, 0.85, 5.05, 0.9, 0.88, 63, -0.7, 0.1, phase=0.6)
     puffs += [((-0.6, 0.05, 5.55), 0.78, 0.9)]
-    crown(root, puffs, seed=67, budget=1500 - 300)
+    crown(root, puffs, seed=67, budget=3000 - 300)
 
 
 ASSETS = [

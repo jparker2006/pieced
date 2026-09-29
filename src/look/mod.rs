@@ -143,8 +143,8 @@ pub use far::{FAR_AO_STRENGTH, FarHaze, FarHazeBlock, FarMaterial};
 pub use grade::grade;
 pub use ground::{GroundMaterial, grid_line_distance, grid_line_intensity};
 pub use halo::{
-    HALO_MAX_INTENSITY, Halo, HaloAssets, HaloLink, HaloMaterial, HaloSprite, halo_image,
-    pack_halo, unpack_halo,
+    HALO_MAX_INTENSITY, HALO_NEAR_FADE, Halo, HaloAssets, HaloLink, HaloMaterial, HaloSprite,
+    halo_image, halo_near_fade, pack_halo, unpack_halo,
 };
 pub use model_look::{ModelDressed, ModelLook, ModelMaterials};
 pub use outline::{

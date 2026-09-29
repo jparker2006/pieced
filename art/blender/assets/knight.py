@@ -395,7 +395,7 @@ class Builder:
 _SLOT_EDGES = (0.012, 0.036, 0.06, 0.084)
 
 
-def build_helmet():
+def build_helmet(details=True):
     """A big round bucket helmet filling the head sphere (and its tolerance): a flat
     face plate with a tall visor slit for the eyes over a clean four-slot grille,
     well-rounded corners, a bulging belly and a domed top under the hat."""
@@ -450,8 +450,16 @@ def build_helmet():
     for s in (1, -1):
         b.tag(blob(bm, (s * (PLATE[0] - 0.006), 0.02, 1.62), (0.018, 0.036, 0.036),
                    segments=10, rings=5), STEEL)
-    # Premium detail that costs nothing on the GPU: a raised nose ridge down
-    # the grille's middle and gold rivets round the face plate.
+    if details:
+        helmet_details(b)
+    return b
+
+
+def helmet_details(b, avoid=None):
+    """Premium detail that costs nothing on the GPU: a raised nose ridge down
+    the grille's middle and gold rivets round the face plate. `avoid` =
+    (centre, radius): leave out rivets there (the dent's hollow)."""
+    bm = b.bm
     ridge = []
     for z in (1.566, 1.54, 1.51, 1.482):
         at, nrm = surface_hit(bm, (0.0, -0.5, z), (0.0, 1.0, 0.0))
@@ -463,8 +471,9 @@ def build_helmet():
             at, nrm = surface_hit(bm, (s * x, -0.5, z), (0.0, 1.0, 0.0))
             studs.append((at, nrm))
     for at, nrm in studs:
+        if avoid is not None and (at - avoid[0]).length < avoid[1]:
+            continue
         b.tag(rivet(bm, at, nrm, radius=0.0125, proud=0.007), RIVET)
-    return b
 
 
 # The headshot dent (M4, D105): where it is pressed in (a direction from the
@@ -482,7 +491,7 @@ def build_dented_helmet():
     beside the visor, its hollow in shadowed steel, so the cartoon ding reads
     for the rest of his life. Pressed inward only, so it stays inside the head
     sphere. The mesh is refined round the dent first so it presses in smooth."""
-    b = build_helmet()
+    b = build_helmet(details=False)
     bm = b.bm
     head = Vector((0.0, 0.0, HEAD_CENTER))
     centre, _ = surface_hit(bm, head + DENT_DIR * 0.5, -DENT_DIR)
@@ -492,6 +501,10 @@ def build_dented_helmet():
             if min((v.co - centre).length for v in e.verts) < DENT_RADIUS * 1.2]
     near.sort(key=lambda e: sorted(_vkey(v) for v in e.verts))
     bmesh.ops.subdivide_edges(bm, edges=near, cuts=2, use_grid_fill=True)
+    # The grid fill's inner points come out a float's last bit apart from run
+    # to run (their order varies): snap every point to 10 µm first.
+    for v in bm.verts:
+        v.co = Vector(tuple(round(c, 5) for c in v.co))
     for v in bm.verts:
         d = (v.co - centre).length
         if d < DENT_RADIUS:
@@ -514,6 +527,9 @@ def build_dented_helmet():
             lip.append(f)
     b.tag(hollow, STEEL_SHADOW)
     b.tag(lip, STEEL_SHINE)
+    # The ridge and rivets go on after the dent (none in its hollow), so the
+    # refinement above only ever sees the plain shell.
+    helmet_details(b, avoid=(centre, DENT_RADIUS * 1.3))
     # Element order out of the bmesh operators above can vary run to run, and
     # `canonical` keeps vertex order: sort the vertices by position so
     # `build-art.sh --check` stays byte-identical.
@@ -523,6 +539,21 @@ def build_dented_helmet():
         rank[v.index] = r
     bm.verts.sort(key=lambda v: rank[v.index])
     bm.verts.index_update()
+    # Each face's first corner decides how `canonical` splits it into
+    # triangles, and the operators above leave loop starts run-dependent:
+    # rebuild every face starting at its lowest vertex (winding kept).
+    layer = palette.face_layer(bm)
+    for f in list(bm.faces):
+        vs = list(f.verts)
+        k = min(range(len(vs)), key=lambda i: vs[i].index)
+        if k == 0:
+            continue
+        tag = f[layer]
+        smooth = f.smooth
+        bm.faces.remove(f)
+        g = bm.faces.new(vs[k:] + vs[:k])
+        g[layer] = tag
+        g.smooth = smooth
     return b
 
 
@@ -633,7 +664,7 @@ def build_wizard_hat():
         b.tag(band(bm, (0.0, 0.003, z), r, r, 0.0055, n_major=16, n_minor=4), TRIM)
     # The gold star sits on the crown's front, facing out along the surface.
     at, normal = surface_hit(bm, (0.0, -0.5, 1.832), (0.0, 1.0, 0.0))
-    b.tag(star_prism(bm, at + normal * 0.005, outer=0.052, inner=0.023, depth=0.012,
+    b.tag(star_prism(bm, at + normal * 0.005, outer=0.064, inner=0.028, depth=0.014,
                      normal=normal, up=(0.0, 0.0, 1.0)), GOLD)
     return b
 
@@ -718,9 +749,9 @@ def build_hat():
 # The coat's bodice, collar to belt: (z, half width, half depth, the front
 # opening's half angle in degrees) of a rounded-square cross-section, a little
 # outside the breastplate and mail everywhere.
-_COAT = [(1.442, 0.11, 0.1, 12.0), (1.39, 0.144, 0.126, 13.0), (1.3, 0.182, 0.154, 14.0),
-         (1.2, 0.204, 0.17, 14.0), (1.08, 0.194, 0.168, 14.0), (0.96, 0.186, 0.164, 14.0),
-         (0.86, 0.18, 0.158, 15.0), (0.758, 0.172, 0.148, 17.0)]
+_COAT = [(1.442, 0.11, 0.1, 12.0), (1.39, 0.15, 0.13, 13.0), (1.3, 0.194, 0.162, 14.0),
+         (1.2, 0.22, 0.178, 14.0), (1.08, 0.214, 0.176, 14.0), (0.96, 0.204, 0.172, 14.0),
+         (0.86, 0.194, 0.164, 15.0), (0.758, 0.184, 0.154, 17.0)]
 # Columns round the coat from the opening's left edge: a thin gold trim at each edge.
 COAT_US = [0.0] + [0.016 + 0.968 * k / 11 for k in range(12)] + [1.0]
 
@@ -864,18 +895,20 @@ def sheet(bm, point, ts, us, thick):
 
 
 ROBE_TOP = 0.752  # tucked under the belt
-ROBE_HEM = 0.345  # at the back; the front edges ride higher
+ROBE_HEM = 0.3  # at the back; the front edges ride higher
 
 
 def robe_point(t, u, inset):
     """The robe: a flared skirt from the belt to below the knees, open at the
     front (the opening widens toward the hem), with soft folds that grow toward
     the hem. u runs from the opening's left edge round the back to its right."""
-    gap = math.radians(15.0 + 27.0 * t)  # the opening's half angle
+    gap = math.radians(10.0 + 17.0 * t)  # the opening's half angle: nearly closed, a bell
     th = -math.pi / 2 + gap + u * (2 * math.pi - 2 * gap)
     e = t ** 0.85
-    a = 0.157 + (0.302 - 0.157) * e
-    d = 0.13 + (0.282 - 0.13) * e
+    # A full bell: the hem swings out to the body capsule's edge, so he reads
+    # round and stocky like the targets (M4-V1, V5).
+    a = 0.165 + (0.334 - 0.165) * e
+    d = 0.14 + (0.31 - 0.14) * e
     # Pleats: rounded crests and tighter valleys, deepening toward the hem.
     f = math.sin(9.0 * th + 0.3)
     k = 1.0 + 0.068 * t ** 1.1 * math.copysign(abs(f) ** 0.7, f)
