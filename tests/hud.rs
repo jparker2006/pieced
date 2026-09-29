@@ -266,8 +266,11 @@ fn every_sound_is_a_valid_short_wav() {
         assert_eq!(info.sample_rate, SAMPLE_RATE, "{sfx:?}");
         assert_eq!(info.bits_per_sample, 16, "{sfx:?}");
         assert_eq!(wav.len(), 44 + info.frames as usize * 2, "{sfx:?}");
+        // Short: the design's budget plus its baked room's tail (M4), never
+        // more than 1.5 s.
         let seconds = info.seconds();
-        assert!((0.05..=1.0).contains(&seconds), "{sfx:?}: {seconds} s");
+        let budget = (sfx.spec().max_seconds + sfx.room().tail + 1e-3).min(1.5);
+        assert!((0.05..=budget).contains(&seconds), "{sfx:?}: {seconds} s");
         let samples = sfx.synthesize();
         assert_eq!(samples.len(), info.frames as usize);
         let p = peak(&samples);
@@ -303,13 +306,17 @@ fn wav_encoding_round_trips_its_header() {
 
 #[test]
 fn the_hit_tick_is_crisp_and_distinct_from_the_gunshot() {
-    let tick = Sfx::HitTick.synthesize();
-    let shot = Sfx::RifleShot.synthesize();
+    // The designs, before their rooms (M4 bakes a short room onto both).
+    let tick = Sfx::HitTick.dry_take(0);
+    let shot = Sfx::RifleShot.dry_take(0);
     assert!(tick.len() * 3 < shot.len(), "the tick is much shorter");
     let (zt, zs) = (zero_crossing_rate(&tick), zero_crossing_rate(&shot));
     assert!(zt > 3.0 * zs, "the tick is much brighter: {zt} vs {zs}");
+    // As played, too, the tick is over first.
+    assert!(Sfx::HitTick.synthesize().len() < Sfx::RifleShot.synthesize().len());
     // The pump is the bigger, longer boom.
-    assert!(Sfx::PumpShot.synthesize().len() > shot.len());
+    assert!(Sfx::PumpShot.dry_take(0).len() > shot.len());
+    assert!(Sfx::PumpShot.synthesize().len() > Sfx::RifleShot.synthesize().len());
 }
 
 #[test]

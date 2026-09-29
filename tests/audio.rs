@@ -107,10 +107,11 @@ fn every_cue_is_audible_within_its_budget_and_never_clips() {
     for (sfx, take, s) in every_take() {
         let spec = sfx.spec();
         let len = seconds(&s);
+        // The budget covers the design; its baked room adds its tail (M4).
+        let budget = spec.max_seconds + sfx.room().tail;
         assert!(
-            (0.05..=spec.max_seconds).contains(&len),
-            "{sfx:?}#{take}: {len:.3} s over its {} s budget",
-            spec.max_seconds
+            (0.05..=budget + 1e-3).contains(&len),
+            "{sfx:?}#{take}: {len:.3} s over its {budget} s budget"
         );
         assert!(s.iter().all(|v| v.is_finite()), "{sfx:?}#{take}");
         let p = peak(&s);
@@ -404,4 +405,153 @@ fn the_bank_builds_fast_enough_for_launch() {
     // Tests run unoptimized and in parallel with other suites, so the bound here
     // is generous and only catches a real regression.
     assert!(ms < 750.0, "the bank took {ms:.0} ms");
+}
+
+// ---------------------------------------------------------------------------
+// M4 chunk 3: richer effects
+// ---------------------------------------------------------------------------
+
+#[test]
+fn every_cue_rings_on_in_its_baked_room() {
+    use pieced::audio::reverb::Room;
+    for sfx in Sfx::ALL {
+        let dry = sfx.dry_take(0);
+        let played = sfx.synthesize();
+        let room = sfx.room();
+        assert_eq!(
+            played.len(),
+            dry.len() + pieced::audio::synth::samples_for(room.tail),
+            "{sfx:?} has its room's tail"
+        );
+        // Past the dry cue's end the room still rings, well under the cue.
+        let tail = slice(&played, seconds(&dry), seconds(&dry) + 0.04);
+        let level = short_term_rms_db(tail) - short_term_rms_db(&played);
+        assert!(
+            (-95.0..-12.0).contains(&level),
+            "{sfx:?}: its room rings at {level:.1} dB"
+        );
+    }
+    // Each room falls 60 dB in about its RT60 (measured over the first 30 dB).
+    for room in [
+        Room::TIGHT,
+        Room::HIT,
+        Room::STONE,
+        Room::WOOD,
+        Room::WORLD,
+        Room::HALL,
+    ] {
+        let rt = 2.0 * pieced::audio::reverb::measured_decay(&room, 30.0);
+        assert!(
+            (rt / room.rt60 - 1.0).abs() < 0.35,
+            "RT60 {rt:.2} s vs {} s",
+            room.rt60
+        );
+    }
+    // Rooms by kind: the player's guns tight, the world's sounds far.
+    assert_eq!(Sfx::RifleShot.room(), Room::TIGHT);
+    assert_eq!(Sfx::HitTick.room(), Room::HIT);
+    assert_eq!(Sfx::BrickPlace.room(), Room::STONE);
+    assert_eq!(Sfx::PlankPlace.room(), Room::WOOD);
+    assert_eq!(Sfx::OrbCast.room(), Room::WORLD);
+    assert_eq!(Sfx::WaveCleared.room(), Room::HALL);
+    const { assert!(Room::TIGHT.rt60 < Room::WORLD.rt60) };
+}
+
+#[test]
+fn the_guns_are_layered_shots() {
+    // Rifle: a mechanism click, the magic body, a tail.
+    let rifle = Sfx::RifleShot.dry_take(0);
+    let click = slice(&rifle, 0.0, 0.003);
+    let mech = dft_magnitude(click, 2300.0) + dft_magnitude(click, 1870.0);
+    let low = dft_magnitude(click, 400.0);
+    assert!(
+        mech > 2.0 * low,
+        "the mechanism clicks first: {mech} vs {low}"
+    );
+    let rifle = Sfx::RifleShot.synthesize();
+    let body = short_term_rms_db(slice(&rifle, 0.0, 0.06));
+    let tail = short_term_rms_db(slice(&rifle, 0.12, 0.2));
+    assert!(
+        tail < body - 20.0 && tail > body - 60.0,
+        "a soft tail: {tail:.1} dB vs the body's {body:.1}"
+    );
+    // Pump: a low whoomp, a chime, a tail.
+    let pump = Sfx::PumpShot.synthesize();
+    assert!(
+        dominant_frequency(slice(&pump, 0.03, 0.08), 80.0, 600.0) < 300.0,
+        "the whoomp is low"
+    );
+    let ring = slice(&pump, 0.03, 0.09);
+    let c7 = 2093.0;
+    let chime = dft_magnitude(ring, c7);
+    assert!(
+        chime > 2.0 * dft_magnitude(ring, c7 * 1.06)
+            && chime > 2.0 * dft_magnitude(ring, c7 / 1.06),
+        "the chime rings on C7"
+    );
+    let tail = short_term_rms_db(slice(&pump, 0.35, 0.5));
+    assert!(
+        tail > short_term_rms_db(&pump) - 50.0,
+        "the blast's tail carries on: {tail:.1}"
+    );
+    // The new handling cues are weapons sounds, under the guns.
+    for sfx in [Sfx::WeaponDraw, Sfx::AdsIn, Sfx::AdsOut] {
+        assert_eq!(sfx.category(), SfxCategory::Weapons);
+        assert!(sfx.mix_db() < Sfx::RifleShot.mix_db(), "{sfx:?}");
+        assert!(
+            sfx.mix_db() >= Sfx::Land.mix_db(),
+            "{sfx:?} sits over movement"
+        );
+    }
+}
+
+#[test]
+fn repeated_cues_vary_in_pitch_within_their_spread() {
+    use pieced::audio::{pitch_spread, pitch_variation};
+    for (sfx, spread) in [
+        (Sfx::Footstep, 0.04),
+        (Sfx::HitTick, 0.04),
+        (Sfx::ShieldHit, 0.04),
+        (Sfx::BrickPlace, 0.05),
+        (Sfx::PlankPlace, 0.05),
+        (Sfx::RifleShot, 0.03),
+        (Sfx::HeadshotDing, 0.0),
+        (Sfx::KillConfirm, 0.0),
+    ] {
+        assert_eq!(pitch_spread(sfx), spread, "{sfx:?}");
+        let speeds: Vec<f32> = (0..1000).map(|n| pitch_variation(sfx, n)).collect();
+        let (lo, hi) = speeds
+            .iter()
+            .fold((f32::MAX, f32::MIN), |(a, b), s| (a.min(*s), b.max(*s)));
+        assert!(
+            lo >= 1.0 - spread - 1e-6 && hi <= 1.0 + spread + 1e-6,
+            "{sfx:?}: {lo}..{hi}"
+        );
+        assert!(
+            hi - lo >= 1.8 * spread - 1e-6,
+            "{sfx:?} uses its whole spread: {lo}..{hi}"
+        );
+        let mean = speeds.iter().sum::<f32>() / speeds.len() as f32;
+        assert!(
+            (mean - 1.0).abs() <= 0.1 * spread + 1e-6,
+            "{sfx:?} centred: {mean}"
+        );
+        // Seeded: the same sound on the same count always plays the same.
+        assert_eq!(pitch_variation(sfx, 42), pitch_variation(sfx, 42));
+    }
+}
+
+#[test]
+fn big_hits_duck_the_music() {
+    let ducking: Vec<Sfx> = Sfx::ALL.into_iter().filter(|s| s.ducks_music()).collect();
+    assert_eq!(
+        ducking,
+        [
+            Sfx::HeadshotDing,
+            Sfx::ShieldBreak,
+            Sfx::Elimination,
+            Sfx::OrbBonk,
+            Sfx::KillConfirm
+        ]
+    );
 }

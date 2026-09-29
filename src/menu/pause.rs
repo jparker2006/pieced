@@ -106,7 +106,12 @@ const AIM: &[Setting] = &[
     Setting::AimFriction,
 ];
 const FEEDBACK: &[Setting] = &[Setting::Bloom, Setting::DamageNumbers, Setting::CameraShake];
-const AUDIO: &[Setting] = &[Setting::Volume, Setting::Mute];
+const AUDIO: &[Setting] = &[
+    Setting::Volume,
+    Setting::Music,
+    Setting::Effects,
+    Setting::Mute,
+];
 const DISPLAY: &[Setting] = &[Setting::Quality, Setting::WindowMode];
 
 /// The veil over the paused world: dark and a little violet, like T12's
@@ -457,6 +462,14 @@ fn spawn_menu(mut commands: Commands, art: Option<Res<UiArt>>) {
                         13.0,
                         dim(0.6)
                     )],
+                ));
+                // The music's CC BY 4.0 credit (M4 chunk 3).
+                c.spawn((
+                    Node {
+                        margin: UiRect::top(px(2)),
+                        ..default()
+                    },
+                    children![text(crate::audio::music::MUSIC_CREDIT, 12.0, dim(0.5))],
                 ));
             });
             super::controls::spawn_card(root);
