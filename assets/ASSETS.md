@@ -188,7 +188,7 @@ scripts/build-art.sh icon_rifle logo   # rebuild some (names from --list)
 
 ## Fonts (`assets/fonts/`)
 
-The only third-party files: one openly licensed cartoon display font from
+The first third-party files: one openly licensed cartoon display font from
 `github.com/google/fonts`, downloaded with Jake's OK (D23). Lilita One won the
 HUD mock-up against Luckiest Guy (its heavy, even letters match the targets'
 HUD numbers and T12's buttons), so Luckiest Guy was removed. `src/hud/art.rs`
@@ -198,6 +198,32 @@ embeds it as Bevy's default font; `art/blender/assets/logo.py` sets the logo in 
 |---|---|---|
 | `fonts/LilitaOne-Regular.ttf` | `assets/fonts/LilitaOne-OFL.txt` | Lilita One by Juan Montoreano, SIL OFL 1.1, Reserved Font Name "Lilita" (`ofl/lilitaone`), unmodified |
 | `fonts/LilitaOne-OFL.txt` | `assets/fonts/LilitaOne-OFL.txt` | Its license |
+
+## Music (`assets/music/`)
+
+The score (M4 chunk 3, D107, D116, D119): openly licensed orchestral cues from
+Freesound that Jake picked by ear, downloaded with his OK. Every source is
+**Creative Commons Attribution 4.0** (https://creativecommons.org/licenses/by/4.0/),
+kept with its credits in `art/music/src/` (`art/music/src/CREDITS.md`).
+`scripts/build-music.sh` resamples, trims, loops (equal-power crossfades at
+matched attacks a whole number of bars apart), loudness-normalizes (loops
+−18 LUFS, stings −16 LUFS) and encodes them as Ogg Vorbis
+(`scripts/build-music.sh --check` rebuilds and compares byte for byte).
+`src/audio/music.rs` embeds them. The break loop (a celesta waltz) is
+original, synthesized at load (`src/audio/celesta.rs`), so it has no file.
+Changes to the sources: trimmed, looped, faded, level-adjusted, re-encoded;
+the death sting is the battle cue's brass chord bent down and faded at load.
+The game credits the authors in Settings.
+
+| File | Made by | Notes |
+|---|---|---|
+| `music/menu.ogg` | `scripts/build-music.sh` from `art/music/src/CREDITS.md` | Menu loop (whole piece, 47.7 s). Attribution: "Space Fanfare - Cinematic Orchestral Music (Star Trek Inspired)" by humanoide9000 (freesound.org/s/744049/), CC BY 4.0 |
+| `music/combat_low.ogg` | `scripts/build-music.sh` from `art/music/src/CREDITS.md` | Combat loop: a 3.0 s intro, then a 48.9 s (22-bar) loop. Attribution: "Cinematic orchestral adventure music" by humanoide9000 (freesound.org/s/689177/), CC BY 4.0 |
+| `music/combat_high.ogg` | `scripts/build-music.sh` from `art/music/src/CREDITS.md` | Intense combat loop: a 1.0 s intro, then a 54.6 s (28-bar) loop. Attribution: "Cinematic Battle Music (Star Wars Style)" by humanoide9000 (freesound.org/s/685841/), CC BY 4.0 |
+| `music/sting_round.ogg` | `scripts/build-music.sh` from `art/music/src/CREDITS.md` | Round-start sting, 4.5 s. Attribution: "Music: Orchestral Victory Fanfare" by Sheyvan (freesound.org/s/470083/), CC BY 4.0 |
+| `music/sting_best.ogg` | `scripts/build-music.sh` from `art/music/src/CREDITS.md` | New-best sting, 10.1 s. Attribution: "Victory Fanfare" by humanoide9000 (freesound.org/s/466133/), CC BY 4.0 |
+| `music/death_chord.ogg` | `scripts/build-music.sh` from `art/music/src/CREDITS.md` | The brass C7 chord (70.46–72.20 s of the battle cue) the death sting is derived from at load: bent down 8 semitones, darkened and faded. Attribution: "Cinematic Battle Music (Star Wars Style)" by humanoide9000 (freesound.org/s/685841/), CC BY 4.0 |
+| `music/music.json` | `scripts/build-music.sh` | Every music file's length and loop start (frames) |
 
 ## This index
 
@@ -226,3 +252,7 @@ Add a row in the matching table: the path relative to `assets/` in backticks,
 then the script that makes it (or, for a third-party file, its license file,
 e.g. `assets/fonts/OFL.txt`) in backticks. The only third-party files allowed in
 Milestone 2 are the HUD font and its license (docs/M2-SPEC.md, Asset pipeline).
+Milestone 4 adds the music Jake picks (D116): CC0 or CC BY only. A music file's
+row names its credits file and gives its attribution line ("Title" by Author
+(source URL), license), which must also appear in that credits file;
+`tests/assets.rs` rejects a music file without one.

@@ -1,0 +1,8 @@
+[
+  {"name": "menu", "frames": 2104452, "loop_start": 0},
+  {"name": "combat_low", "frames": 2288218, "loop_start": 131506},
+  {"name": "combat_high", "frames": 2452142, "loop_start": 44100},
+  {"name": "sting_round", "frames": 198450, "loop_start": -1},
+  {"name": "sting_best", "frames": 446292, "loop_start": -1},
+  {"name": "death_chord", "frames": 76734, "loop_start": -1}
+]
