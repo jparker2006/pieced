@@ -155,6 +155,9 @@ fn crystal_glow_follows_the_magazine_fraction() {
     assert!((ammo_glow(2, 5) - 0.55).abs() < 1e-6);
     // The rifle: the dim crystal keeps its glow as it pops out...
     assert_eq!(rifle_crystal_glow(6, 30, Some(0.2), 99.0), ammo_glow(6, 30));
+    // ...goes dark once the glove flicks it out, so spent and fresh read
+    // apart...
+    assert!(rifle_crystal_glow(6, 30, Some(RIFLE_POP + 0.15), 99.0) < GLOW_MIN * 0.5);
     // ...the fresh one comes up glowing, starts charging as it clicks in...
     assert_eq!(rifle_crystal_glow(6, 30, Some(0.6), 99.0), FRESH_GLOW);
     assert!(rifle_crystal_glow(6, 30, Some(0.9), 99.0) > FRESH_GLOW);

@@ -17,17 +17,24 @@
 //!   (tinted blue or violet) and its `Runes` (the rune windows, magazine slots
 //!   and muzzle rings); the crackling energy inside each chamber is
 //!   [`crate::fx::chamber`]'s;
-//! - rifle reload: the glass `Chamber` (with `ChamberBack`, the deep opaque far
-//!   wall inside it) slides open, the dim `Crystal` pops up
-//!   and spins away, a fresh one slides in, and its glow charges up the moment
-//!   the reload completes;
-//! - pump: the left glove pushes a violet `Shard` in through the `Rings` for
-//!   each shell; the `PumpGrip` racks after every shot and the rings whirr.
+//! - rifle reload (M4, D106): the gun turns into its reload stance, the glass
+//!   `Chamber` (with `ChamberBack`, the deep opaque far wall inside it) slides
+//!   open, the left glove flicks the dim `Crystal` out (it spins away), grabs a
+//!   fresh glowing one from below and pushes it home with a click; its glow
+//!   charges from the click and flashes up the moment the reload completes;
+//! - pump: each shell, the left glove lifts a violet `Shard` over the `Rings`
+//!   and pushes it in; the `PumpGrip` racks heavily after every shot (a big
+//!   pull, a beat, a slam and a clack) and the rings whirr.
 //!
 //! Every frame (PostUpdate, after the camera follows the eye) the rig's pose is
-//! composed from the hip/ADS pose, look and movement sway, walk bob, spring
-//! recoil, reload and switch animations, and the muzzle's world position is
-//! published in [`MuzzlePoint`], where spell bolts start. While the game is
+//! composed from the hip/ADS pose (ADS swings in with a little overshoot),
+//! look and movement sway, idle breathing, walk bob, spring recoil, reload
+//! animations and the switch (the old item drops away, the new one is drawn
+//! up and settles), and the muzzle's world position is published in
+//! [`MuzzlePoint`], where spell bolts start. Every animation fits inside M1's
+//! timings, and each beat is announced as a [`WeaponCue`] for the sounds.
+//! Each shot also kicks the rendered camera a fraction of a degree
+//! ([`CameraKickState`]), never the aim. While the game is
 //! paused the rig is hidden, so the pause menu shows over the world alone (T12).
 //! The gallery's rifle close-up (T02) swaps the hip pose for an inspect pose
 //! ([`ViewmodelInspect`]).

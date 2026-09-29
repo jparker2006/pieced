@@ -138,10 +138,13 @@ pub fn keyframes(t: f32, keys: &[(f32, Vec3, Ease)]) -> Vec3 {
 
 /// The glow of an empty crystal.
 pub const GLOW_MIN: f32 = 0.25;
+/// The spent rifle crystal's light goes out as it flies away, so spent and
+/// fresh read apart.
+pub const SPENT_GLOW: f32 = 0.05;
 /// A fresh rifle crystal glows this much in the glove, before it is seated...
-pub const FRESH_GLOW: f32 = 0.5;
+pub const FRESH_GLOW: f32 = 0.7;
 /// ...charges to this as it seats (from the slot to the reload's end)...
-pub const SEATED_GLOW: f32 = 0.75;
+pub const SEATED_GLOW: f32 = 0.8;
 /// ...and flashes up to full over this many seconds once the reload completes.
 pub const GLOW_RAMP: f32 = 0.3;
 /// How far past full the charge-up flash peaks.
@@ -156,14 +159,16 @@ pub fn ammo_glow(ammo: u32, magazine: u32) -> f32 {
 /// The rifle crystal's glow. `reload` is the reload's progress while one runs;
 /// `since_reload` is the seconds since the last reload completed.
 ///
-/// It follows the magazine. Mid-reload the old, dim crystal keeps its glow as
-/// it pops out; the fresh one the glove brings up glows ([`FRESH_GLOW`]), starts
-/// charging the moment it clicks into the socket, and the moment the reload
-/// completes flashes up to full over [`GLOW_RAMP`].
+/// It follows the magazine. Mid-reload the old, dim crystal keeps its glow
+/// until the glove flicks it out, then goes dark as it flies ([`SPENT_GLOW`]);
+/// the fresh one the glove brings up glows ([`FRESH_GLOW`]), starts charging
+/// the moment it clicks into the socket, and the moment the reload completes
+/// flashes up to full over [`GLOW_RAMP`].
 pub fn rifle_crystal_glow(ammo: u32, magazine: u32, reload: Option<f32>, since_reload: f32) -> f32 {
     if let Some(p) = reload {
         return if !rifle_reload(p).fresh {
-            ammo_glow(ammo, magazine)
+            let spent = smoothstep(phase(p, RIFLE_POP, RIFLE_POP + 0.1));
+            ammo_glow(ammo, magazine) + (SPENT_GLOW - ammo_glow(ammo, magazine)) * spent
         } else if p < RIFLE_SLOT {
             FRESH_GLOW
         } else {
@@ -276,7 +281,7 @@ const RIFLE_HAND_KEYS: [(f32, Vec3, Ease); 10] = [
     (0.28, Vec3::new(0.012, 0.03, -0.006), Ease::Out),
     (0.46, RIFLE_FETCH, Ease::Smooth),
     (RIFLE_GRAB, Vec3::new(-0.12, -0.232, 0.09), Ease::Out),
-    (0.65, RIFLE_STAGE, Ease::Out),
+    (0.62, RIFLE_STAGE, Ease::Out),
     (0.73, Vec3::new(-0.069, -0.027, 0.015), Ease::Smooth),
     (RIFLE_SLOT, Vec3::ZERO, Ease::In),
     (0.83, Vec3::new(0.0, -0.004, 0.0), Ease::Out),
@@ -436,7 +441,10 @@ pub const SHARD_START: Vec3 = Vec3::new(-0.03, 0.13, 0.01);
 pub const SHARD_FETCH: Vec3 = Vec3::new(-0.11, -0.03, 0.09);
 /// The glove's grip point below a shard it holds (lower than for the rifle's
 /// crystal: the shard is small, and shows above the fingertips).
-pub const SHARD_HOLD_OFFSET: Vec3 = Vec3::new(0.0, -0.095, 0.01);
+pub const SHARD_HOLD_OFFSET: Vec3 = Vec3::new(0.0, -0.088, 0.01);
+/// A shard shows this big in the fingertips (it shrinks to its real size as
+/// it's pushed into the rings), so the glove's load reads at a glance.
+pub const SHARD_HELD_SCALE: f32 = 1.8;
 
 /// One shard at per-shell progress `p` (0..=1): its pose relative to the
 /// crystal socket, and where the left glove holds (relative to the socket).
@@ -479,7 +487,8 @@ pub fn pump_shard(p: f32) -> ShardPose {
             offset: hand_at,
             spin: 1.5 * TAU * smoothstep(u),
             tumble: 0.0,
-            scale: 0.7 + 0.3 * ease_out_back(phase(p, 0.03, 0.2)),
+            scale: (0.7 + 0.3 * ease_out_back(phase(p, 0.03, 0.2)))
+                * (1.0 + (SHARD_HELD_SCALE - 1.0) * (1.0 - smoothstep(phase(p, 0.3, SHARD_PUSH)))),
         }
     } else if p < SHARD_MERGED + 0.06 {
         // Pushed home, it melts into the crystal.
@@ -536,13 +545,13 @@ pub fn pump_rack(age: f32) -> f32 {
 /// tips and rolls toward the pull, then jolts forward with the clack.
 pub fn rack_pose(age: f32) -> PoseOffset {
     let pull = PoseOffset {
-        pos: Vec3::new(0.0, -0.016, 0.04),
-        euler: Vec3::new(0.15, 0.06, -0.2),
+        pos: Vec3::new(0.008, 0.004, 0.03),
+        euler: Vec3::new(0.2, 0.08, -0.24),
     }
     .scaled(pump_rack(age));
     let jolt = PoseOffset {
-        pos: Vec3::new(0.0, 0.005, -0.022),
-        euler: Vec3::new(-0.07, 0.0, 0.05),
+        pos: Vec3::new(0.0, 0.004, -0.03),
+        euler: Vec3::new(-0.09, -0.02, 0.06),
     }
     .scaled(bump(phase(age, RACK_DONE, RACK_DONE + RACK_JOLT)));
     pull + jolt

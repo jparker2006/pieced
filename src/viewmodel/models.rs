@@ -133,8 +133,8 @@ pub const RIFLE_INSPECT: HipPose = HipPose {
 /// canted so the top of the chamber faces you, the crystal a little right of
 /// and below the centre, where you can watch the glove work on it.
 pub const RIFLE_RELOAD: HipPose = HipPose {
-    anchor: Vec3::new(0.12, -0.13, -0.46),
-    euler: Vec3::new(0.2, 0.62, 0.3),
+    anchor: Vec3::new(0.12, -0.12, -0.46),
+    euler: Vec3::new(0.2, 0.62, 0.6),
 };
 
 impl HipPose {
@@ -192,7 +192,7 @@ pub fn gun_model(kind: WeaponKind) -> &'static str {
 pub const GLOVES_MODEL: &str = "gloves";
 
 /// How far the rack pulls the pump grip back (model +Z).
-pub const PUMP_RACK_TRAVEL: f32 = 0.105;
+pub const PUMP_RACK_TRAVEL: f32 = 0.125;
 
 fn v3(x: f32, y: f32, z: f32) -> Vec3 {
     Vec3::new(x, y, z)

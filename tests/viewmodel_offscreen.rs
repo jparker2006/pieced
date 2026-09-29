@@ -237,7 +237,7 @@ fn review(app: &mut App, out: &Path) {
     frames(app, 30);
     // The draw: switch to the pump and catch it rising in, overshooting.
     hold(pump, false)(app.world_mut());
-    frames(app, 8);
+    frames(app, 6);
     shoot(app, out.join("vm-07-pump-draw.png"));
     capture_with(app, out.join("vm-08-pump-hip.png"), hold(pump, false));
     capture_with(app, out.join("vm-09-pump-ads.png"), hold(pump, true));
@@ -246,7 +246,7 @@ fn review(app: &mut App, out: &Path) {
     pull_trigger(app);
     frames(app, 18);
     shoot(app, out.join("vm-10-pump-rack.png"));
-    frames(app, 8);
+    frames(app, 10);
     shoot(app, out.join("vm-11-pump-clack.png"));
     frames(app, 40);
     capture_with(
