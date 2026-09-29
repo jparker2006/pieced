@@ -112,6 +112,8 @@ pub const PUMP_FAN_SPARKLES: usize = 20;
 /// Sparks flung out of a body hit (T05) and a headshot (T06).
 pub const BODY_SPARKS: usize = 22;
 pub const HEAD_SPARKS: usize = 26;
+/// Hot metal sparks off a body hit's armor (M4), on top of the starburst.
+pub const METAL_SPARKS: usize = 10;
 /// The headshot's solid gold flash (T06): its size (m; at least this wide an
 /// angle, rad, so it reads far off without hiding him) and life (s). It holds
 /// full size while the hat pops (about 0.2 s) and then shrinks away.
@@ -275,6 +277,8 @@ pub struct SpellAssets {
     brick_chip: Handle<Mesh>,
     splinter: Handle<Mesh>,
     gold_star: Handle<Mesh>,
+    /// Chips of steel armor off a body hit (M4).
+    armor_chips: [Handle<Mesh>; 2],
     /// The rifle bolt's head: a jagged blue starburst under a white sparkle.
     bolt_head: Handle<Mesh>,
     /// The body hit's solid cyan star (under the glowing layers).
@@ -374,6 +378,7 @@ fn make_assets(
         brick_chip: add(brick_chip()),
         splinter: add(wood_splinter()),
         gold_star: add(gold_star()),
+        armor_chips: [add(armor_chip(61)), add(armor_chip(62))],
         bolt_head: add(bolt_head()),
         flash_blue: toon.add(flat_glow(FLASH_BLUE)),
         arcs: [
@@ -748,6 +753,7 @@ fn setup_spells(
         (tag, RenderLayers::layer(VIEWMODEL_LAYER)),
     );
     warmup.add(assets.brick_chip.clone(), assets.solid.clone());
+    warmup.add(assets.armor_chips[0].clone(), assets.solid.clone());
     warmup.add(assets.clouds[0].clone(), assets.cloud.clone());
     warmup.add(assets.gold_star.clone(), assets.star.clone());
     warmup.add(assets.pow.clone(), assets.flash.clone());
@@ -1291,6 +1297,58 @@ impl Emitter<'_> {
     }
 
     // -- Character impacts ------------------------------------------------------
+
+    /// Metal on metal (M4): hot white-gold sparks that arc down off his armor
+    /// under gravity, and `chips` small steel chips knocked off it that tumble
+    /// to the ground at his feet (`ground`), bounce and shrink away.
+    fn armor_hit(&mut self, point: Vec3, normal: Vec3, ground: f32, chips: u32) -> bool {
+        let d = self.dist(point);
+        let out = (normal.normalize_or(Vec3::Y) + (self.eye - point).normalize_or_zero())
+            .normalize_or(Vec3::Y);
+        let w = apparent_size(0.03, d, 0.003);
+        let mut shown = false;
+        for i in 0..METAL_SPARKS {
+            let dir = self.rng.cone(out + Vec3::Y * 0.4, 0.8);
+            let mesh = if i % 3 == 0 {
+                self.assets.streak_blue.clone()
+            } else {
+                self.assets.streak_gold.clone()
+            };
+            let mut s = Spark::new(point, &mesh);
+            s.p.vel = dir * self.rng.range(4.0, 8.0);
+            s.p.gravity = 16.0;
+            s.p.drag = 1.5;
+            s.p.life = self.rng.range(0.22, 0.38);
+            s.p.size = Vec3::new(w, 1.0, w * 5.0) * self.rng.range(0.8, 1.2);
+            s.p.stretch = 0.05;
+            s.p.shrink_start = 0.5;
+            s.face = Face::Streak;
+            s.intensity = 2.2;
+            s.fade_start = 0.5;
+            s.pull = 0.12;
+            shown |= self.glow(s);
+        }
+        for i in 0..chips {
+            let dir = self.rng.cone(out, 0.9);
+            let size = apparent_size(0.07, d, 0.006) * self.rng.range(0.8, 1.25);
+            let mut s = Spark::new(point + out * 0.05, &self.assets.armor_chips[i as usize % 2]);
+            s.material = Some(self.assets.solid.clone());
+            s.p.vel = dir * self.rng.range(2.0, 4.0) + Vec3::Y * self.rng.range(1.5, 3.0);
+            s.p.rot = Quat::from_scaled_axis(self.rng.dir() * 3.0);
+            s.p.spin = self.rng.dir() * self.rng.range(10.0, 22.0);
+            s.p.gravity = 18.0;
+            s.p.bounce = Some(0.35);
+            s.p.ground = ground;
+            s.p.radius = size * 0.12;
+            s.p.size = Vec3::splat(size);
+            s.p.life = self.rng.range(0.7, 0.95);
+            s.p.shrink_start = 0.65;
+            s.face = Face::Free;
+            s.pull = 0.05;
+            shown |= self.solid(s);
+        }
+        shown
+    }
 
     /// Returns whether anything was shown.
     fn body_impact(&mut self, point: Vec3, normal: Vec3) -> bool {
@@ -1840,6 +1898,16 @@ fn emit_spells(
         } else {
             fx.body_impact(hit.point, hit.normal)
         };
+        // Metal sparks and armor chips off a body hit that reached his armor
+        // (M4); a headshot rings and dents the helmet instead.
+        if !hit.headshot && hit.amount > hit.to_shield + 1e-3 {
+            let ground = characters
+                .get(hit.target)
+                .map_or(hit.point.y - 1.0, |(t, _)| t.translation.y);
+            let (lo, hi) = tuning.kills.chips;
+            let chips = lo + fx.rng.pick((hi.saturating_sub(lo) + 1) as usize) as u32;
+            shown |= fx.armor_hit(hit.point, hit.normal, ground, chips);
+        }
         if hit.to_shield > 0.0 {
             fx.shimmer(hit.target);
             shown = true;

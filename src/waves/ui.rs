@@ -48,6 +48,8 @@ pub enum RunUi {
     Score,
     /// The frame round the score (it pops).
     ScoreFrame,
+    /// The wave-clear bonus ("+750") popping under the score (M4).
+    ScoreBonus,
     /// The big centre banner: the break, or a new wave's title.
     Banner,
     BannerTitle,

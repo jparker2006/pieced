@@ -416,6 +416,70 @@ def build_helmet():
     return b
 
 
+# The headshot dent (M4, D105): where it is pressed in (a direction from the
+# head's centre: his right brow, the corner of the face plate beside the
+# visor, in view from the front), its radius and depth (m).
+DENT_DIR = Vector((-0.62, -0.72, 0.3)).normalized()
+DENT_RADIUS = 0.095
+DENT_DEPTH = 0.045
+STEEL_SHADOW = "knight_steel_shadow"
+STEEL_SHINE = "nail_highlight"
+
+
+def build_dented_helmet():
+    """The helmet after a headshot: a round dent knocked into his right brow
+    beside the visor, its hollow in shadowed steel, so the cartoon ding reads
+    for the rest of his life. Pressed inward only, so it stays inside the head
+    sphere. The mesh is refined round the dent first so it presses in smooth."""
+    b = build_helmet()
+    bm = b.bm
+    head = Vector((0.0, 0.0, HEAD_CENTER))
+    centre, _ = surface_hit(bm, head + DENT_DIR * 0.5, -DENT_DIR)
+    bm.verts.index_update()
+    bm.edges.index_update()
+    near = [e for e in bm.edges
+            if min((v.co - centre).length for v in e.verts) < DENT_RADIUS * 1.2]
+    near.sort(key=lambda e: sorted(_vkey(v) for v in e.verts))
+    bmesh.ops.subdivide_edges(bm, edges=near, cuts=2, use_grid_fill=True)
+    for v in bm.verts:
+        d = (v.co - centre).length
+        if d < DENT_RADIUS:
+            k = (1.0 - (d / DENT_RADIUS) ** 2) ** 2
+            v.co -= (v.co - head).normalized() * DENT_DEPTH * k
+    bm.normal_update()
+    # The hollow's steel in shadow, a bright crescent on its lower lip where
+    # the light catches the bent metal (only steel: the visor stays black).
+    layer = palette.face_layer(bm)
+    steel = palette.palette().idx(STEEL) + 1
+    hollow, lip = [], []
+    for f in bm.faces:
+        if f[layer] != steel:
+            continue
+        off = f.calc_center_median() - centre
+        reach = max((v.co - centre).length for v in f.verts)
+        if reach < DENT_RADIUS * 0.8:
+            hollow.append(f)
+        elif reach < DENT_RADIUS * 1.1 and off.z < -0.3 * off.length:
+            lip.append(f)
+    b.tag(hollow, STEEL_SHADOW)
+    b.tag(lip, STEEL_SHINE)
+    # Element order out of the bmesh operators above can vary run to run, and
+    # `canonical` keeps vertex order: sort the vertices by position so
+    # `build-art.sh --check` stays byte-identical.
+    bm.verts.index_update()
+    rank = [0] * len(bm.verts)
+    for r, v in enumerate(sorted(bm.verts, key=_vkey)):
+        rank[v.index] = r
+    bm.verts.sort(key=lambda v: rank[v.index])
+    bm.verts.index_update()
+    return b
+
+
+def _vkey(v):
+    """A vertex's position, rounded: a run-independent sort key."""
+    return (round(v.co.x, 6), round(v.co.y, 6), round(v.co.z, 6))
+
+
 def eye_center(s):
     return Vector((s * EYE_X, EYE_FLOOR, EYE_Z))
 
@@ -1010,11 +1074,33 @@ def build_knight_hat(root):
     build_hat_parts(root, HAT_BASE)
 
 
+def build_knight_helmet_dent(root):
+    """The dented helmet (M4, D105) on its own: `HelmetDent`, the same helmet
+    with the headshot's dent, with its origin at the neck like `Helmet`, so
+    the game shows it in the helmet's place (src/fx/armor.rs). Its ambient
+    occlusion is baked against the rest of the knight (hat, torso, mantle),
+    so it shades exactly like the helmet it swaps with; those occluders are
+    dropped before export (`pieced_occluder`)."""
+    build_knight(root, check=False)
+    helmet = next(o for o in scene.descendants(root) if o.name == "Helmet")
+    for obj in [helmet] + scene.descendants(helmet):
+        bpy.data.objects.remove(obj, do_unlink=True)
+    for obj in scene.descendants(root):
+        obj["pieced_occluder"] = True
+    origin = Vector((0.0, 0.0, 0.0))
+    build_dented_helmet().finish(DENT_PART, root, NECK, origin, sharp_deg=50.0)
+
+
+DENT_PART = "HelmetDent"
+
 ASSETS = [
     Asset("knight", "knight", build_knight, "the goofy armoured knight-wizard enemy"),
     # Budgeted as part of the knight.
     Asset("knight_hat", "knight", build_knight_hat,
           "the knight's tall floppy hat, pivot at its base"),
+    # Shown instead of the knight's helmet after a headshot (never both).
+    Asset("knight_helmet_dent", "knight", build_knight_helmet_dent,
+          "the knight's helmet dented by a headshot, origin at the neck"),
 ]
 
 

@@ -1,0 +1,45 @@
+{
+  "name": "knight_helmet_dent",
+  "kind": "knight",
+  "source": "art/blender/assets/knight.py",
+  "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
+  "triangles": 1516,
+  "triangle_budget": 8000,
+  "bounds": {
+    "min": [
+      -0.2353,
+      1.446,
+      -0.1833
+    ],
+    "max": [
+      0.2353,
+      1.742,
+      0.1833
+    ]
+  },
+  "parts": {
+    "HelmetDent": {
+      "parent": "knight_helmet_dent",
+      "bounds": {
+        "min": [
+          -0.2353,
+          1.446,
+          -0.1833
+        ],
+        "max": [
+          0.2353,
+          1.742,
+          0.1833
+        ]
+      },
+      "triangles": 1516,
+      "colors": [
+        "knight_steel",
+        "knight_steel_shadow",
+        "nail_highlight",
+        "pupil_black"
+      ]
+    }
+  },
+  "attach": {}
+}

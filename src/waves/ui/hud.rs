@@ -18,7 +18,7 @@ use crate::{
     },
     shared::{GameCue, Player},
     tuning::Tuning,
-    waves::{RunPhase, RunSummary},
+    waves::{RunPhase, RunSummary, ScoreAwarded, ScoreKind},
 };
 use bevy::prelude::*;
 use std::fmt::Write;
@@ -35,11 +35,16 @@ pub const SCORE_POP_SECONDS: f32 = 0.28;
 pub const POTION_NUMBER_SECONDS: f32 = 1.0;
 pub const POTION_NUMBER_RISE: f32 = 36.0;
 pub const POTION_NUMBER_GAP: f32 = 64.0;
+/// The wave-clear bonus under the score: its size, life (s) and rise (px).
+pub const SCORE_BONUS_SIZE: f32 = 26.0;
+pub const SCORE_BONUS_SECONDS: f32 = 1.4;
+pub const SCORE_BONUS_RISE: f32 = 8.0;
 
 pub(super) fn build(app: &mut App) {
     app.init_resource::<HudClock>()
+        .add_message::<ScoreAwarded>()
         .add_systems(Startup, spawn_run_hud)
-        .add_systems(Update, (update_run_hud, potion_number).chain());
+        .add_systems(Update, (update_run_hud, potion_number, wave_bonus).chain());
 }
 
 /// The HUD's animation state (real-time clocks) and a scratch string.
@@ -55,6 +60,8 @@ struct HudClock {
     banner_pop: f32,
     banner_kind: Option<BannerKind>,
     potion: Option<f32>,
+    /// The wave-clear bonus popping: (age, points).
+    bonus: Option<(f32, u32)>,
     scratch: String,
 }
 
@@ -70,6 +77,7 @@ impl Default for HudClock {
             banner_pop: f32::MAX,
             banner_kind: None,
             potion: None,
+            bonus: None,
             scratch: String::with_capacity(64),
         }
     }
@@ -84,7 +92,7 @@ fn stat_frame(
     value_size: f32,
     min_width: f32,
     frame: Option<RunUi>,
-) {
+) -> Entity {
     let mut e = parent.spawn((
         Node {
             flex_direction: FlexDirection::Column,
@@ -107,6 +115,7 @@ fn stat_frame(
     if let Some(frame) = frame {
         e.insert(frame);
     }
+    e.id()
 }
 
 fn spawn_run_hud(mut commands: Commands) {
@@ -131,7 +140,23 @@ fn spawn_run_hud(mut commands: Commands) {
             stat_frame(strip, "KNIGHTS", RunUi::Knights, RIM, 28.0, 96.0, None);
             stat_frame(strip, "WAVE", RunUi::Wave, GOLD_FRAME, 34.0, 104.0, None);
             let score = Some(RunUi::ScoreFrame);
-            stat_frame(strip, "SCORE", RunUi::Score, RIM, 28.0, 124.0, score);
+            let frame = stat_frame(strip, "SCORE", RunUi::Score, RIM, 28.0, 124.0, score);
+            // The wave-clear bonus pops just under the score (M4).
+            strip.commands().entity(frame).with_child((
+                RunUi::ScoreBonus,
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: percent(100),
+                    left: px(0),
+                    width: percent(100),
+                    margin: UiRect::top(px(4)),
+                    ..default()
+                },
+                title("+0123456789,", SCORE_BONUS_SIZE, ACCENT),
+                TextLayout::justify(Justify::Center),
+                UiTransform::default(),
+                Visibility::Hidden,
+            ));
         });
 
     // The banner: the break's title, countdown and hint, or a wave's title.
@@ -435,4 +460,55 @@ fn potion_number(
         tf.scale = squash_pop(age) * pop_scale(age, 0.25, 0.4);
     }
     clock.potion = (!done).then_some(age + time.delta_secs());
+}
+
+/// The wave-clear bonus popping under the HUD score (M4): gold "+750" that
+/// stamps in, rises a little and fades.
+#[allow(clippy::type_complexity)]
+fn wave_bonus(
+    time: Res<Time<Real>>,
+    mut awards: MessageReader<ScoreAwarded>,
+    mut clock: ResMut<HudClock>,
+    mut bonus: Query<(
+        &RunUi,
+        &mut Text,
+        &mut TextColor,
+        &mut TextShadow,
+        &mut Visibility,
+        &mut UiTransform,
+    )>,
+) {
+    let clock = &mut *clock;
+    for award in awards.read() {
+        if award.kind == ScoreKind::Wave {
+            clock.bonus = Some((0.0, award.points));
+        }
+    }
+    let Some((age, points)) = clock.bonus else {
+        return;
+    };
+    let t = (age / SCORE_BONUS_SECONDS).clamp(0.0, 1.0);
+    let alpha = if t < 0.65 {
+        1.0
+    } else {
+        1.0 - (t - 0.65) / 0.35
+    };
+    let rise = SCORE_BONUS_RISE * (1.0 - (1.0 - t).powi(2));
+    let done = age >= SCORE_BONUS_SECONDS;
+    let scratch = &mut clock.scratch;
+    for (part, mut text, mut color, mut shadow, mut v, mut tf) in &mut bonus {
+        if *part != RunUi::ScoreBonus {
+            continue;
+        }
+        set_text(&mut text, scratch, |s| {
+            s.push('+');
+            write_thousands(s, points);
+        });
+        color.0 = ACCENT.with_alpha(alpha);
+        shadow.color = INK.with_alpha(alpha);
+        show(&mut v, !done);
+        tf.translation = Val2::px(0.0, -rise);
+        tf.scale = squash_pop(age) * pop_scale(age, 0.3, 0.6);
+    }
+    clock.bonus = (!done).then_some((age + time.delta_secs(), points));
 }

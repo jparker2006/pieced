@@ -326,26 +326,50 @@ pub const TICK_SECONDS: f32 = 1.0 / 60.0;
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct GalleryFreeze;
 
-/// `Res<Time>` for presentation clocks that honor [`GalleryFreeze`]: the delta
-/// reads zero while the gallery holds a moment.
+/// Hitstop (M4, D105): `true` for the rendered frames a kill holds. While it
+/// is set, [`FreezableTime`] reads zero, so effects, the knights' animation
+/// and the viewmodel hold still; `Time`, the fixed gameplay step and input
+/// never pause, so aim and TTK are untouched. Driven by `fx::kills`.
+#[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct HitstopFrozen(pub bool);
+
+impl HitstopFrozen {
+    /// The frame delta `dt` for a presentation clock that holds during a
+    /// hitstop (for systems that don't take [`FreezableTime`]).
+    pub fn delta(this: Option<&Self>, dt: f32) -> f32 {
+        if this.is_some_and(|h| h.0) { 0.0 } else { dt }
+    }
+}
+
+/// `Res<Time>` for presentation clocks that honor [`GalleryFreeze`] and the
+/// kill hitstop ([`HitstopFrozen`]): the delta reads zero while the gallery
+/// holds a moment or a kill holds the frame.
 #[derive(SystemParam)]
 pub struct FreezableTime<'w> {
     time: Res<'w, Time>,
     freeze: Option<Res<'w, GalleryFreeze>>,
+    hitstop: Option<Res<'w, HitstopFrozen>>,
 }
 
 impl FreezableTime<'_> {
-    /// Seconds to advance this frame: `Time::delta_secs`, or 0 while frozen.
+    /// Seconds to advance this frame: `Time::delta_secs`, or 0 while frozen
+    /// (the gallery) or held (a kill's hitstop).
     pub fn delta_secs(&self) -> f32 {
-        if self.is_frozen() {
+        if self.is_frozen() || self.is_held() {
             0.0
         } else {
             self.time.delta_secs()
         }
     }
 
+    /// The gallery holds a moment ([`GalleryFreeze`]).
     pub fn is_frozen(&self) -> bool {
         self.freeze.is_some()
+    }
+
+    /// A kill's hitstop holds this frame ([`HitstopFrozen`]).
+    pub fn is_held(&self) -> bool {
+        self.hitstop.as_ref().is_some_and(|h| h.0)
     }
 }
 
