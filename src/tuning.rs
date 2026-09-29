@@ -36,6 +36,11 @@ pub struct Tuning {
     /// Kill feedback feel (M4 chunk 1): designer numbers, never persisted.
     #[serde(skip)]
     pub kills: crate::fx::kills::KillFeelTuning,
+    /// The adaptive score's designer numbers (M4 chunk 3): crossfades, ducks,
+    /// mix levels. Never persisted; the Music and Effects sliders live in
+    /// `audio`.
+    #[serde(skip)]
+    pub music: crate::audio::music::MusicTuning,
 }
 
 impl Tuning {

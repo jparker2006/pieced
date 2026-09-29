@@ -63,6 +63,10 @@ pub const RIFLE_MAG_OUT: CueSpec = spec(0.32, -12.0);
 pub const RIFLE_MAG_IN: CueSpec = spec(0.32, -12.0);
 pub const PUMP_SHELL: CueSpec = spec(0.14, -12.0);
 pub const WEAPON_SWITCH: CueSpec = spec(0.25, -11.0);
+// Handling (M4, D106).
+pub const WEAPON_DRAW: CueSpec = spec(0.40, -11.0);
+pub const ADS_IN: CueSpec = spec(0.22, -12.0);
+pub const ADS_OUT: CueSpec = spec(0.20, -12.0);
 // Hits.
 pub const BODY_HIT: CueSpec = spec(0.11, -11.0);
 pub const HEADSHOT: CueSpec = spec(0.55, -11.0);
@@ -342,14 +346,37 @@ fn bonk(buf: &mut Buffer, start: f32, pitch: f32, gain: f32, seed: u64) {
 // Weapons
 // ---------------------------------------------------------------------------
 
-/// Rifle cast: a bright "zap" that falls from ~2.7 kHz to ~200 Hz, a small punch,
-/// and a soft twinkling shimmer. It fires six times a second, so the body is over
-/// in ~80 ms and the shimmer stays soft and under 3.2 kHz (the hit sparkle owns
-/// the top). `variant` picks one of [`RIFLE_VARIANTS`] round-robin takes.
+/// Rifle cast, layered (M4, D106): the brass **mechanism** clicking, the
+/// **magic body** (a bright "zap" that falls from ~2.7 kHz to ~200 Hz over a
+/// small punch), and a **tail** (a soft twinkling shimmer and a breath of
+/// air; the tight room is baked on top). It fires six times a second, so the
+/// body is over in ~80 ms, and everything stays under 3.5 kHz except the soft
+/// shimmer (the hit sparkle owns the top). `variant` picks one of
+/// [`RIFLE_VARIANTS`] round-robin takes.
 pub fn rifle_shot(variant: u32) -> Vec<f32> {
     let v = variant % RIFLE_VARIANTS;
     let top = [2600.0, 2760.0, 2460.0][v as usize];
     let mut b = Buffer::new(0.33);
+    // Transient: the mechanism.
+    click(
+        &mut b,
+        0.0,
+        2300.0 + 150.0 * v as f32,
+        3.0,
+        0.0007,
+        0.4,
+        13 + v as u64,
+    );
+    partials(
+        &mut b,
+        0.0004,
+        &[
+            (1870.0 + 40.0 * v as f32, 1.0, 0.004),
+            (3150.0, 0.5, 0.0025),
+        ],
+        0.22,
+    );
+    // Body: the zap and its punch.
     snap(&mut b, 0.0, 3500.0, 0.0012, 0.35, 11 + v as u64);
     let mut o = Osc::default();
     b.add(0.0, 0.3, 1.0, |t| {
@@ -357,6 +384,7 @@ pub fn rifle_shot(variant: u32) -> Vec<f32> {
         o.soft_square(freq, 1.0 + 3.0 * decay(t, 0.025)) * ad(t, 0.0006, 0.04)
     });
     thump(&mut b, 0.0, 110.0, 230.0, 0.012, 0.028, 0.45);
+    // Tail: the shimmer and a breath of air.
     sparkle(
         &mut b,
         0.02,
@@ -368,11 +396,23 @@ pub fn rifle_shot(variant: u32) -> Vec<f32> {
         true,
         12 + 7 * v as u64,
     );
+    noise_bp(
+        &mut b,
+        0.01,
+        0.2,
+        0.1,
+        14 + v as u64,
+        1.3,
+        |t| 1600.0 * 2f32.powf(-t / 0.08),
+        |t| ad(t, 0.004, 0.045),
+    );
     b.master(RIFLE_CAST.rms_db)
 }
 
-/// Pump cast: "whoomp-zap". An air push over a falling thump, a fat detuned zap,
-/// then a strummed violet chime burst (A6, C7, E7, A7).
+/// Pump cast, layered (M4, D106): a **low whoomp** (an air push over a deep
+/// falling thump and a fat detuned zap), a **chime** (a strummed violet burst:
+/// A6, C7, E7, A7) and a **tail** (the blast's air falling away; the tight
+/// room is baked on top).
 pub fn pump_shot() -> Vec<f32> {
     let mut low = Buffer::new(0.55);
     snap(&mut low, 0.0, 2200.0, 0.002, 0.5, 21);
@@ -385,7 +425,7 @@ pub fn pump_shot() -> Vec<f32> {
         |t| 200.0 + 1800.0 * decay(t, 0.03),
         |t| ad(t, 0.003, 0.05),
     );
-    thump(&mut low, 0.0, 110.0, 260.0, 0.035, 0.07, 1.1);
+    thump(&mut low, 0.0, 95.0, 240.0, 0.045, 0.085, 1.2);
     for (detune, phase) in [(0.985, 0.0), (1.015, 0.37)] {
         let mut o = Osc::at(phase);
         low.add(0.0, 0.4, 0.4, |t| {
@@ -399,6 +439,17 @@ pub fn pump_shot() -> Vec<f32> {
         chime(&mut b, 0.012 + 0.009 * i as f32, note(m), 0.1, 0.26);
     }
     sparkle(&mut b, 0.02, 0.12, 5, (96.0, 108.0), 0.028, 0.14, false, 23);
+    // Tail: the air of the blast sweeping down as it dies.
+    noise_bp(
+        &mut b,
+        0.03,
+        0.45,
+        0.22,
+        24,
+        1.1,
+        |t| 1400.0 * 2f32.powf(-t / 0.15),
+        |t| ad(t, 0.02, 0.11),
+    );
     b.master(PUMP_CAST.rms_db)
 }
 
@@ -521,6 +572,90 @@ pub fn weapon_switch() -> Vec<f32> {
     );
     sparkle(&mut b, 0.07, 0.08, 3, (98.0, 107.0), 0.02, 0.12, true, 72);
     b.master(WEAPON_SWITCH.rms_db)
+}
+
+/// A gun coming up (M4, D106): a cloth swish, the brass seating in the glove
+/// with a clack, and the crystal waking with a rising hum and a glint.
+pub fn weapon_draw() -> Vec<f32> {
+    let mut b = Buffer::new(0.38);
+    // Transient-to-come: the swish of the draw.
+    noise_bp(
+        &mut b,
+        0.0,
+        0.14,
+        0.7,
+        75,
+        1.0,
+        |t| 600.0 * 2f32.powf(2.0 * (t / 0.13).min(1.0)),
+        |t| (PI * (t / 0.14).min(1.0)).sin().powi(2),
+    );
+    // Body: the brass seats.
+    let seat = 0.12;
+    click(&mut b, seat, 2800.0, 2.5, 0.0009, 0.7, 76);
+    partials(
+        &mut b,
+        seat,
+        &[
+            (1420.0, 1.0, 0.012),
+            (2330.0, 0.6, 0.008),
+            (3050.0, 0.3, 0.005),
+        ],
+        0.4,
+    );
+    thump(&mut b, seat, 170.0, 300.0, 0.008, 0.02, 0.5);
+    // Tail: the crystal wakes, a hum rising an octave, and a glint.
+    let (mut o1, mut o2) = (Osc::default(), Osc::default());
+    b.add(seat + 0.01, 0.22, 0.28, |t| {
+        let x = (t / 0.16).min(1.0);
+        let f = note(64.0) * 2f32.powf(x);
+        (o1.sine(f) + 0.35 * o2.sine(2.0 * f)) * attack(t, 0.03) * release(t, 0.22, 0.07)
+    });
+    twinkle(&mut b, seat + 0.14, note(100.0), 0.03, 0.25);
+    b.master(WEAPON_DRAW.rms_db)
+}
+
+/// Aiming down sights: the gun shifts in the gloves (a short leathery swish
+/// and a soft brass tick) and a faint rising glint.
+pub fn ads_in() -> Vec<f32> {
+    let mut b = Buffer::new(0.2);
+    noise_lp(
+        &mut b,
+        0.0,
+        0.1,
+        0.8,
+        77,
+        |t| 900.0 + 900.0 * (t / 0.08).min(1.0),
+        |t| (PI * (t / 0.09).min(1.0)).sin(),
+    );
+    click(&mut b, 0.055, 1900.0, 2.0, 0.0008, 0.45, 78);
+    partials(
+        &mut b,
+        0.055,
+        &[(1650.0, 1.0, 0.008), (2700.0, 0.4, 0.005)],
+        0.25,
+    );
+    let mut o = Osc::default();
+    b.add(0.06, 0.12, 0.12, |t| {
+        o.sine(note(96.0) * 2f32.powf(0.3 * t / 0.1)) * ad(t, 0.01, 0.04)
+    });
+    b.master(ADS_IN.rms_db)
+}
+
+/// Leaving the sights: the shift, softer and falling, with no glint.
+pub fn ads_out() -> Vec<f32> {
+    let mut b = Buffer::new(0.18);
+    noise_lp(
+        &mut b,
+        0.0,
+        0.09,
+        0.8,
+        79,
+        |t| 1700.0 - 900.0 * (t / 0.08).min(1.0),
+        |t| (PI * (t / 0.08).min(1.0)).sin(),
+    );
+    click(&mut b, 0.045, 1600.0, 2.0, 0.0008, 0.35, 80);
+    partials(&mut b, 0.045, &[(1450.0, 1.0, 0.007)], 0.2);
+    b.master(ADS_OUT.rms_db)
 }
 
 // ---------------------------------------------------------------------------

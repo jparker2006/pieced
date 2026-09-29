@@ -11,8 +11,21 @@
 //! and a poof-and-slide-whistle elimination. Every cue is mastered to a documented
 //! loudness target (see [`bank`]) and mixed by [`Sfx::mix_db`]; hit confirmation
 //! sits above the player's own casts and ducks them on the frame it lands.
+//!
+//! Milestone 4, chunk 3 (D107, D119): an adaptive orchestral score
+//! ([`music`]), and richer effects. Every cue is layered (transient, body,
+//! tail) and gets a generated room ([`reverb`]) baked in when the bank renders
+//! on its background thread, so the rooms cost nothing per frame; repeated
+//! cues vary in pitch ([`pitch_spread`]); the guns are layered shots (the
+//! rifle a mechanism click, a magic body and a tail; the pump a low whoomp, a
+//! chime and a tail). The Music and Effects sliders sit under the master
+//! volume.
 
 pub mod bank;
+pub mod celesta;
+pub mod loudness;
+pub mod music;
+pub mod reverb;
 pub mod synth;
 pub mod wand;
 
@@ -25,8 +38,8 @@ use crate::{
     hud::{FrameStartTick, HitFeedbackStats},
     render::MainCamera,
     shared::{
-        DamageDealt, DamageTarget, Eliminated, GameCue, PieceChange, PieceChanged, PieceKind,
-        Player, ShotFired, WeaponKind,
+        ActiveTool, DamageDealt, DamageTarget, Eliminated, GameCue, PieceChange, PieceChanged,
+        PieceKind, Player, ShotFired, WeaponKind,
     },
     tuning::Tuning,
 };
@@ -55,6 +68,12 @@ pub struct AudioTuning {
     /// Gain on the player's own weapon sounds that start on the same frame as one
     /// of their hit confirmations, so the hit cuts through (0.7 ≈ −3 dB).
     pub hit_duck: f32,
+    /// The score's level under the master volume (Settings → Audio → Music;
+    /// M4). Silent at 0.
+    pub music_volume: f32,
+    /// The effects' level under the master volume (Settings → Audio →
+    /// Effects; M4). Silent at 0.
+    pub effects_volume: f32,
 }
 
 impl Default for AudioTuning {
@@ -70,6 +89,8 @@ impl Default for AudioTuning {
             movement_volume: 1.0,
             pump_rack_delay: 0.34,
             hit_duck: 0.7,
+            music_volume: 0.8,
+            effects_volume: 1.0,
         }
     }
 }
@@ -82,6 +103,12 @@ impl AudioTuning {
         } else {
             self.master_volume.clamp(0.0, 1.0)
         }
+    }
+
+    /// The effects' gain: master × Effects (exactly 0 when either is 0 or
+    /// muted).
+    pub fn effects_gain(&self) -> f32 {
+        self.effective_master() * self.effects_volume.clamp(0.0, 1.0)
     }
 
     fn category_gain(&self, category: SfxCategory) -> f32 {
@@ -181,6 +208,14 @@ pub enum Sfx {
     /// A multi-kill callout's sting: take 0 "Double!" .. 3 "Rampage!",
     /// rising and growing with the chain.
     MultiKill,
+    /// A gun coming up (M4, D106): a cloth swish, the brass seating with a
+    /// clack, and the crystal waking with a hum.
+    WeaponDraw,
+    /// Aiming down sights: a soft leather-and-brass shift with a faint
+    /// rising glint.
+    AdsIn,
+    /// Leaving the sights: the shift, softer and falling.
+    AdsOut,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -197,7 +232,7 @@ pub enum SfxCategory {
 }
 
 impl Sfx {
-    pub const ALL: [Sfx; 38] = [
+    pub const ALL: [Sfx; 41] = [
         Sfx::RifleShot,
         Sfx::PumpShot,
         Sfx::PumpRack,
@@ -236,6 +271,9 @@ impl Sfx {
         Sfx::HelmetDing,
         Sfx::ArmorClatter,
         Sfx::MultiKill,
+        Sfx::WeaponDraw,
+        Sfx::AdsIn,
+        Sfx::AdsOut,
     ];
 
     /// The cue for a piece event: walls are brick (clunk, crack, crumble); floors
@@ -257,8 +295,51 @@ impl Sfx {
         self.synthesize_take(0)
     }
 
-    /// Renders round-robin take `take` (wrapping at [`Sfx::takes`]).
+    /// Renders round-robin take `take` (wrapping at [`Sfx::takes`]) as it
+    /// plays: the layered design with its room baked in, mastered to the
+    /// cue's loudness target.
     pub fn synthesize_take(self, take: u32) -> Vec<f32> {
+        let dry = self.dry_take(take);
+        let wet = reverb::bake(&dry, &self.room());
+        synth::Buffer { samples: wet }.master(self.spec().rms_db)
+    }
+
+    /// The room baked into the cue (M4): tight for the player's guns, bright
+    /// and short for hits, dry stone for bricks, wooden for planks and
+    /// movement, open air for the world's sounds, a small hall for the run's
+    /// beats.
+    pub fn room(self) -> reverb::Room {
+        use Sfx::*;
+        match self {
+            RifleShot | PumpShot | PumpRack | RifleMagOut | RifleMagIn | PumpShell
+            | WeaponSwitch | WeaponDraw | AdsIn | AdsOut => reverb::Room::TIGHT,
+            HitTick | HeadshotDing | ShieldHit | ShieldBreak | Elimination | KillConfirm
+            | HelmetDing => reverb::Room::HIT,
+            BrickPlace | BrickCrack | BrickBreak => reverb::Room::STONE,
+            PlankPlace | PlankCrack | PlankBreak | Rejected | Footstep | Jump | Land | Slide => {
+                reverb::Room::WOOD
+            }
+            OrbCast | OrbWhoosh | OrbBonk | WandWarning | ShipHum | ShipBeam | VoidYelp
+            | ArmorClatter => reverb::Room::WORLD,
+            PotionGulp | WaveCleared | WaveStart | NewBest | MultiKill => reverb::Room::HALL,
+        }
+    }
+
+    /// Big hits duck the music for 150 ms (M4): a kill, a headshot, a shield
+    /// breaking, the player being hit by an orb.
+    pub fn ducks_music(self) -> bool {
+        matches!(
+            self,
+            Sfx::KillConfirm
+                | Sfx::HeadshotDing
+                | Sfx::ShieldBreak
+                | Sfx::Elimination
+                | Sfx::OrbBonk
+        )
+    }
+
+    /// The dry design of take `take` (mastered, before its room).
+    pub fn dry_take(self, take: u32) -> Vec<f32> {
         match self {
             Sfx::RifleShot => bank::rifle_shot(take),
             Sfx::PumpShot => bank::pump_shot(),
@@ -298,6 +379,9 @@ impl Sfx {
             Sfx::HelmetDing => bank::helmet_ding(),
             Sfx::ArmorClatter => bank::armor_clatter(take),
             Sfx::MultiKill => bank::multi_kill(take),
+            Sfx::WeaponDraw => bank::weapon_draw(),
+            Sfx::AdsIn => bank::ads_in(),
+            Sfx::AdsOut => bank::ads_out(),
         }
     }
 
@@ -360,6 +444,9 @@ impl Sfx {
             HelmetDing => bank::HELMET_DING,
             ArmorClatter => bank::ARMOR_CLATTER,
             MultiKill => bank::MULTI_KILL,
+            WeaponDraw => bank::WEAPON_DRAW,
+            AdsIn => bank::ADS_IN,
+            AdsOut => bank::ADS_OUT,
         }
     }
 
@@ -367,7 +454,7 @@ impl Sfx {
         use Sfx::*;
         match self {
             RifleShot | PumpShot | PumpRack | RifleMagOut | RifleMagIn | PumpShell
-            | WeaponSwitch => SfxCategory::Weapons,
+            | WeaponSwitch | WeaponDraw | AdsIn | AdsOut => SfxCategory::Weapons,
             HitTick | HeadshotDing | ShieldHit | ShieldBreak | Elimination => SfxCategory::Hits,
             BrickPlace | PlankPlace | BrickCrack | PlankCrack | BrickBreak | PlankBreak
             | Rejected => SfxCategory::Building,
@@ -404,8 +491,9 @@ impl Sfx {
     /// | rifle cast, piece places and cracks | −18 |
     /// | orb cast (a knight's fwoom), ship hum | −19 |
     /// | pump rack, reload, rejected, ship beam, armor clatter | −20 |
-    /// | pump shell | −21 |
-    /// | weapon switch | −22 |
+    /// | pump shell, weapon draw | −21 |
+    /// | weapon switch, ADS in and out | −22 |
+
     /// | land, slide | −22 |
     /// | jump | −26 |
     /// | footstep | −27 |
@@ -420,8 +508,8 @@ impl Sfx {
             RifleShot | BrickPlace | PlankPlace | BrickCrack | PlankCrack => -18.0,
             OrbCast | ShipHum => -19.0,
             PumpRack | RifleMagOut | RifleMagIn | Rejected | ShipBeam | ArmorClatter => -20.0,
-            PumpShell => -21.0,
-            WeaponSwitch | Land | Slide => -22.0,
+            PumpShell | WeaponDraw => -21.0,
+            WeaponSwitch | AdsIn | AdsOut | Land | Slide => -22.0,
             Jump => -26.0,
             Footstep => -27.0,
         }
@@ -463,8 +551,8 @@ pub fn duck_gain(sfx: Sfx, own: bool, own_hit_this_frame: bool, duck: f32) -> f3
 }
 
 /// Every cue's takes as WAV files, indexed by [`Sfx`] and then take. This is all
-/// the synthesis work done at startup.
-pub fn render_bank() -> Vec<Vec<Vec<u8>>> {
+/// the synthesis work done at startup (on the `sound-bank` thread).
+pub fn render_bank() -> RenderedBank {
     Sfx::ALL
         .iter()
         .map(|sfx| {
@@ -534,32 +622,33 @@ pub struct GameAudioPlugin;
 
 impl Plugin for GameAudioPlugin {
     fn build(&self, app: &mut App) {
-        // Synthesis starts now, on its own thread, so it overlaps the renderer
-        // and window setup instead of adding to Startup (launch, W8).
-        let job = std::thread::Builder::new()
-            .name("sound-bank".into())
-            .spawn(render_bank)
-            .ok();
+        // Synthesis (and the rooms baked into every cue) starts now, on its own
+        // thread, so it overlaps the renderer and window setup; the bank is
+        // filed the frame it's done and never waited on (launch, W8, M4).
         app.init_resource::<PlayQueue>()
             .add_message::<KillConfirmed>()
             .add_message::<ArmorClattered>()
-            .insert_resource(SoundBankJob(std::sync::Mutex::new(job)))
-            .add_systems(Startup, build_sound_bank)
-            .add_observer(attach_listener)
-            .add_systems(
-                Update,
-                (
-                    queue_combat_sounds,
-                    queue_kill_sounds,
-                    queue_piece_sounds,
-                    queue_cue_sounds,
-                    queue_run_sounds,
-                    play_queued,
-                    apply_live_volume,
-                )
-                    .chain()
-                    .after(KillFeedbackSet),
-            );
+            .insert_resource(SoundBankJob::start())
+            .add_systems(Startup, hold_boot_for_the_bank)
+            .add_observer(attach_listener);
+        music::build(app);
+        app.add_systems(
+            Update,
+            (
+                file_sound_bank,
+                queue_combat_sounds,
+                queue_kill_sounds,
+                queue_piece_sounds,
+                queue_cue_sounds,
+                queue_run_sounds,
+                play_queued,
+                apply_live_volume,
+                music::receive_music,
+                music::drive_music,
+            )
+                .chain()
+                .after(KillFeedbackSet),
+        );
         wand::build(app);
     }
 }
@@ -574,7 +663,7 @@ pub struct Voice {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct PlayRequest {
+pub(crate) struct PlayRequest {
     sfx: Sfx,
     /// World position for spatial sounds; `None` plays it as the player's own.
     at: Option<Vec3>,
@@ -621,13 +710,7 @@ impl PlayQueue {
     ) {
         // Small, deterministic pitch variation so repeats never sound machine-gunned.
         self.variation = self.variation.wrapping_add(1);
-        let h = self.variation.wrapping_mul(2_654_435_761) >> 16;
-        let spread = match sfx.category() {
-            SfxCategory::Movement => 0.08,
-            SfxCategory::Weapons | SfxCategory::Building => 0.03,
-            SfxCategory::Hits | SfxCategory::Run | SfxCategory::Confirm => 0.0,
-        };
-        let speed = 1.0 + spread * ((h % 1000) as f32 / 500.0 - 1.0);
+        let speed = pitch_variation(sfx, self.variation);
         let take = self.takes[sfx as usize];
         self.takes[sfx as usize] = (take + 1) % sfx.takes().max(1);
         self.pending.push(PlayRequest {
@@ -649,6 +732,29 @@ impl PlayQueue {
     }
 }
 
+/// How far a cue's pitch varies from play to play (± fraction, M4): steps and
+/// the other movement sounds, body and shield hits ±4%, piece placements and
+/// the rest of building ±5%, the guns ±3%. The signature cues (the headshot
+/// ding, kill confirmation, the run's beats) keep their pitch.
+pub fn pitch_spread(sfx: Sfx) -> f32 {
+    match sfx {
+        Sfx::HitTick | Sfx::ShieldHit => 0.04,
+        _ => match sfx.category() {
+            SfxCategory::Movement => 0.04,
+            SfxCategory::Building => 0.05,
+            SfxCategory::Weapons => 0.03,
+            SfxCategory::Hits | SfxCategory::Run | SfxCategory::Confirm => 0.0,
+        },
+    }
+}
+
+/// The playback speed for the `n`th sound queued: a seeded hash of `n`, spread
+/// evenly over ± [`pitch_spread`].
+pub fn pitch_variation(sfx: Sfx, n: u32) -> f32 {
+    let h = n.wrapping_mul(2_654_435_761) >> 16;
+    1.0 + pitch_spread(sfx) * ((h % 1001) as f32 / 500.0 - 1.0)
+}
+
 /// The sounds a confirmed kill adds over its hit (M4, D105): the kill chime,
 /// and a multi-kill sting at the chain's level (0 double .. 3 rampage).
 pub fn kill_cues(kill: &KillConfirmed) -> (Sfx, Option<(Sfx, u32)>) {
@@ -656,21 +762,83 @@ pub fn kill_cues(kill: &KillConfirmed) -> (Sfx, Option<(Sfx, u32)>) {
     (Sfx::KillConfirm, sting)
 }
 
-/// The sound bank's synthesis thread, started when the plugin builds.
-#[derive(Resource)]
-struct SoundBankJob(std::sync::Mutex<Option<std::thread::JoinHandle<Vec<Vec<Vec<u8>>>>>>);
+/// Every cue's takes as WAV files (see [`render_bank`]).
+pub type RenderedBank = Vec<Vec<Vec<u8>>>;
 
-fn build_sound_bank(
+/// The sound bank's synthesis thread (named `sound-bank`), started when the
+/// plugin builds.
+#[derive(Resource)]
+pub struct SoundBankJob {
+    thread: std::sync::Mutex<Option<std::thread::JoinHandle<RenderedBank>>>,
+    done: std::sync::Mutex<Option<RenderedBank>>,
+}
+
+impl SoundBankJob {
+    fn start() -> Self {
+        let thread = std::thread::Builder::new()
+            .name("sound-bank".into())
+            .spawn(render_bank)
+            .ok();
+        Self {
+            thread: std::sync::Mutex::new(thread),
+            done: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// The synthesis thread's name (none if it couldn't start).
+    pub fn thread_name(&self) -> Option<String> {
+        let thread = self.thread.lock().ok()?;
+        thread.as_ref()?.thread().name().map(str::to_owned)
+    }
+
+    /// Waits for the bank to finish (tests and probes that want it filed on
+    /// the next frame).
+    pub fn wait(&self) {
+        let handle = self.thread.lock().ok().and_then(|mut t| t.take());
+        if let Some(bank) = handle.and_then(|h| h.join().ok())
+            && let Ok(mut done) = self.done.lock()
+        {
+            *done = Some(bank);
+        }
+    }
+
+    /// The bank once the thread is done: `Some(None)` if it failed.
+    fn take_if_done(&self) -> Option<Option<RenderedBank>> {
+        let running = self
+            .thread
+            .lock()
+            .map(|t| t.as_ref().is_some_and(|h| !h.is_finished()))
+            .unwrap_or(false);
+        if running {
+            return None;
+        }
+        self.wait();
+        Some(self.done.lock().ok().and_then(|mut d| d.take()))
+    }
+}
+
+/// Play can't start before the bank is filed (it normally is, long before
+/// the models and pipelines are ready).
+const BANK_GATE: &str = "sound-bank";
+
+fn hold_boot_for_the_bank(gate: Option<ResMut<crate::app::BootGate>>) {
+    if let Some(mut gate) = gate {
+        gate.hold(BANK_GATE);
+    }
+}
+
+/// Files the bank the frame its thread finishes; nothing blocks on it. If the
+/// thread couldn't start (or panicked), the bank is synthesized here instead.
+fn file_sound_bank(
     mut commands: Commands,
     mut sources: ResMut<Assets<AudioSource>>,
     job: Option<Res<SoundBankJob>>,
+    gate: Option<ResMut<crate::app::BootGate>>,
 ) {
-    let handle = job.and_then(|j| j.0.lock().ok().and_then(|mut h| h.take()));
-    // Joined here (normally long finished); synthesized in place if the
-    // thread could not start or panicked.
-    let bank = handle
-        .and_then(|h| h.join().ok())
-        .unwrap_or_else(render_bank);
+    let Some(ready) = job.and_then(|job| job.take_if_done()) else {
+        return;
+    };
+    let bank = ready.unwrap_or_else(render_bank);
     commands.remove_resource::<SoundBankJob>();
     let handles = bank
         .into_iter()
@@ -682,6 +850,9 @@ fn build_sound_bank(
         })
         .collect();
     commands.insert_resource(SoundBank { handles });
+    if let Some(mut gate) = gate {
+        gate.release(BANK_GATE);
+    }
 }
 
 fn attach_listener(add: On<Add, MainCamera>, mut commands: Commands) {
@@ -837,13 +1008,18 @@ fn queue_cue_sounds(
                 WeaponKind::Rifle => (who, Sfx::RifleMagIn),
                 WeaponKind::Pump => (who, Sfx::PumpRack),
             },
-            GameCue::WeaponSwitch { who, .. } => (who, Sfx::WeaponSwitch),
+            // A gun comes up with its draw (D106); a building piece swishes.
+            GameCue::WeaponSwitch { who, tool } => match tool {
+                ActiveTool::Weapon(_) => (who, Sfx::WeaponDraw),
+                ActiveTool::Build(_) => (who, Sfx::WeaponSwitch),
+            },
+            GameCue::AdsChanged { who, ads } => (who, if ads { Sfx::AdsIn } else { Sfx::AdsOut }),
             GameCue::PlacementRejected { who } | GameCue::EditRejected { who } => {
                 (who, Sfx::Rejected)
             }
             // An edit clicks into place.
             GameCue::PieceEdited { who, .. } => (who, Sfx::WeaponSwitch),
-            GameCue::AdsChanged { .. } | GameCue::Respawned { .. } => continue,
+            GameCue::Respawned { .. } => continue,
             // The wand's cast and off-screen warning need the view and the
             // wand tip: `wand::queue_wand_sounds` plays them.
             GameCue::WandWindup { .. } | GameCue::OrbFired { .. } => continue,
@@ -872,10 +1048,12 @@ fn queue_cue_sounds(
 
 /// The run's beats from [`RunSummary`](crate::waves::RunSummary): a jingle
 /// when a wave is cleared, a horn as the next one starts, and a fanfare when
-/// the results show a new best.
+/// the results show a new best. Once the score's orchestral stings are loaded
+/// they play the wave start and the new best instead ([`music`]).
 fn queue_run_sounds(
     time: Res<Time<Real>>,
     summary: Option<Res<crate::waves::RunSummary>>,
+    music: Option<Res<music::MusicBank>>,
     mut last: Local<Option<(crate::waves::RunPhase, u32)>>,
     mut queue: ResMut<PlayQueue>,
 ) {
@@ -886,8 +1064,13 @@ fn queue_run_sounds(
     let Some((was, was_wave)) = last.replace((summary.phase, summary.wave)) else {
         return;
     };
-    if let Some(sfx) = run_beat(was, was_wave, &summary) {
-        queue.push(sfx, None, time.elapsed_secs_f64());
+    let orchestral =
+        |sting: music::Sting| music.as_ref().is_some_and(|m| m.is_loaded(sting.track()));
+    match run_beat(was, was_wave, &summary) {
+        Some(Sfx::WaveStart) if orchestral(music::Sting::RoundStart) => {}
+        Some(Sfx::NewBest) if orchestral(music::Sting::NewBest) => {}
+        Some(sfx) => queue.push(sfx, None, time.elapsed_secs_f64()),
+        None => {}
     }
 }
 
@@ -908,12 +1091,24 @@ pub fn run_beat(
     }
 }
 
+/// Scratch lists [`play_queued`] reuses every frame, so playing sounds never
+/// allocates once they've grown.
+#[derive(Default)]
+pub(crate) struct PlayScratch {
+    due: Vec<PlayRequest>,
+    active: Vec<(Entity, u8, f64)>,
+    played_own: Vec<Sfx>,
+}
+
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn play_queued(
     mut commands: Commands,
     time: Res<Time<Real>>,
     tuning: Res<Tuning>,
     bank: Option<Res<SoundBank>>,
     mut queue: ResMut<PlayQueue>,
+    mut cues: Option<ResMut<music::MusicCues>>,
+    mut scratch: Local<PlayScratch>,
     voices: Query<(Entity, &Voice)>,
 ) {
     let Some(bank) = bank else {
@@ -922,8 +1117,13 @@ pub(crate) fn play_queued(
     };
     let now = time.elapsed_secs_f64();
     let audio = &tuning.audio;
-    let master = audio.effective_master();
-    let mut due = Vec::new();
+    let gain = audio.effects_gain();
+    let PlayScratch {
+        due,
+        active,
+        played_own,
+    } = &mut *scratch;
+    due.clear();
     queue.pending.retain(|r| {
         if r.when <= now {
             due.push(*r);
@@ -932,20 +1132,27 @@ pub(crate) fn play_queued(
             true
         }
     });
-    if master <= 0.0 || due.is_empty() {
+    if due.is_empty() {
         return;
     }
-    let mut active: Vec<(Entity, u8, f64)> = voices
-        .iter()
-        .map(|(e, v)| (e, v.priority, v.started))
-        .collect();
+    // A big hit ducks the score (even with the effects turned down).
+    if let Some(cues) = cues.as_mut()
+        && due.iter().any(|r| r.sfx.ducks_music())
+    {
+        cues.big_hit = true;
+    }
+    if gain <= 0.0 {
+        return;
+    }
+    active.clear();
+    active.extend(voices.iter().map(|(e, v)| (e, v.priority, v.started)));
     // One of each non-spatial sound per frame is enough (two hits on one frame
     // shouldn't double the volume).
-    let mut played_own: Vec<Sfx> = Vec::new();
+    played_own.clear();
     let own_hit = due
         .iter()
         .any(|r| r.at.is_none() && r.sfx.category() == SfxCategory::Hits);
-    for request in due {
+    for request in due.iter() {
         if request.at.is_none() {
             if played_own.contains(&request.sfx) {
                 continue;
@@ -953,7 +1160,7 @@ pub(crate) fn play_queued(
             played_own.push(request.sfx);
         }
         let priority = request.sfx.priority();
-        match choose_voice(&active, audio.max_voices as usize, priority) {
+        match choose_voice(active, audio.max_voices as usize, priority) {
             VoiceDecision::Play => {}
             VoiceDecision::Steal(victim) => {
                 commands.entity(victim).despawn();
@@ -967,7 +1174,7 @@ pub(crate) fn play_queued(
             * request.gain
             * duck;
         let mut settings = PlaybackSettings::DESPAWN
-            .with_volume(Volume::Linear(level * master))
+            .with_volume(Volume::Linear(level * gain))
             .with_speed(request.speed);
         let mut entity = commands.spawn((
             Name::new("Sfx"),
@@ -989,7 +1196,8 @@ pub(crate) fn play_queued(
     }
 }
 
-/// Master volume and mute apply to sounds already playing, too.
+/// Master volume, mute and the Effects slider apply to sounds already
+/// playing, too.
 fn apply_live_volume(
     tuning: Res<Tuning>,
     mut last: Local<Option<f32>>,
@@ -999,7 +1207,7 @@ fn apply_live_volume(
         Option<&mut SpatialAudioSink>,
     )>,
 ) {
-    let master = tuning.audio.effective_master();
+    let master = tuning.audio.effects_gain();
     if *last == Some(master) {
         return;
     }
