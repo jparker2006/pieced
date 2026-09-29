@@ -107,6 +107,15 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 1. `git worktree list`. Chunk 1 is on `m4-hit-feedback` (`.claude/worktrees/agent-a1a8ca69e7eb45ea8`); chunk 0 is on the `.claude/worktrees/agent-ab9440989154b3d5b` worktree's branch. Read each branch's last commit message for what's left.
 2. `df -h ~`: need more than 4 GB free. Run `scripts/prune-target.sh` first.
 3. **Chunk 1:** dispatch a `pieced-builder` into its worktree to finish the open items above. Then `--no-ff` merge to `main` after the test suite, clippy, fmt and `build-art --check`. Build `pieced-play` (release, low priority) and send Jake **play-test 1** with the five questions.
-4. **Chunk 0:** it changed `Cargo.toml`. If that adds a crate, **ask Jake before merging** (brief: anything new). Otherwise finish, merge, and tell Jake that sessions now report GPU time.
+4. **Chunk 0** is on branch `worktree-agent-ab9440989154b3d5b`, at `20cca05`.
+   - **Done:**
+     - Per-pass GPU timing through `src/gpu_timing.rs`. Metal can't timestamp inside a pass, so the marks sit between passes. It was checked offscreen on the real GPU: world 4.4 ms, effects 0.8, UI 0.35, post 1.2.
+     - The timing costs about 0.5 ms per timed frame, which is over the 0.3 ms limit, so it samples 1 frame in 8 by default.
+     - Outlines can't be split from world.
+     - Per-pass GPU columns in the session log, and `sessions.py --gpu`.
+     - S2 on presented frames, with the starting and highest wave recorded, and `--s2` showing the first A7 pass.
+   - **Tests:** `tests/sessions.rs` 27/27 and `test_sessions.py` 10/10. The full suite and clippy haven't been re-run on the final edits.
+   - **Left:** the levers (step 4), the launch cut (step 5), and the budget and allocation tests (step 6).
+   - **Needs Jake's OK before merging:** it adds `wgpu = "=29.0.4"` (default features off) as a direct dependency. It's the same wgpu Bevy 0.19.1 already builds, so nothing new compiles. It's needed because Bevy doesn't re-export the timestamp query types.
 5. Then the art slice (board captures in `tests/m4_board.rs`) and chunk 2 (weapons), at most two builds at once.
 6. Music sources are ready in `art/music/src/` for chunk 3. The board V1–V8 is approved.
