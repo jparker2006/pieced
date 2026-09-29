@@ -313,3 +313,15 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - Offscreen full-wave world pass (mean/p95): 3.31/4.82, 4.15/5.90 and 4.55/6.55 ms, at load 6.4, 6.8 and 7.6. The time rises with machine load, and the quietest run is well inside budget.
   - The worktrees of the merged weapons and music branches were removed.
   - The perf follow-up (`m4-perf2`) was resumed to fix the missing GPU marks on the new UI schedule. `pieced-art-reviewer` is running on round 3.
+- 2026-09-29: **reviewer on art round 3:** V1 3, V2 2, V3 2.5, V4 2, V5 2.5, V6 2.5 (it regressed: the window framing shows only the lintel), V7 3 (world only), V8 3.5 (the best view).
+  - **More rounds of the same kind** should lift V8, and maybe V1 and V7, to about 3.5–4.
+  - **Three structural limits:**
+    - (1) **Proportions:** the fixed head sphere blocks the targets' chibi helmet (about a third of his height). Asked Jake as Q121.
+    - (2) **Chunk 4 poses:** V1, V3, V5 and V8 cap near 3.5 without them.
+    - (3) **Board staging:** V3, V4 and V6 are choreography problems in `tests/m4_board.rs`.
+  - **Next art round:**
+    - airship-style ships, smaller or higher, with violet beams in V1;
+    - a crisp, smaller wand flare;
+    - restaging V3, V4 and V6;
+    - the V8 cap and UVs;
+    - the knight's silhouette, depending on Q121.
