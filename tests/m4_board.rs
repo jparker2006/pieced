@@ -505,22 +505,22 @@ fn review(app: &mut App, board: &mut Board) {
     hush(app);
     put_player(app, SPAWN);
     let a = me + bearing(62.0) * 9.0;
-    let b = me + bearing(40.0) * 6.5;
+    let b = me + bearing(40.0) * 5.0;
     stand(app, k[0], a, 1.0);
-    stand(app, k[1], b, 1.0);
+    stand(app, k[1], b, 40.0);
     frames(app, 30);
     stand(app, k[0], a, 1.0);
-    stand(app, k[1], b, 1.0);
+    stand(app, k[1], b, 40.0);
     aim(app, a + Vec3::Y * 1.0);
     frames(app, 2);
     fire(app);
     frames(app, 40);
-    stand(app, k[1], b, 1.0);
+    stand(app, k[1], b, 40.0);
     aim(app, b + Vec3::Y * HEAD_CENTER);
     frames(app, 2);
     aim(app, b + Vec3::Y * HEAD_CENTER);
     fire(app);
-    frames(app, 10);
+    frames(app, 18);
     capture(app, board, "V4-headshot-kill");
 
     // V3: the pump blasts a knight at 3 m (a heavy hit, not a kill: he's
@@ -582,7 +582,7 @@ fn review(app: &mut App, board: &mut Board) {
     }
     for _ in 0..150 {
         put_player(app, SPAWN);
-        look(app, 0.0, 3.0);
+        look(app, 0.0, 8.0);
         app.update();
     }
     capture(app, board, "V6-boxup-fight");

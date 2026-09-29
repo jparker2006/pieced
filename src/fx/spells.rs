@@ -117,7 +117,7 @@ pub const METAL_SPARKS: usize = 10;
 /// The headshot's solid gold flash (T06): its size (m; at least this wide an
 /// angle, rad, so it reads far off without hiding him) and life (s). It holds
 /// full size while the hat pops (about 0.2 s) and then shrinks away.
-pub const HEAD_FLASH_SIZE: f32 = 1.05;
+pub const HEAD_FLASH_SIZE: f32 = 0.72;
 pub const HEAD_FLASH_ANGLE: f32 = 0.065;
 pub const HEAD_FLASH_LIFE: f32 = 0.42;
 /// Solid gold flash colours (sRGB): the starburst and its pale core.
@@ -1167,9 +1167,9 @@ impl Emitter<'_> {
         self.pop(
             point,
             mesh,
-            apparent_size(0.26, d, 0.022),
-            0.14,
-            1.15,
+            apparent_size(0.36, d, 0.03),
+            0.15,
+            1.2,
             0.2,
             3.0,
         );
@@ -1181,8 +1181,8 @@ impl Emitter<'_> {
         self.pop(
             point,
             star,
-            apparent_size(0.2, d, 0.018),
-            0.16,
+            apparent_size(0.28, d, 0.025),
+            0.17,
             1.6,
             0.22,
             -2.0,
@@ -1192,7 +1192,7 @@ impl Emitter<'_> {
             self.assets.streak_gold.clone(),
         ];
         let w = apparent_size(0.03, d, 0.0026);
-        self.sparks(point, out, 1.0, 4, (5.0, 9.0), &sparks, w, w * 7.0);
+        self.sparks(point, out, 1.0, 5, (6.0, 11.0), &sparks, w, w * 9.0);
         let twinkles = [
             self.assets.sparkle_gold.clone(),
             self.assets.sparkle_violet.clone(),
@@ -1663,9 +1663,10 @@ impl Emitter<'_> {
     /// The elimination poof (T08): a big puffy cloud, little puffs rolling
     /// out, gold stars flung up, sparkles and a flash.
     fn poof(&mut self, feet: Vec3) {
-        // M4 art (V4): the cloud billows round his legs rather than swallowing
-        // him, so his knocked-out take and the helmet popping off read over it.
-        let center = feet + Vec3::Y * 0.62;
+        // M4 art (V4): the cloud billows low round his shins rather than
+        // swallowing him, so his knocked-out take and the helmet popping off
+        // read over it.
+        let center = feet + Vec3::Y * 0.4;
         let toward = (self.eye - center).with_y(0.0).normalize_or(Vec3::Z);
         let k = self.rng.pick(2);
         let mut cloud = Spark::new(center, &self.assets.clouds[k].clone());
@@ -1674,8 +1675,8 @@ impl Emitter<'_> {
         cloud.p.drag = 1.0;
         cloud.p.rot = Quat::from_rotation_y(self.roll());
         cloud.p.spin = Vec3::Y * self.rng.range(-0.6, 0.6);
-        cloud.p.size = Vec3::splat(1.05);
-        cloud.p.birth_scale = 0.25;
+        cloud.p.size = Vec3::splat(0.9);
+        cloud.p.birth_scale = 0.12;
         cloud.p.life = 0.95;
         cloud.p.shrink_start = 0.55;
         cloud.face = Face::Free;

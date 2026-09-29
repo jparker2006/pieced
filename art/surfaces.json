@@ -26,10 +26,10 @@
       "tint": 0.0
     },
     "polished": {
-      "specular": 1.0,
-      "shininess": 11.0,
-      "sheen": 0.22,
-      "tint": 0.08
+      "specular": 0.95,
+      "shininess": 34.0,
+      "sheen": 0.06,
+      "tint": 0.1
     },
     "satin": {
       "specular": 0.14,

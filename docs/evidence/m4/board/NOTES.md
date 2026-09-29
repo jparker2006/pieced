@@ -99,3 +99,49 @@ Budgets for round 2: full-wave headless count of 624k tris (knights 150k), 1,509
 meshes in 153 batches (the mesh pin is now 1,560; the three swirl halos per
 knight share the halo batch). Offscreen full-wave GPU: the world pass is 4.06/5.19 ms
 (mean/p95), against 4.20/5.42 at baseline; total 8.31/10.16 ms.
+
+The independent review of round 2 scored V1 3, V2 2, V3 2.5, V4 1.5, V5 2.5,
+V6 3, V7 3 and V8 3. Only V3 and V5 moved. The main note was that the
+polished steel read near-white: his head was a white egg and his legs stacked
+white beads.
+
+## Round 3: values, the saucer's underside, kills that frame the knight
+
+What changed:
+- **Knight values** (`knight.py`, `art/palette.json`, `art/surfaces.json`, `src/knight.rs`):
+  - mid-grey steel (`knight_steel` `#A9AEC4` → `#8E93AB`);
+  - a *narrow* hard highlight (the `polished` surface: shininess 11 → 34, sheen 0.22 → 0.06);
+  - a softer knight rim (2.0 → 1.3);
+  - a dark belt;
+  - one continuous steel greave flaring to a cuff over a **dark** boot (no bead stack);
+  - an A-line robe belled out to the capsule's edge, its hem below the knee.
+
+  In greyscale the brightest thing on a winding-up knight is now his wand, not his helmet.
+- **Saucer**: the underside has bronze panel rings and a blue emitter ring round the crystal socket. Ships bank 15° so their gilded tops and blue canopies show from the island. Beams and rune circles are warm gold, not magenta.
+- **Kills**:
+  - The headshot flash is smaller (1.05 → 0.72) and the poof rises low from the shins (birth scale 0.12).
+  - The helmet pops higher and a little toward the shooter, so it reads large over the poof.
+  - V4 captures 18 frames after the shot (the helmet up, the hat and gauntlets flying), and the stray "1" is now his real 40.
+  - Pump pellet bursts and rays are about 1.4× round 2.
+- **Wand**: the flare is bigger and brighter (up to 1.7 m, intensity 4).
+- **V8**: the plinth is widened into a 4 m brick wall with a plank top edge, the camera sits at the wall's top, and the knight stands against the castle and sky at about a third of the frame height.
+- **V6**: the capture looks up through the window so the sky and trees show.
+
+| View | Predicted | Gaps left |
+|---|---|---|
+| V1 | 3.5 | Gold-topped saucers with blue canopies and gold beams, as in the target; knights grey and purple with dark feet; lawn still a little lime |
+| V2 | 2 | Not touched: the rifle's ADS pose and rear sight (guns.py, chunk 2) |
+| V3 | 3 | A bigger hollow burst, the knight visible and knocked back |
+| V4 | 3 | The helmet pop, hat and gauntlets read over a low poof. "DOUBLE!" still overlaps the gun (HUD layout) |
+| V5 | 3 | The glowing wand is the brightest thing on him. The wide-legged hero stance is chunk 4's clip |
+| V6 | 3.5 | Sky through the window. No orb impacts on the walls in the frame |
+| V7 | 3 (world) | Gold beams and ringed saucers; the banner is chunk 5's |
+| V8 | 4 | Matches the composition: stacked buttons, knight on the brick wall with his wand raised, castle on the right |
+
+Budgets for round 3: the triangles and draws are as in round 2. The knight is 9,490 tris; the drop ship
+1,968. The offscreen full-wave GPU timer ran with the machine at load 12
+(another builder compiling; CPU per frame 25 ms against 13 ms in round 2):
+the world pass read 4.61/6.04 ms (mean/p95) and the total 8.93/11.00 ms. Nothing in
+round 3 adds draws or overdraw to the world pass (values, colours and a
+bank), so the rise is taken as load noise. It needs a rerun on a quiet
+machine before it counts.
