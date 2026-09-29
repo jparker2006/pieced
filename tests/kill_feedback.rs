@@ -46,8 +46,8 @@ use pieced::{
     rng::{Rng, SimRng},
     shared::{
         ActiveTool, AppState, DamageDealt, DamageTarget, Eliminated, EyeHeight, FreezableTime,
-        GameCue, GameMode, Health, HitstopFrozen, LookAngles, Player, PreviousFeet, SimTick,
-        WeaponKind, tick_duration,
+        GameCue, GameMode, Health, HitstopFrozen, LookAngles, PreviousFeet, SimTick, WeaponKind,
+        tick_duration,
     },
     sim::Sim,
     tuning::Tuning,
@@ -810,7 +810,9 @@ fn down_every_knight(sim: &mut Sim, kills: &mut u32) -> u32 {
     let n = in_play.len() as u32;
     for (knight, at) in in_play {
         sim.world_mut().get_mut::<Health>(knight).unwrap().hp = 0.0;
-        sim.world_mut().entity_mut(knight).insert(Downed { tick: now });
+        sim.world_mut()
+            .entity_mut(knight)
+            .insert(Downed { tick: now });
         let headshot = kills.is_multiple_of(2);
         sim.world_mut().write_message(DamageDealt {
             source: Some(player),
@@ -1077,7 +1079,10 @@ mod figure {
         for _ in 0..60 {
             app.update();
         }
-        assert!(shown(&app, open_eye), "his eyes are back to open, in the helmet");
+        assert!(
+            shown(&app, open_eye),
+            "his eyes are back to open, in the helmet"
+        );
         assert!(shown(&app, dent), "the dent stays");
 
         // Going down: the pieces leave him and fly as his own meshes.

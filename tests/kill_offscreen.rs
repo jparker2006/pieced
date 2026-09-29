@@ -51,8 +51,8 @@ use pieced::{
     render::{RenderSetupPlugin, WorldTarget},
     scenario::{player_entity, set_look},
     shared::{
-        ActiveTool, AppState, EyeHeight, GameMode, Health, PlayerIntent, PreviousFeet,
-        WeaponKind, tick_duration,
+        ActiveTool, AppState, EyeHeight, GameMode, Health, PlayerIntent, PreviousFeet, WeaponKind,
+        tick_duration,
     },
     viewmodel::ViewmodelPlugin,
     waves::{PoolGrunt, ui::WavesUiPlugin},
@@ -229,7 +229,9 @@ fn review(app: &mut App, image: &Handle<Image>, out: &Path) {
         health.shield = 100.0;
         *world.get_mut::<Health>(player).unwrap() = health;
     }
-    intent(app, |i| i.select = Some(ActiveTool::Weapon(WeaponKind::Rifle)));
+    intent(app, |i| {
+        i.select = Some(ActiveTool::Weapon(WeaponKind::Rifle))
+    });
     // Wait for wave 1's three knights.
     let mut knights = Vec::new();
     for _ in 0..3000 {

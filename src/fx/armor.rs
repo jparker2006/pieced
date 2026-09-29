@@ -325,6 +325,11 @@ fn rig_knight_armor(
                 captured = Some(ArmorMeshes { parts, dent: None });
             }
         }
+        // What gets hidden must carry a visibility of its own (a glTF mesh
+        // primitive may not).
+        for &e in &shown {
+            commands.entity(e).insert(Visibility::Inherited);
+        }
         let dent_entity = rig_dent(&mut commands, nodes[0]);
         commands.entity(figure).insert(KnightArmorRig {
             nodes,
