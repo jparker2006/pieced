@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import sessions  # noqa: E402
 
 
-def session(root, name, launch_ms, kind, verdict="N/A", final=True, battery=True):
+def session(root, name, launch_ms, kind, verdict="N/A", final=True, battery=True, wave=None):
     os.makedirs(os.path.join(root, name))
     doc = {
         "final": final,
@@ -33,6 +33,8 @@ def session(root, name, launch_ms, kind, verdict="N/A", final=True, battery=True
         "s2": {"verdict": verdict, "reasons": [] if verdict == "PASS" else ["play=10s<300s"]},
         "s2_line": f"PIECED_S2 {verdict} 16.70 17.10 0>25ms 99.50%<18ms ok",
     }
+    if wave is not None:
+        doc["waves"] = {"max_wave": wave, "runs": [{"seed": 1, "start_wave": 1, "max_wave": wave}]}
     with open(os.path.join(root, name, "session.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f)
 
@@ -74,6 +76,20 @@ class SessionsTest(unittest.TestCase):
         self.assertNotIn("20260927-100000", out)
         self.assertIn("20260927-120000", out)
         self.assertIn("First PASS: 20260927-130000", out)
+        # Neither reached wave 6 (one predates the wave record).
+        self.assertIn("No A7 session yet: it needs a PASS that reached wave >= 6.", out)
+
+    def test_a7_needs_a_pass_that_reached_wave_six(self):
+        session(self.root, "20260927-140000", 1500.0, "warm", verdict="PASS", wave=5)
+        session(self.root, "20260927-150000", 1500.0, "warm", verdict="FAIL", wave=8)
+        session(self.root, "20260927-160000", 1500.0, "warm", verdict="PASS", wave=7)
+        out = run(["--root", self.root, "--s2"])
+        rows = {line.split()[2]: line for line in out.splitlines() if "PIECED_S2" in line}
+        self.assertRegex(rows["20260927-140000"], r"\s5\s+PIECED_S2 PASS")
+        self.assertRegex(rows["20260927-130000"], r"\s-\s+PIECED_S2 PASS")
+        self.assertIn(
+            "First A7 session (PASS at wave >= 6): 20260927-160000 on abc123, wave 7", out
+        )
 
     def test_launches_find_three_warm_in_a_row(self):
         out = run(["--root", self.root, "--launches"])
@@ -107,6 +123,38 @@ class SessionsTest(unittest.TestCase):
         self.assertIn("predates the attribution columns: 3 spikes", out)
         self.assertIn("20-30", out)
 
+    def test_gpu_prints_each_pass_against_its_budget(self):
+        write_frames(os.path.join(self.root, "20260927-130000"), attributed=True, gpu=True)
+        out = run(["--root", self.root, "--gpu", "latest"])
+        self.assertIn("Session 20260927-130000", out)
+        # 1 frame in 8 timed over the counted 20 s, every 4th of those bare.
+        self.assertRegex(out, r"(\d+) full and (\d+) bare GPU samples")
+        full, bare = map(int, __import__("re").search(r"(\d+) full and (\d+) bare", out).groups())
+        self.assertLessEqual(abs(bare * 3 - full), 3)
+        lines = {line.split()[0]: line for line in out.splitlines() if line.startswith("  ")}
+        # world: 4.0 ms, 6.0 ms on every 10th full sample (p95 lands there).
+        self.assertRegex(lines["world"], r"world\s+4\.\d\d\s+6\.00\s+4\.50\s+\d+\s+OVER")
+        self.assertRegex(lines["effects"], r"1\.50\s+1\.50\s+2\.00\s+\d+\s+ok")
+        self.assertRegex(lines["ui"], r"0\.40\s+0\.40\s+0\.50")
+        self.assertIn("n/a", lines["outlines"])
+        self.assertIn("farres=half", lines["far"])
+        self.assertRegex(lines["total"], r"total\s+\S+\s+13\.00\s+12\.00\s+\d+\s+OVER")
+        self.assertIn("slack", lines)
+        # Every 10th timed sample is a 13 ms full one; bare ones are at 6.4.
+        self.assertIn("GPU total > 12 ms on 10.0% of timed frames", out)
+        self.assertIn("Timing cost (mean full - mean bare total): 1.40 ms", out)
+        self.assertIn("display pacing, not the GPU", out)
+
+    def test_gpu_on_a_session_without_gpu_columns(self):
+        write_frames(os.path.join(self.root, "20260927-130000"), attributed=True)
+        with open(os.path.join(self.root, "20260927-130000", "frames.csv"), encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        old = [",".join(line.split(",")[: HEADER.count(",") - 7]) for line in lines]
+        with open(os.path.join(self.root, "20260927-130000", "frames.csv"), "w", encoding="utf-8") as f:
+            f.write("\n".join(old) + "\n")
+        out = run(["--root", self.root, "--gpu", "20260927-130000"])
+        self.assertIn("predates per-pass GPU timing", out)
+
     def test_spikes_for_a_missing_session(self):
         out = run(["--root", self.root, "--spikes", "20990101-000000"])
         self.assertIn("No session '20990101-000000'", out)
@@ -116,11 +164,12 @@ HEADER = (
     "frame,t_ms,dt_ms,state,occluded,pre_ms,fixed_ms,physics_ms,ticks,update_ms,post_ms,"
     "extract_ms,prepare_ms,acquire_ms,graph_ms,render_end_ms,idle_ms,vsync_dt_ms,gpu_ms,work_ms,"
     "knights,knights_spawned,orbs,orbs_fired,shots,damage,placed,cracked,broken,particles,debris,"
-    "spell_fx,potions,damage_numbers,voices,voices_started,pipelines_compiled,entities"
+    "spell_fx,potions,damage_numbers,voices,voices_started,pipelines_compiled,entities,"
+    "gpu_frame,gpu_full,gpu_world_ms,gpu_outlines_ms,gpu_far_ms,gpu_effects_ms,gpu_ui_ms,gpu_post_ms"
 )
 
 
-def write_frames(folder, attributed):
+def write_frames(folder, attributed, gpu=False):
     """30 s of play at 60 fps with three spikes at 20 s: a 40 ms first-use
     compile in the render graph (after a knight spawn), a 34 ms Update
     overrun right after it, then a 30 ms compile; and one 19 ms frame
@@ -139,6 +188,20 @@ def write_frames(folder, attributed):
         row.update(pre_ms=0.5, fixed_ms=2.0, update_ms=2.0, post_ms=1.0, extract_ms=0.5,
                    prepare_ms=1.0, acquire_ms=8.0, graph_ms=1.0, render_end_ms=0.1,
                    idle_ms=0.3, vsync_dt_ms=16.667, gpu_ms="", knights=4, entities=3000)
+        for c in cols:
+            if c.startswith("gpu_"):
+                row[c] = ""
+        if gpu and i % 8 == 0:
+            # A GPU sample of an earlier frame: every 4th bare (total only),
+            # every 10th full one heavy (world 6 ms, total 13 ms).
+            sample = i // 8
+            row.update(gpu_frame=frame - 3, gpu_full=int(sample % 4 != 0))
+            if sample % 4 == 0:
+                row["gpu_ms"] = 6.4
+            else:
+                heavy = sample % 10 == 1
+                row.update(gpu_ms=13.0 if heavy else 7.0, gpu_world_ms=6.0 if heavy else 4.0,
+                           gpu_effects_ms=1.5, gpu_ui_ms=0.4, gpu_post_ms=0.8)
         if i == 1199:
             row["knights_spawned"] = 1
         if i in (1200, 1203):

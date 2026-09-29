@@ -4,6 +4,7 @@
 Usage:
   python3 scripts/sessions.py [--root DIR] [--s2] [--launches] [--limit N]
   python3 scripts/sessions.py [--root DIR] --spikes SESSION
+  python3 scripts/sessions.py [--root DIR] --gpu SESSION
 
 Reads userdata/sessions/<stamp>/session.json (stamps are UTC; times are shown
 in local time). DIR defaults to $PIECED_ROOT/userdata/sessions, else the
@@ -12,7 +13,10 @@ repo's userdata/sessions.
   (default)    one line per session: when, commit, launch (ms, cold|warm),
                play and counted play, power and Low Power Mode, S2 verdict
   --s2         only sessions that qualified for S2 (PASS or FAIL), with the
-               quit line; the first PASS closes M2's S2
+               highest wave reached and the quit line (the verdict is on
+               presented frames since M4; the line also shows the CPU-side
+               measure). The first PASS closes M2's S2; the first PASS that
+               reached wave >= 6 closes M4's A7 (and M3's W7)
   --launches   the launch series, oldest first, and the first run of
                3 warm launches in a row under 5 s (S3 / W8)
   --spikes S   the spike report for session S (a folder name, a path, or
@@ -21,6 +25,11 @@ repo's userdata/sessions.
                value), the events around it, the worst frames, and pacing
                jitter. Recomputed from frames.csv; sessions from before the
                attribution columns get a spike timeline only.
+  --gpu S      GPU time per pass for session S (a folder name, a path, or
+               "latest"): each pass's mean and p95 over the counted frames'
+               GPU samples (1 frame in 8 by default) against its budget, the
+               total against 12 ms, the share of timed frames over 12 ms, and
+               the timing's own cost (full minus bare samples).
 
 A session whose session.json says "final": false ended without quitting
 (a crash or a kill); its numbers are from the last periodic rewrite.
@@ -37,6 +46,8 @@ import sys
 
 WARM_LAUNCH_MAX_MS = 5000.0
 WARM_RUN = 3
+# M4's A7 needs a qualifying S2 PASS in a session that reached this wave.
+A7_MIN_WAVE = 6
 
 # The S2 frame filter and the spike attribution (SpikeStats), both in
 # src/session.rs; keep the two in step.
@@ -74,6 +85,33 @@ EVENTS = [
     ("sound_started", lambda r: r["voices_started"] > 0),
     ("two_fixed_ticks", lambda r: r["ticks"] >= 2),
 ]
+
+
+# The M4 GPU budget (docs/M4-SPEC.md, D99): ms of GPU per frame at p95 on
+# battery with Low Power Mode at wave-6 load. The one place these numbers live;
+# the orchestrator may rebalance them (and logs each change).
+GPU_BUDGET_MS = {
+    "world": 4.5,
+    "outlines": 1.5,
+    "far": 2.0,
+    "effects": 2.0,
+    "ui": 0.5,
+    "post": 1.0,
+    "slack": 0.5,
+}
+GPU_TOTAL_BUDGET_MS = sum(GPU_BUDGET_MS.values())
+GPU_PASSES = ["world", "outlines", "far", "effects", "ui", "post"]
+GPU_PASS_HELP = {
+    "world": "toon world, props, pieces, knights, viewmodel",
+    "outlines": "the hull outlines draw inside the opaque pass: counted in world",
+    "far": "far layer on its own camera (farres=half); otherwise counted in world",
+    "effects": "halos, particles, spell bursts, transparents",
+    "ui": "HUD and the full-screen composite of the 3D image",
+    "post": "FXAA, sharpening, copies into each output",
+    "slack": "",
+}
+# A timed frame whose GPU total is at least this long can't make 60 Hz.
+GPU_FRAME_MS = 16.0
 
 
 def default_root():
@@ -151,18 +189,37 @@ def list_sessions(sessions):
         )
 
 
+def max_wave(doc):
+    """The highest Waves wave the session reached (0 if unknown or none)."""
+    return ((doc.get("waves") or {}).get("max_wave")) or 0
+
+
 def list_s2(sessions):
     qualified = [d for d in sessions if verdict(d) in ("PASS", "FAIL")]
     if not qualified:
         print("No qualifying session yet (>= 5 min counted play, battery, Low Power Mode on,")
         print("window visible, release build, Battery preset).")
         return
+    print(f"{'when':16}  {'session':15}  {'commit':18}  {'wave':>4}  quit line")
     for doc in qualified:
-        print(f"{when(doc)}  {doc['_name']}  {doc.get('commit', '?')}  {doc.get('s2_line', '')}")
+        wave = max_wave(doc)
+        print(
+            f"{when(doc):16}  {doc['_name']:15}  {doc.get('commit', '?'):18}  "
+            f"{wave if wave else '-':>4}  {doc.get('s2_line', '')}"
+        )
     passes = [d for d in qualified if verdict(d) == "PASS"]
     if passes:
         first = passes[0]
         print(f"\nFirst PASS: {first['_name']} on {first.get('commit', '?')}")
+    a7 = [d for d in passes if max_wave(d) >= A7_MIN_WAVE]
+    if a7:
+        first = a7[0]
+        print(
+            f"First A7 session (PASS at wave >= {A7_MIN_WAVE}): {first['_name']} "
+            f"on {first.get('commit', '?')}, wave {max_wave(first)}"
+        )
+    else:
+        print(f"No A7 session yet: it needs a PASS that reached wave >= {A7_MIN_WAVE}.")
 
 
 def list_launches(sessions):
@@ -397,6 +454,100 @@ def print_spikes(folder):
         )
 
 
+def mean_p95(values):
+    """(mean, nearest-rank p95) of a list, or (None, None)."""
+    if not values:
+        return None, None
+    ordered = sorted(values)
+    rank = max(1, min(len(ordered), -(-95 * len(ordered) // 100)))
+    return sum(ordered) / len(ordered), ordered[rank - 1]
+
+
+def gpu_report(rows):
+    """Per-pass GPU samples of the counted frames (the S2 filter)."""
+    flags = counted_flags(rows)
+    rep = {"passes": {p: [] for p in GPU_PASSES}, "full": [], "bare": [], "acquire": []}
+    for r, counted in zip(rows, flags):
+        if not counted:
+            continue
+        if r.get("acquire_ms") is not None:
+            rep["acquire"].append(r["acquire_ms"])
+        if r.get("gpu_frame") is None or r.get("gpu_ms") is None:
+            continue
+        if r.get("gpu_full") == 1:
+            rep["full"].append(r["gpu_ms"])
+            for p in GPU_PASSES:
+                v = r.get(f"gpu_{p}_ms")
+                if v is not None:
+                    rep["passes"][p].append(v)
+        else:
+            rep["bare"].append(r["gpu_ms"])
+    return rep
+
+
+def fmt_ms(v):
+    return f"{v:6.2f}" if v is not None else "     -"
+
+
+def print_gpu(folder):
+    rows = read_frames(folder)
+    name = os.path.basename(os.path.normpath(folder))
+    doc = {}
+    json_path = os.path.join(folder, "session.json")
+    if os.path.isfile(json_path):
+        with open(json_path, encoding="utf-8") as f:
+            doc = json.load(f)
+    print(f"Session {name}  commit {doc.get('commit', '?')}  {doc.get('graphics', '')}")
+    print(power_text(doc) if doc else "power ?")
+    if not rows or "gpu_world_ms" not in rows[0]:
+        print("\nThis session predates per-pass GPU timing (M4 chunk 0).")
+        return
+    rep = gpu_report(rows)
+    timed = rep["full"] + rep["bare"]
+    if not timed:
+        print("\nNo GPU samples in the counted frames (timing off, or no counted play).")
+        return
+    print(
+        f"\n{len(rep['full'])} full and {len(rep['bare'])} bare GPU samples in the counted "
+        f"frames. Budget: {GPU_TOTAL_BUDGET_MS:.1f} ms at p95."
+    )
+    print(f"\n  {'pass':9} {'mean':>6} {'p95':>6} {'budget':>6}  {'n':>6}  status")
+    for p in GPU_PASSES + ["slack"]:
+        budget = GPU_BUDGET_MS[p]
+        values = rep["passes"].get(p, [])
+        mean, p95 = mean_p95(values)
+        if p == "slack":
+            status = ""
+        elif p95 is None:
+            status = f"n/a  {GPU_PASS_HELP[p]}" if p in ("outlines", "far") else "n/a"
+        else:
+            status = ("ok" if p95 <= budget else "OVER") + f"  {GPU_PASS_HELP[p]}"
+        print(f"  {p:9} {fmt_ms(mean)} {fmt_ms(p95)} {budget:6.2f}  {len(values):6d}  {status}")
+    mean, p95 = mean_p95(rep["full"])
+    verdict = "ok" if p95 is not None and p95 <= GPU_TOTAL_BUDGET_MS else "OVER"
+    print(
+        f"  {'total':9} {fmt_ms(mean)} {fmt_ms(p95)} {GPU_TOTAL_BUDGET_MS:6.2f}  "
+        f"{len(rep['full']):6d}  {verdict if p95 is not None else 'n/a'}"
+    )
+    over = sum(1 for v in timed if v > GPU_TOTAL_BUDGET_MS)
+    late = sum(1 for v in timed if v >= GPU_FRAME_MS)
+    print(
+        f"\nGPU total > {GPU_TOTAL_BUDGET_MS:.0f} ms on {over * 100.0 / len(timed):.1f}% of timed "
+        f"frames; >= {GPU_FRAME_MS:.0f} ms (can't make 60 Hz) on {late * 100.0 / len(timed):.1f}%."
+    )
+    if len(rep["full"]) >= 10 and len(rep["bare"]) >= 10:
+        cost = sum(rep["full"]) / len(rep["full"]) - sum(rep["bare"]) / len(rep["bare"])
+        print(f"Timing cost (mean full - mean bare total): {cost:.2f} ms per timed frame.")
+    acquire, _ = mean_p95(rep["acquire"])
+    if acquire is not None and p95 is not None:
+        hint = (
+            "the GPU being behind"
+            if p95 >= GPU_FRAME_MS
+            else "display pacing, not the GPU (its p95 leaves room)"
+        )
+        print(f"Mean acquire wait {acquire:.2f} ms; with this GPU p95 that points at {hint}.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--root", default=default_root(), help="the sessions folder")
@@ -404,13 +555,16 @@ def main():
     parser.add_argument("--launches", action="store_true", help="the launch series")
     parser.add_argument("--limit", type=int, default=0, help="only the newest N sessions")
     parser.add_argument("--spikes", metavar="SESSION", help="the spike report for one session")
+    parser.add_argument("--gpu", metavar="SESSION", help="GPU time per pass for one session")
     args = parser.parse_args()
-    if args.spikes:
-        folder = find_session(args.root, args.spikes)
+    for which, report in ((args.spikes, print_spikes), (args.gpu, print_gpu)):
+        if not which:
+            continue
+        folder = find_session(args.root, which)
         if folder is None or not os.path.isfile(os.path.join(folder, "frames.csv")):
-            print(f"No session '{args.spikes}' with frames.csv in {args.root}")
+            print(f"No session '{which}' with frames.csv in {args.root}")
             return
-        print_spikes(folder)
+        report(folder)
         return
     sessions = load_sessions(args.root)
     if args.limit > 0:

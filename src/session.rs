@@ -9,8 +9,16 @@
 //!   frame;
 //! - `session.json`: commit, build id, preset, launch time (cold or warm) and
 //!   its boot phases, power and Low Power Mode samples, occluded and play
-//!   time, the S2 verdict over the counted frames, and the spike report
-//!   ([`SpikeStats`]; `scripts/sessions.py --spikes` prints it).
+//!   time, the S2 verdict over the counted frames, the spike report
+//!   ([`SpikeStats`]; `scripts/sessions.py --spikes` prints it), GPU time per
+//!   pass ([`GpuStats`]; `--gpu`), and the Waves runs: each run's starting
+//!   wave and the highest wave reached ([`WaveRecord`]; A7 needs wave ≥ 6).
+//!
+//! **S2 on presented frames (M4, D98).** The bar is unchanged, but the
+//! verdict is judged on the intervals between the frames that reach the
+//! screen (`vsync_dt_ms`, the drawable cadence) rather than the CPU-side
+//! `dt_ms`. Both are summarized and printed; a session with no presented
+//! intervals (no renderer, as in headless tests) falls back to `dt_ms`.
 //!
 //! The main thread only pushes a small `Copy` row into a bounded channel each
 //! frame. A background writer thread owns the files: it buffers the CSV and
@@ -19,13 +27,16 @@
 //! final summary at quit, so a crash still leaves the data and a recent
 //! summary. At quit the game prints one line (see [`quit_line`]):
 //!
-//! `PIECED_S2 PASS|FAIL|N/A <mean> <p99> <n>>25ms <pct>%<18ms <why>`
+//! `PIECED_S2 PASS|FAIL|N/A <mean> <p99> <n>>25ms <pct>%<18ms <why> presented; cpu <mean> <p99> <n>>25ms <pct>%<18ms`
+//!
+//! (the first numbers are the verdict's measure).
 //!
 //! Every native launch (scenarios included, since they warm the same shader
 //! caches) is **cold** when the binary's build id differs from the previous
 //! launch's (`userdata/sessions/last_build`), and **warm** otherwise.
 
 use crate::{
+    gpu_timing::{GPU_COLUMNS, GpuPass, GpuSample},
     profile::{
         Bucket, COUNTER_COLUMNS, FrameCost, FrameProfile, LastCounters, LastGpu, ProfileSystems,
         TIME_COLUMNS,
@@ -158,7 +169,11 @@ impl SessionFrame {
 /// columns (see [`crate::profile`]).
 pub fn csv_header() -> String {
     let mut h = String::from("frame,t_ms,dt_ms,state,occluded");
-    for c in TIME_COLUMNS.iter().chain(COUNTER_COLUMNS.iter()) {
+    for c in TIME_COLUMNS
+        .iter()
+        .chain(COUNTER_COLUMNS.iter())
+        .chain(GPU_COLUMNS.iter())
+    {
         h.push(',');
         h.push_str(c);
     }
@@ -194,13 +209,22 @@ pub fn write_csv_row(out: &mut impl Write, row: &SessionFrame) -> std::io::Resul
     ] {
         write!(out, ",{v:.3}")?;
     }
-    match c.gpu_ms {
-        Some(g) => write!(out, ",{g:.3}")?,
-        None => write!(out, ",")?,
-    }
+    let opt = |out: &mut dyn Write, v: Option<f32>| match v {
+        Some(v) => write!(out, ",{v:.3}"),
+        None => write!(out, ","),
+    };
+    opt(out, c.gpu.total_ms)?;
     write!(out, ",{:.3}", c.work_ms())?;
     for v in c.counters.values() {
         write!(out, ",{v}")?;
+    }
+    if c.gpu.is_some() {
+        write!(out, ",{},{}", c.gpu.frame, u8::from(c.gpu.full))?;
+    } else {
+        write!(out, ",,")?;
+    }
+    for v in c.gpu.passes {
+        opt(out, v)?;
     }
     Ok(())
 }
@@ -479,6 +503,85 @@ impl SpikeStats {
     }
 }
 
+// ---------------------------------------------------------------------------
+// GPU time per pass (M4 chunk 0)
+// ---------------------------------------------------------------------------
+
+/// Mean and nearest-rank 95th percentile of some samples (ms).
+fn mean_p95(values: &[f32]) -> serde_json::Value {
+    if values.is_empty() {
+        return json!({ "samples": 0, "mean_ms": null, "p95_ms": null });
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f32::total_cmp);
+    let n = sorted.len();
+    let mean = sorted.iter().map(|v| f64::from(*v)).sum::<f64>() / n as f64;
+    let rank = ((0.95 * n as f64).ceil() as usize).clamp(1, n);
+    let round = |v: f64| (v * 1000.0).round() / 1000.0;
+    json!({
+        "samples": n,
+        "mean_ms": round(mean),
+        "p95_ms": round(f64::from(sorted[rank - 1])),
+    })
+}
+
+/// The GPU timing samples of counted frames, per pass, built on the writer
+/// thread ([`crate::gpu_timing`]; `scripts/sessions.py --gpu` prints them
+/// against the budget).
+#[derive(Debug, Clone, Default)]
+pub struct GpuStats {
+    passes: [Vec<f32>; GpuPass::ALL.len()],
+    full_totals: Vec<f32>,
+    bare_totals: Vec<f32>,
+}
+
+impl GpuStats {
+    pub fn observe(&mut self, sample: &GpuSample) {
+        let Some(total) = sample.total_ms else {
+            return;
+        };
+        if !sample.full {
+            self.bare_totals.push(total);
+            return;
+        }
+        self.full_totals.push(total);
+        for (values, v) in self.passes.iter_mut().zip(sample.passes) {
+            if let Some(v) = v {
+                values.push(v);
+            }
+        }
+    }
+
+    pub fn full_samples(&self) -> usize {
+        self.full_totals.len()
+    }
+
+    /// The timing's own cost: mean full total minus mean bare total (needs
+    /// 10 of each; noisy, since they are different frames).
+    pub fn timing_cost_ms(&self) -> Option<f64> {
+        let mean = |v: &[f32]| v.iter().map(|x| f64::from(*x)).sum::<f64>() / v.len() as f64;
+        (self.full_totals.len() >= 10 && self.bare_totals.len() >= 10)
+            .then(|| mean(&self.full_totals) - mean(&self.bare_totals))
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        let passes: serde_json::Map<String, serde_json::Value> = GpuPass::ALL
+            .iter()
+            .zip(&self.passes)
+            .map(|(p, v)| (p.name().to_string(), mean_p95(v)))
+            .collect();
+        json!({
+            "full_samples": self.full_totals.len(),
+            "bare_samples": self.bare_totals.len(),
+            "total": mean_p95(&self.full_totals),
+            "total_bare": mean_p95(&self.bare_totals),
+            "passes": passes,
+            "timing_cost_ms": self.timing_cost_ms().map(|v| (v * 1000.0).round() / 1000.0),
+            "notes": "counted frames only; GPU ms per pass from compute-pass marks between Bevy's passes (src/gpu_timing.rs): world includes the outline hulls (never split: they draw inside the opaque pass) and the far layer unless it has its own camera (farres=half); ui includes the full-screen composite of the 3D image; post is FXAA/sharpening and the copies into each output; timing_cost_ms = mean full total - mean bare total",
+        })
+    }
+}
+
 fn cause_name(idx: usize) -> &'static str {
     Bucket::ALL.get(idx).map_or("unattributed", |b| b.name())
 }
@@ -637,21 +740,75 @@ impl S2Verdict {
     }
 }
 
+/// Which frame intervals a verdict judged.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum S2Basis {
+    /// The drawable cadence: what reached the screen (M4, D98).
+    Presented,
+    /// The CPU-side interval between frames (M2's measure; the fallback when
+    /// nothing was presented).
+    Cpu,
+}
+
 /// The S2 verdict for one session.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct S2Report {
     pub verdict: S2Verdict,
     /// N/A: why the session did not qualify. FAIL: which thresholds missed.
     pub reasons: Vec<String>,
-    /// Summary of the counted frames.
+    /// The measure the verdict used.
+    pub basis: S2Basis,
+    /// Summary of the counted frames on the verdict's measure.
     pub frames: FrameSummary,
-    /// M2's G2 thresholds applied to the counted frames.
+    /// M2's G2 thresholds applied to `frames`.
     pub gate: GateResult,
+    /// The counted frames' presented intervals (`vsync_dt_ms`).
+    pub presented: FrameSummary,
+    /// The counted frames' CPU-side intervals (`dt_ms`).
+    pub cpu: FrameSummary,
 }
 
 /// Judges counted frames against M2's thresholds, unless the session did
-/// not qualify (`problems` non-empty), which makes it N/A.
+/// not qualify (`problems` non-empty), which makes it N/A. One measure: the
+/// CPU-side intervals.
 pub fn s2_report(frames: FrameSummary, problems: Vec<String>) -> S2Report {
+    judge(
+        S2Basis::Cpu,
+        frames.clone(),
+        FrameSummary::default(),
+        frames,
+        problems,
+    )
+}
+
+/// The M4 verdict: judged on the presented intervals, or on the CPU-side
+/// ones when none were presented; both summaries are kept.
+pub fn s2_report_presented(
+    presented: FrameSummary,
+    cpu: FrameSummary,
+    problems: Vec<String>,
+) -> S2Report {
+    if presented.frames > 0 {
+        judge(
+            S2Basis::Presented,
+            presented.clone(),
+            presented,
+            cpu,
+            problems,
+        )
+    } else {
+        judge(S2Basis::Cpu, cpu.clone(), presented, cpu, problems)
+    }
+}
+
+fn judge(
+    basis: S2Basis,
+    frames: FrameSummary,
+    presented: FrameSummary,
+    cpu: FrameSummary,
+    problems: Vec<String>,
+) -> S2Report {
     let gate = evaluate_g2(&frames);
     let (verdict, reasons) = if !problems.is_empty() {
         (S2Verdict::NotApplicable, problems)
@@ -663,8 +820,11 @@ pub fn s2_report(frames: FrameSummary, problems: Vec<String>) -> S2Report {
     S2Report {
         verdict,
         reasons,
+        basis,
         frames,
         gate,
+        presented,
+        cpu,
     }
 }
 
@@ -697,24 +857,37 @@ fn floor2(v: f64) -> f64 {
     (v * 100.0).floor() / 100.0
 }
 
+fn measure(f: &FrameSummary) -> String {
+    format!(
+        "{:.2} {:.2} {}>25ms {:.2}%<18ms",
+        f.mean_ms,
+        f.p99_ms,
+        f.over_25_ms,
+        floor2(f.pct_under_18_ms)
+    )
+}
+
 /// The one line printed at quit:
 /// `PIECED_S2 <verdict> <mean> <p99> <n>>25ms <pct>%<18ms <why>`, where
-/// `<why>` is the comma-separated reasons, or `ok` for a PASS.
+/// `<why>` is the comma-separated reasons, or `ok` for a PASS. The numbers
+/// are the verdict's measure; a presented-frame verdict adds the CPU-side
+/// measure after it: `... <why> presented; cpu <mean> <p99> <n>>25ms <pct>%<18ms`.
 pub fn quit_line(report: &S2Report) -> String {
-    let f = &report.frames;
     let why = if report.reasons.is_empty() {
         "ok".to_string()
     } else {
         report.reasons.join(",")
     };
-    format!(
-        "PIECED_S2 {} {:.2} {:.2} {}>25ms {:.2}%<18ms {why}",
+    let mut line = format!(
+        "PIECED_S2 {} {} {why}",
         report.verdict.label(),
-        f.mean_ms,
-        f.p99_ms,
-        f.over_25_ms,
-        floor2(f.pct_under_18_ms),
-    )
+        measure(&report.frames)
+    );
+    if report.basis == S2Basis::Presented {
+        line.push_str(" presented; cpu ");
+        line.push_str(&measure(&report.cpu));
+    }
+    line
 }
 
 // ---------------------------------------------------------------------------
@@ -930,6 +1103,54 @@ pub fn prune_sessions(
 }
 
 // ---------------------------------------------------------------------------
+// Waves reached (A7 needs wave 6)
+// ---------------------------------------------------------------------------
+
+/// One Waves run in the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct WaveRecord {
+    pub seed: u64,
+    /// The wave the run was first seen on: 1 until "start at wave" lands
+    /// (M4 chunk 5, D115), which starts runs at 6 or 10.
+    pub start_wave: u32,
+    /// The highest wave the run reached.
+    pub max_wave: u32,
+}
+
+/// The session's Waves runs, from what the game reports each frame.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct WaveLog {
+    pub runs: Vec<WaveRecord>,
+}
+
+impl WaveLog {
+    /// Takes the current run's seed and wave: a new seed starts a record.
+    pub fn observe(&mut self, seed: u64, wave: u32) {
+        match self.runs.last_mut() {
+            Some(run) if run.seed == seed => run.max_wave = run.max_wave.max(wave),
+            _ => self.runs.push(WaveRecord {
+                seed,
+                start_wave: wave,
+                max_wave: wave,
+            }),
+        }
+    }
+
+    /// The highest wave any run reached (0 without a run).
+    pub fn max_wave(&self) -> u32 {
+        self.runs.iter().map(|r| r.max_wave).max().unwrap_or(0)
+    }
+
+    pub fn to_json(&self) -> serde_json::Value {
+        json!({
+            "max_wave": self.max_wave(),
+            "runs": self.runs,
+            "note": "start_wave is the wave each Waves run was first seen on (1 until start-at-wave, M4 chunk 5); A7 needs max_wave >= 6",
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The writer thread
 // ---------------------------------------------------------------------------
 
@@ -987,6 +1208,11 @@ enum Msg {
     Finish(SyncSender<SessionOutcome>),
     /// A mode started from the main menu: Play → controllable (chunk 5).
     Play(PlayRecord),
+    /// The current Waves run's seed and wave (sent when either changes).
+    Wave {
+        seed: u64,
+        wave: u32,
+    },
 }
 
 /// One `PIECED_PLAY_MS`: the main menu's Play click to the first frame the
@@ -1047,6 +1273,18 @@ impl SessionWriter {
         let _ = self.tx.send(Msg::Play(record));
     }
 
+    /// Records the current Waves run's seed and wave. Never blocks: returns
+    /// false when the channel was full (the caller sends it again later).
+    pub fn record_wave(&self, seed: u64, wave: u32) -> bool {
+        self.tx.try_send(Msg::Wave { seed, wave }).is_ok()
+    }
+
+    /// [`record_wave`](SessionWriter::record_wave), waiting for room (tools
+    /// and tests).
+    pub fn record_wave_wait(&self, seed: u64, wave: u32) {
+        let _ = self.tx.send(Msg::Wave { seed, wave });
+    }
+
     pub fn set_preset(&self, preset: String, graphics: String, battery: bool) {
         let _ = self.tx.send(Msg::Preset {
             preset,
@@ -1100,6 +1338,7 @@ fn run_writer(config: WriterConfig, rx: Receiver<Msg>, dropped: Arc<AtomicU64>) 
                 state.plays.push(record);
                 state.write_json(false);
             }
+            Ok(Msg::Wave { seed, wave }) => state.waves.observe(seed, wave),
             Ok(Msg::Preset {
                 preset,
                 graphics,
@@ -1136,6 +1375,8 @@ struct WriterState {
     pruned: usize,
     filter: S2Filter,
     counted: Vec<f64>,
+    /// The counted frames' presented intervals (`vsync_dt_ms`, when known).
+    counted_presented: Vec<f64>,
     counted_ms: f64,
     play_ms: f64,
     occluded_play_ms: f64,
@@ -1148,6 +1389,8 @@ struct WriterState {
     plays: Vec<PlayRecord>,
     dropped: Arc<AtomicU64>,
     spikes: SpikeStats,
+    gpu: GpuStats,
+    waves: WaveLog,
 }
 
 impl WriterState {
@@ -1162,6 +1405,7 @@ impl WriterState {
             filter: S2Filter::default(),
             // About 20 minutes of counted frames before the first regrowth.
             counted: Vec::with_capacity(72_000),
+            counted_presented: Vec::with_capacity(72_000),
             counted_ms: 0.0,
             play_ms: 0.0,
             occluded_play_ms: 0.0,
@@ -1174,6 +1418,8 @@ impl WriterState {
             plays: Vec::new(),
             dropped,
             spikes: SpikeStats::default(),
+            gpu: GpuStats::default(),
+            waves: WaveLog::default(),
         };
         match create_session_dir(&config.sessions_dir, &config.stamp) {
             Ok(dir) => {
@@ -1224,8 +1470,14 @@ impl WriterState {
         }
         let counted = self.filter.admit(&row);
         self.spikes.observe(&row, counted);
+        if counted && row.cost.gpu.is_some() {
+            self.gpu.observe(&row.cost.gpu);
+        }
         if counted {
             self.counted.push(row.dt_ms);
+            if row.cost.vsync_dt_ms > 0.0 {
+                self.counted_presented.push(f64::from(row.cost.vsync_dt_ms));
+            }
             self.counted_ms += row.dt_ms;
             if row.occluded {
                 self.occluded_counted_ms += row.dt_ms;
@@ -1265,7 +1517,8 @@ impl WriterState {
     }
 
     fn report(&self) -> S2Report {
-        s2_report(
+        s2_report_presented(
+            summarize(&self.counted_presented),
             summarize(&self.counted),
             qualification_problems(&self.conditions()),
         )
@@ -1315,10 +1568,13 @@ impl WriterState {
             "s2": report,
             "s2_line": quit_line(&report),
             "spikes": self.spikes.to_json(),
+            "gpu": self.gpu.to_json(),
+            "waves": self.waves.to_json(),
             "s2_rules": {
                 "counted_frames": "Playing only; not the first 10 s after launch nor the first 1 s after each return to Playing",
                 "qualifies": "≥ 300 s counted play, every power sample on battery with Low Power Mode on, never occluded during counted play, release build, Battery preset",
                 "bar": "mean 16.4–17.0 ms, 0 frames > 25 ms, ≥ 99% < 18 ms",
+                "measure": "the verdict uses the presented-frame intervals (vsync_dt_ms, the drawable cadence; M4 D98) when any were recorded, else the CPU-side dt_ms; both are summarized under s2.presented and s2.cpu",
             },
         });
         let path = dir.join("session.json");
@@ -1387,7 +1643,13 @@ impl Plugin for SessionPlugin {
             .add_systems(Startup, start_session)
             .add_systems(
                 Last,
-                (push_frame, track_preset, forward_launch, finish_on_exit)
+                (
+                    push_frame,
+                    track_preset,
+                    track_wave,
+                    forward_launch,
+                    finish_on_exit,
+                )
                     .chain()
                     .after(TelemetrySystems)
                     .after(ProfileSystems)
@@ -1402,6 +1664,8 @@ impl Plugin for SessionPlugin {
 pub struct SessionLog {
     writer: SessionWriter,
     preset: Option<QualityPreset>,
+    /// The last Waves (seed, wave) sent to the writer.
+    wave: Option<(u64, u32)>,
     launch_sent: bool,
     quit_line: Option<String>,
     outcome: Option<SessionOutcome>,
@@ -1412,6 +1676,7 @@ impl SessionLog {
         Self {
             writer,
             preset: None,
+            wave: None,
             launch_sent: false,
             quit_line: None,
             outcome: None,
@@ -1512,7 +1777,7 @@ fn frame_cost(
         cost.counters = counters.0;
         cost.counters.pipelines_compiled = compiled;
     }
-    cost.gpu_ms = gpu.and_then(|g| g.0);
+    cost.gpu = gpu.map(|g| g.0).unwrap_or_default();
     cost
 }
 
@@ -1554,6 +1819,24 @@ fn track_preset(mut log: ResMut<SessionLog>, tuning: Option<Res<Tuning>>) {
             telemetry::graphics_label(g),
             g.preset == QualityPreset::Battery,
         );
+    }
+}
+
+/// Tells the writer about the Waves run whenever its seed or wave changes.
+fn track_wave(
+    mut log: ResMut<SessionLog>,
+    run: Option<Res<crate::waves::Run>>,
+    mode: Option<Res<crate::shared::GameMode>>,
+) {
+    let (Some(run), Some(mode)) = (run, mode) else {
+        return;
+    };
+    if *mode != crate::shared::GameMode::Waves || run.wave == 0 {
+        return;
+    }
+    let now = (run.seed, run.wave);
+    if log.wave != Some(now) && log.writer.record_wave(now.0, now.1) {
+        log.wave = Some(now);
     }
 }
 

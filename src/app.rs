@@ -104,6 +104,7 @@ impl PluginGroup for ClientPlugins {
         PluginGroupBuilder::start::<Self>()
             .add(TelemetryPlugin)
             .add(crate::profile::FrameProfilePlugin)
+            .add(crate::gpu_timing::GpuTimingPlugin)
             .add(InputAdapterPlugin)
             .add(InputProbePlugin)
             .add(RenderSetupPlugin)
@@ -373,10 +374,6 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     // Always a run seed in the native game: `--seed`, or fresh entropy.
     // Headless tests don't come through here, so they stay deterministic.
     app.insert_resource(run_seed);
-    if knob(|k| k.gpu) {
-        app.add_plugins(bevy::render::diagnostic::RenderDiagnosticsPlugin)
-            .init_resource::<crate::profile::GpuTiming>();
-    }
     if let Some(knobs) = knobs {
         app.insert_resource(knobs)
             .add_plugins(crate::perf_knobs::PerfKnobsPlugin);

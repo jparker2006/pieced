@@ -236,6 +236,121 @@ fn verdict_on_synthetic_frame_series() {
 }
 
 #[test]
+fn s2_is_judged_on_presented_frames_and_prints_both_measures() {
+    use pieced::session::{S2Basis, s2_report_presented};
+    // The CPU side jitters (a late frame then an early one, twice a second,
+    // plus one 30 ms hitch) but the display got a frame every vblank.
+    let presented = summarize(&vec![16.667; 18_000]);
+    let mut jitter = Vec::new();
+    for i in 0..18_000 {
+        jitter.push(match i % 30 {
+            0 => 19.5,
+            1 => 13.834,
+            _ => 16.667,
+        });
+    }
+    jitter[9_001] = 30.0;
+    let cpu = summarize(&jitter);
+    let report = s2_report_presented(presented.clone(), cpu.clone(), Vec::new());
+    assert_eq!(report.verdict, S2Verdict::Pass);
+    assert_eq!(report.basis, S2Basis::Presented);
+    assert_eq!(report.frames, presented);
+    assert_eq!(report.cpu, cpu);
+    assert!(
+        !s2_report(cpu.clone(), Vec::new()).gate.pass,
+        "the CPU measure alone fails"
+    );
+    assert_eq!(
+        quit_line(&report),
+        "PIECED_S2 PASS 16.67 16.67 0>25ms 100.00%<18ms ok presented; cpu 16.67 19.50 1>25ms 96.66%<18ms"
+    );
+
+    // Presented hitches fail it even when the CPU side looks smooth.
+    let mut late = vec![16.667; 18_000];
+    late[500] = 33.3;
+    let report = s2_report_presented(summarize(&late), summarize(&[16.667; 100]), Vec::new());
+    assert_eq!(report.verdict, S2Verdict::Fail);
+    assert_eq!(report.reasons, ["over25=1>0"]);
+
+    // Nothing presented (no renderer): the CPU side decides, as in M2.
+    let report = s2_report_presented(FrameSummary::default(), cpu, Vec::new());
+    assert_eq!(report.basis, S2Basis::Cpu);
+    assert_eq!(report.verdict, S2Verdict::Fail);
+    assert!(!quit_line(&report).contains("presented"));
+}
+
+#[test]
+fn the_wave_log_keeps_each_runs_start_and_the_highest_wave() {
+    use pieced::session::{WaveLog, WaveRecord};
+    let mut log = WaveLog::default();
+    assert_eq!(log.max_wave(), 0);
+    for wave in 1..=7 {
+        log.observe(11, wave);
+    }
+    log.observe(11, 7);
+    // Go again: a new seed is a new run, starting where it is first seen
+    // (wave 6 once "start at wave" lands).
+    log.observe(22, 6);
+    log.observe(22, 6);
+    assert_eq!(
+        log.runs,
+        [
+            WaveRecord {
+                seed: 11,
+                start_wave: 1,
+                max_wave: 7
+            },
+            WaveRecord {
+                seed: 22,
+                start_wave: 6,
+                max_wave: 6
+            },
+        ]
+    );
+    assert_eq!(log.max_wave(), 7);
+    assert_eq!(log.to_json()["max_wave"], 7);
+    assert_eq!(log.to_json()["runs"][1]["start_wave"], 6);
+}
+
+#[test]
+fn the_writer_judges_presented_frames_and_records_the_waves() {
+    let root = temp_dir("writer-presented");
+    let mut writer = SessionWriter::spawn(WriterConfig {
+        sessions_dir: root.clone(),
+        stamp: "20260928-120000".into(),
+        keep: KEEP_SESSIONS,
+        power: sampler("Battery Power", Some(true)),
+        meta: meta(true),
+    })
+    .unwrap();
+    for (i, mut r) in simulated_rows(360.0).into_iter().enumerate() {
+        // A CPU-side hitch every 10 s, while the display stayed on cadence.
+        if i % 600 == 300 {
+            r.dt_ms = 28.0;
+        }
+        r.cost.vsync_dt_ms = 16.667;
+        writer.push_wait(r);
+    }
+    for wave in 1..=6 {
+        writer.record_wave_wait(99, wave);
+    }
+    let outcome = writer.finish(Duration::from_secs(10)).unwrap().clone();
+    assert_eq!(outcome.report.verdict, S2Verdict::Pass, "{}", outcome.line);
+    assert!(
+        outcome.line.contains(" presented; cpu "),
+        "{}",
+        outcome.line
+    );
+    let doc = read_json(&outcome.dir.unwrap().join("session.json"));
+    assert_eq!(doc["s2"]["basis"], "presented");
+    assert_eq!(doc["s2"]["presented"]["over_25_ms"], 0);
+    assert!(doc["s2"]["cpu"]["over_25_ms"].as_u64().unwrap() > 30);
+    assert_eq!(doc["waves"]["max_wave"], 6);
+    assert_eq!(doc["waves"]["runs"][0]["start_wave"], 1);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn quit_line_never_rounds_a_failing_percentage_up_to_the_bar() {
     // 98.996% under 18 ms prints as 98.99%, not 99.00%.
     let mut v = vec![16.6; 98_996];
@@ -723,7 +838,8 @@ const ATTRIBUTED_HEADER: &str = "frame,t_ms,dt_ms,state,occluded,pre_ms,fixed_ms
     ticks,update_ms,post_ms,extract_ms,prepare_ms,acquire_ms,graph_ms,render_end_ms,idle_ms,\
     vsync_dt_ms,gpu_ms,work_ms,knights,knights_spawned,orbs,orbs_fired,shots,damage,placed,\
     cracked,broken,particles,debris,spell_fx,potions,damage_numbers,voices,voices_started,\
-    pipelines_compiled,entities";
+    pipelines_compiled,entities,gpu_frame,gpu_full,gpu_world_ms,gpu_outlines_ms,gpu_far_ms,\
+    gpu_effects_ms,gpu_ui_ms,gpu_post_ms";
 
 #[test]
 fn the_csv_header_lists_every_attribution_column() {
@@ -833,13 +949,116 @@ fn the_writer_streams_attribution_and_writes_the_spike_report() {
     assert_eq!(col("pipelines_compiled"), "2");
     assert_eq!(col("knights"), "4");
     assert_eq!(col("entities"), "3000");
-    // No GPU timing without the knob: an empty cell, not a zero.
+    // No GPU sample on this row: an empty cell, not a zero.
     assert_eq!(col("gpu_ms"), "");
     assert_eq!(col("work_ms"), "27.100");
     let doc = read_json(&dir.join("session.json"));
     assert_eq!(doc["spikes"]["spikes"], 3);
     assert_eq!(doc["spikes"]["by_cause"][0]["cause"], "graph");
     assert_eq!(doc["spikes"]["by_cause"][0]["spikes"], 2);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// A full GPU sample: world, effects, UI and post (outlines and the far layer
+/// are inside world), adding up to the total.
+fn gpu_sample(frame: u64, world: f32) -> pieced::gpu_timing::GpuSample {
+    use pieced::gpu_timing::{GpuPass, GpuSample};
+    let mut passes = [None; 6];
+    passes[GpuPass::World as usize] = Some(world);
+    passes[GpuPass::Effects as usize] = Some(1.5);
+    passes[GpuPass::Ui as usize] = Some(0.4);
+    passes[GpuPass::Post as usize] = Some(0.8);
+    GpuSample {
+        frame,
+        full: true,
+        total_ms: Some(world + 2.7),
+        passes,
+    }
+}
+
+#[test]
+fn the_writer_logs_gpu_samples_and_summarizes_each_pass() {
+    let root = temp_dir("writer-gpu");
+    let mut writer = SessionWriter::spawn(WriterConfig {
+        sessions_dir: root.clone(),
+        stamp: "20260928-110000".into(),
+        keep: KEEP_SESSIONS,
+        power: sampler("Battery Power", Some(true)),
+        meta: meta(true),
+    })
+    .unwrap();
+    // Every 8th row carries a sample of the frame 3 before it: every 4th a
+    // bare one (total only), every 10th timed frame a heavy full one (2 in
+    // 15 full samples: the world mean is 4 + 5 × 2/15 ms).
+    let mut timed = 0;
+    for mut r in simulated_rows(360.0) {
+        if r.frame % 8 == 0 {
+            timed += 1;
+            r.cost.gpu = if timed % 4 == 0 {
+                pieced::gpu_timing::GpuSample {
+                    frame: r.frame - 3,
+                    full: false,
+                    total_ms: Some(6.2),
+                    passes: [None; 6],
+                }
+            } else {
+                gpu_sample(r.frame - 3, if timed % 10 == 1 { 9.0 } else { 4.0 })
+            };
+        }
+        writer.push_wait(r);
+    }
+    let dir = writer
+        .finish(Duration::from_secs(10))
+        .unwrap()
+        .dir
+        .clone()
+        .unwrap();
+    let csv = std::fs::read_to_string(dir.join("frames.csv")).unwrap();
+    let mut lines = csv.lines();
+    let header: Vec<&str> = lines.next().unwrap().split(',').collect();
+    let rows: Vec<Vec<&str>> = lines.map(|l| l.split(',').collect()).collect();
+    let col = |row: &Vec<&str>, name: &str| -> String {
+        row[header.iter().position(|h| *h == name).unwrap()].to_string()
+    };
+    assert!(rows.iter().all(|r| r.len() == header.len()));
+    // Frame 16 is the 2nd timed frame: a full sample of frame 13.
+    let full = &rows[15];
+    assert_eq!(col(full, "gpu_frame"), "13");
+    assert_eq!(col(full, "gpu_full"), "1");
+    assert_eq!(col(full, "gpu_ms"), "6.700");
+    assert_eq!(col(full, "gpu_world_ms"), "4.000");
+    assert_eq!(col(full, "gpu_outlines_ms"), "");
+    assert_eq!(col(full, "gpu_far_ms"), "");
+    assert_eq!(col(full, "gpu_post_ms"), "0.800");
+    let bare = &rows[31];
+    assert_eq!(
+        (col(bare, "gpu_full"), col(bare, "gpu_ms")),
+        ("0".into(), "6.200".into())
+    );
+    assert_eq!(col(bare, "gpu_world_ms"), "");
+    // Untimed rows leave every GPU cell empty.
+    let plain = &rows[16];
+    assert!(
+        ["gpu_ms", "gpu_frame", "gpu_full", "gpu_ui_ms"]
+            .iter()
+            .all(|c| col(plain, c).is_empty())
+    );
+
+    let doc = read_json(&dir.join("session.json"));
+    let gpu = &doc["gpu"];
+    let full_n = gpu["full_samples"].as_u64().unwrap();
+    let bare_n = gpu["bare_samples"].as_u64().unwrap();
+    assert!(
+        full_n > 1500 && bare_n * 3 >= full_n - 10 && bare_n * 3 <= full_n + 10,
+        "{full_n} full, {bare_n} bare"
+    );
+    assert_eq!(gpu["passes"]["world"]["p95_ms"], 9.0);
+    assert!((gpu["passes"]["world"]["mean_ms"].as_f64().unwrap() - 4.667).abs() < 0.05);
+    assert_eq!(gpu["passes"]["effects"]["mean_ms"], 1.5);
+    assert_eq!(gpu["passes"]["outlines"]["samples"], 0);
+    assert!(gpu["passes"]["far"]["mean_ms"].is_null());
+    assert_eq!(gpu["total"]["p95_ms"], 11.7);
+    assert!((gpu["timing_cost_ms"].as_f64().unwrap() - 1.167).abs() < 0.05);
     let _ = std::fs::remove_dir_all(root);
 }
 
@@ -960,6 +1179,11 @@ fn a_headless_waves_session_fills_the_attribution_columns() {
     assert!(max("potions") <= pieced::waves::POTION_POOL as f64);
     let doc = read_json(&dir.join("session.json"));
     assert!(doc["spikes"]["attributed_frames"].is_u64());
+    // The Waves run is on record: it started on wave 1 and reached a wave.
+    assert_eq!(doc["waves"]["runs"][0]["start_wave"], 1);
+    assert!(doc["waves"]["max_wave"].as_u64().unwrap() >= 1);
+    // Headless, nothing is presented: the verdict falls back to dt_ms.
+    assert_eq!(doc["s2"]["basis"], "cpu");
     let _ = std::fs::remove_dir_all(root);
 }
 

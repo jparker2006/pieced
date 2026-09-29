@@ -24,11 +24,10 @@
 //!   runs on another thread while the main world simulates N+1). More CPU
 //!   headroom per frame, one more frame of latency; the session log's render
 //!   buckets read zero under it (they assume one thread).
-//! - `gpu=on`: Bevy's `RenderDiagnosticsPlugin`, whose pass timestamps work
-//!   on Apple-silicon Metal (wgpu reports `TIMESTAMP_QUERY` at stage
-//!   boundaries). The session log's `gpu_ms` column is the sum of the
-//!   top-level passes' latest GPU time; it lags the frame by a few frames and
-//!   the plugin allocates each frame, so it stays behind this knob.
+//!
+//! Milestone 4 knobs:
+//! - `gpu=on|off|N`: GPU pass timing ([`crate::gpu_timing`]) on every frame,
+//!   never, or 1 frame in N (default: `PerfTuning::gpu_every`, 8).
 
 use crate::{look::OutlineBackend, tuning::Tuning, viewmodel::ViewmodelCamera};
 use bevy::{pbr::DistanceFog, prelude::*};
@@ -56,8 +55,8 @@ pub struct PerfKnobs {
     pub latency: Option<u32>,
     /// Keep Bevy's pipelined rendering (`pipelined=on`).
     pub pipelined: Option<bool>,
-    /// GPU pass timing into the session log (`gpu=on`).
-    pub gpu: Option<bool>,
+    /// GPU pass timing on 1 frame in N (`gpu=on` = 1, `gpu=off` = 0, `gpu=N`).
+    pub gpu: Option<u32>,
 }
 
 impl PerfKnobs {
@@ -101,7 +100,7 @@ impl PerfKnobs {
                 "fxaa" => knobs.fxaa = Some(on),
                 "latency" => knobs.latency = value.parse().ok().filter(|n| (1..=3).contains(n)),
                 "pipelined" => knobs.pipelined = Some(on),
-                "gpu" => knobs.gpu = Some(on),
+                "gpu" => knobs.gpu = value.parse().ok().or(Some(u32::from(on))),
                 other => eprintln!("unknown knob '{other}'"),
             }
         }
@@ -120,6 +119,11 @@ impl Plugin for PerfKnobsPlugin {
             .and_then(|k| k.particles);
         if let (Some(cap), Some(mut tuning)) = (cap, app.world_mut().get_resource_mut::<Tuning>()) {
             tuning.feedback.max_particles = cap;
+        }
+        let gpu = app.world().get_resource::<PerfKnobs>().and_then(|k| k.gpu);
+        if let (Some(every), Some(mut tuning)) = (gpu, app.world_mut().get_resource_mut::<Tuning>())
+        {
+            tuning.perf.gpu_every = every;
         }
         app.add_systems(Update, apply_knobs.run_if(resource_exists::<PerfKnobs>));
     }
@@ -198,12 +202,13 @@ mod tests {
         let k = PerfKnobs::parse("latency=2,pipelined,gpu=on");
         assert_eq!(k.latency, Some(2));
         assert_eq!(k.pipelined, Some(true));
-        assert_eq!(k.gpu, Some(true));
+        assert_eq!(k.gpu, Some(1));
         // Out of range or unparsable latencies are ignored.
         assert_eq!(PerfKnobs::parse("latency=0").latency, None);
         assert_eq!(PerfKnobs::parse("latency=9").latency, None);
         assert_eq!(PerfKnobs::parse("latency=fast").latency, None);
-        assert_eq!(PerfKnobs::parse("gpu=off").gpu, Some(false));
+        assert_eq!(PerfKnobs::parse("gpu=off").gpu, Some(0));
+        assert_eq!(PerfKnobs::parse("gpu=4").gpu, Some(4));
         assert_eq!(PerfKnobs::parse("").pipelined, None);
     }
 

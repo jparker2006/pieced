@@ -28,7 +28,7 @@
 //! | `render_end_ms` | render cleanup and the frame limiter (no-vsync only) |
 //! | `idle_ms` | from the end of rendering to the next frame's `First` (the winit event loop and the OS) |
 //! | `vsync_dt_ms` | the interval between the last two drawable acquisitions: the display-paced cadence, for comparing with `dt_ms` (the CPU-side interval S2 measures) |
-//! | `gpu_ms` | the sum of Bevy's instrumented render passes' GPU time, only with `--knobs gpu=on` (it lags a few frames; see [`crate::perf_knobs`]) |
+//! | `gpu_ms` | the GPU time of a timed frame, first mark to last (1 frame in 8 by default; it arrives a few frames late, and `gpu_frame` names the frame it measured; see [`crate::gpu_timing`]) |
 //!
 //! **What happened.** [`FrameCounters`] counts this frame's events (knights
 //! spawned, orbs fired, pieces placed, cracked and broken, sounds started,
@@ -39,6 +39,7 @@
 use crate::{
     audio::Voice,
     fx::{FxPools, spells::SpellPools},
+    gpu_timing::{GpuResults, GpuSample},
     grunt::Grunt,
     hud::DamageNumber,
     orb::Orb,
@@ -48,7 +49,6 @@ use crate::{
 };
 use bevy::{
     app::{FixedMainScheduleOrder, MainScheduleOrder},
-    diagnostic::DiagnosticsStore,
     ecs::{entity::Entities, schedule::ScheduleLabel, schedule::SingleThreadedExecutor},
     prelude::*,
     render::{
@@ -252,7 +252,7 @@ impl FrameProfile {
             render_end_ms: span(r(GraphEnd), render_end),
             idle_ms: span(idle_from, frame_start),
             vsync_dt_ms: span(views_prev, views_end),
-            gpu_ms: None,
+            gpu: GpuSample::default(),
             counters: FrameCounters {
                 pipelines_compiled: self
                     .0
@@ -286,8 +286,9 @@ pub struct FrameCost {
     pub render_end_ms: f32,
     pub idle_ms: f32,
     pub vsync_dt_ms: f32,
-    /// GPU time of the instrumented passes, with `--knobs gpu=on` only.
-    pub gpu_ms: Option<f32>,
+    /// A GPU timing sample that arrived this frame (for an earlier frame;
+    /// `gpu.frame == 0` when none did). Its total is the `gpu_ms` column.
+    pub gpu: GpuSample,
     pub counters: FrameCounters,
 }
 
@@ -469,14 +470,10 @@ pub const TIME_COLUMNS: [&str; 15] = [
 #[derive(Resource, Debug, Clone, Copy, Default)]
 pub struct LastCounters(pub FrameCounters);
 
-/// Latest GPU pass-time sum, when `--knobs gpu=on` added Bevy's
-/// `RenderDiagnosticsPlugin` (see [`GpuTiming`]).
+/// The GPU timing sample that arrived this frame, if any (see
+/// [`crate::gpu_timing`]).
 #[derive(Resource, Debug, Clone, Copy, Default)]
-pub struct LastGpu(pub Option<f32>);
-
-/// Present when `--knobs gpu=on` asked for GPU pass timing.
-#[derive(Resource, Debug, Clone, Copy, Default)]
-pub struct GpuTiming;
+pub struct LastGpu(pub GpuSample);
 
 /// The counter gathering in `Last`; readers of [`LastCounters`] run after.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -631,7 +628,7 @@ fn gather_counters(
     fx: Option<Res<FxPools>>,
     spells: Option<Res<SpellPools>>,
     entities: &Entities,
-    gpu: (Option<Res<GpuTiming>>, Option<Res<DiagnosticsStore>>),
+    gpu: Option<Res<GpuResults>>,
 ) {
     let mut c = FrameCounters {
         knights: clamp16(grunts.iter().count()),
@@ -668,29 +665,7 @@ fn gather_counters(
         c.spell_fx = clamp16(k.glow.0 + k.solid.0 + k.bolts.0 + k.halos.0);
     }
     out.0 = c;
-    gpu_out.0 = match gpu {
-        (Some(_), Some(store)) => gpu_pass_sum(&store),
-        _ => None,
-    };
-}
-
-/// The sum of the latest GPU time of each top-level render pass span
-/// (`render/<pass>/elapsed_gpu`; nested spans are inside their parent).
-fn gpu_pass_sum(store: &DiagnosticsStore) -> Option<f32> {
-    let mut sum = 0.0;
-    let mut any = false;
-    for diag in store.iter() {
-        let path = diag.path().as_str();
-        if path.starts_with("render/")
-            && path.ends_with("/elapsed_gpu")
-            && path.matches('/').count() == 2
-            && let Some(v) = diag.value()
-        {
-            sum += v;
-            any = true;
-        }
-    }
-    any.then_some(sum as f32)
+    gpu_out.0 = gpu.and_then(|g| g.take()).unwrap_or_default();
 }
 
 #[cfg(test)]
