@@ -34,14 +34,14 @@ Every number here names its source (session folder or test), the commit, and the
 
 | View | Target | Round 1 | Round 2 | Jake's score |
 |---|---|---|---|---|
-| V1 Spawn vista mid-wave | `M4-V1` | | | |
-| V2 Rifle ADS | `M4-V2` | | | |
-| V3 Pump blast | `M4-V3` | | | |
-| V4 Headshot kill | `M4-V4` | | | |
-| V5 Knight wind-up | `M4-V5` | | | |
-| V6 Box-up fight | `M4-V6` | | | |
-| V7 Wave banner | `M4-V7` | | | |
-| V8 Main menu | `M4-V8` | | | |
+| V1 Spawn vista mid-wave | `M4-V1` | 3 | | |
+| V2 Rifle ADS | `M4-V2` | 2 | | |
+| V3 Pump blast | `M4-V3` | 2 | | |
+| V4 Headshot kill | `M4-V4` | 1.5 | | |
+| V5 Knight wind-up | `M4-V5` | 2 | | |
+| V6 Box-up fight | `M4-V6` | 3 | | |
+| V7 Wave banner | `M4-V7` | 3 (world only) | | |
+| V8 Main menu | `M4-V8` | 3 | | |
 
 ## Play-tests
 
@@ -217,3 +217,24 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
     - The load average rose from 10 to 43 about a minute in. Spikes sit in `idle` (the event loop starved: 20.6 ms against 4.4 on normal frames), not in the GPU.
     - Cause: the art builder started headless Blender work *after* `quiet.sh stop`, which only pauses processes already running.
     - **Fix:** builders now check the quiet flag (`$CARGO_TARGET_DIR/.quiet`) before any heavy command that bypasses `cargo.sh` or `build-art.sh`. The rule goes into every builder brief and the builder agent definition.
+- 2026-09-29: **art round 1 merged** (`e10ea50`, from `fdc7e73`: 681 passed, 0 failed; clippy, fmt and `build-art --check` clean).
+  - What changed:
+    - the knight got a detail pass (11k triangles);
+    - rounder tree puffs, rounder rocks, a brass drop ship;
+    - V8 is now a hero shot;
+    - a wand orientation fix;
+    - halos fade when they would cover the screen.
+  - Budget pins were raised for art (knight 11k, tree 3k, rock 600, scene 665k triangles), and the draw pins were tightened (1,500 meshes, 160 batches). Offscreen full-wave world pass: 4.15/5.57 against 4.20/5.42.
+  - **`pieced-art-reviewer` on round 1:** V1 3, V2 2, V3 2, V4 1.5, V5 2, V6 3, V7 3 (world only), V8 3. The two big misses:
+    - orb halos washing out V2, V4 and V6;
+    - a knight that reads as a stick figure at 6–9 m (helmet about 20% of his height against about 35% in the targets, grille bars reading as a skull, trims turning into value noise).
+  - Round 2 priorities were sent to the builder:
+    - the halo near-fade;
+    - a chibi knight within the fixed head sphere (hitboxes don't change);
+    - saucer and capsule ships with rune decals under the beams;
+    - a hollow pump starburst, and the kill pop held in front of the poof;
+    - a bigger wind-up flare;
+    - lawn value variation and subtler grid lines;
+    - a clean ADS sight;
+    - the V6 and V8 compositions.
+  - The spec's knight budget now reads ≤ 12k, the orchestrator's art-slice decision.

@@ -248,7 +248,7 @@ Everything shows **on the hit frame** (M2's same-frame rule), works muted, and i
 - **Cost:**
   - Knights share one graph and one set of clips.
   - Beyond 20 m they sample at 30 Hz (D100).
-  - The knight triangle budget is unchanged (≤ 8k).
+  - The knight triangle budget is ≤ 12k, raised from 8k by the orchestrator for the art slice on 2026-09-28. That holds only while the offscreen full-wave world pass stays ≤ 4.5 ms mean; see the report.
 - **Hitbox fit (S5 extended):**
   - In every non-death clip, sampled every 50 ms, the body parts stay inside the body capsule (and the helmet inside the head sphere) within 10 cm.
   - The hitboxes never move with the clips.
