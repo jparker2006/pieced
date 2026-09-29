@@ -693,6 +693,8 @@ fn boot_phases_split_the_time_before_the_window() {
         p.app_built_ms,
         p.plugins_ready_ms,
         p.startup_start_ms,
+        p.prestartup_end_ms,
+        p.startup_main_end_ms,
         p.startup_end_ms,
         p.first_frame_ms,
     ];
@@ -703,6 +705,8 @@ fn boot_phases_split_the_time_before_the_window() {
     for phase in [
         "plugins_ready=",
         "startup_start=",
+        "prestartup_end=",
+        "startup_main_end=",
         "startup_end=",
         "first_frame=",
     ] {
@@ -788,7 +792,14 @@ fn a_simulated_session_writes_its_folder_and_prints_the_quit_line() {
         .collect();
     assert_eq!(
         phases,
-        ["startup_start", "startup_end", "first_frame", "playing"]
+        [
+            "startup_start",
+            "prestartup_end",
+            "startup_main_end",
+            "startup_end",
+            "first_frame",
+            "playing"
+        ]
     );
     assert_eq!(
         doc["graphics_preset"],

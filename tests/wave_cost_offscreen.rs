@@ -103,7 +103,9 @@ fn retina_ui(app: &mut App) {
         .query_filtered::<Entity, With<IsDefaultUiCamera>>()
         .single(world)
         .expect("the UI camera");
-    world.entity_mut(ui).insert(RenderTarget::Image(image.into()));
+    world
+        .entity_mut(ui)
+        .insert(RenderTarget::Image(image.into()));
 }
 
 fn wait_gpu(app: &App) -> f64 {
@@ -130,13 +132,42 @@ fn p95(v: &[f64]) -> f64 {
 #[test]
 #[ignore = "needs a GPU: run by hand to measure a full wave"]
 fn a_full_wave_costs() {
+    let t = Instant::now();
+    let bank = pieced::audio::render_bank();
+    println!(
+        "WAVE_SOUNDS {} cues synthesized in {:.0} ms",
+        bank.len(),
+        t.elapsed().as_secs_f64() * 1000.0
+    );
     let mut app = wave_app();
     let mut boot = 0;
+    let started = Instant::now();
     while *app.world().resource::<State<AppState>>().get() == AppState::Boot {
+        let t = Instant::now();
         app.update();
+        let held: Vec<&str> = app
+            .world()
+            .resource::<pieced::app::BootGate>()
+            .held()
+            .collect();
+        if std::env::var_os("PIECED_PROBE_BOOT").is_some() {
+            println!(
+                "BOOT_FRAME {boot} at {:.0} ms took {:.1} ms, held {held:?}",
+                started.elapsed().as_secs_f64() * 1000.0,
+                t.elapsed().as_secs_f64() * 1000.0
+            );
+        }
         boot += 1;
         assert!(boot < 900, "Boot never ended");
     }
+    println!(
+        "WAVE_BOOT {} frames, {:.0} ms; {}",
+        boot,
+        started.elapsed().as_secs_f64() * 1000.0,
+        app.world()
+            .resource::<pieced::telemetry::BootPhases>()
+            .line()
+    );
     retina_ui(&mut app);
     {
         let world = app.world_mut();
@@ -170,7 +201,10 @@ fn a_full_wave_costs() {
         gpu.push(wait_gpu(&app));
     }
     // The GPU time per pass (src/gpu_timing.rs), every frame for 240 frames.
-    app.world_mut().resource_mut::<pieced::tuning::Tuning>().perf.gpu_every = 1;
+    app.world_mut()
+        .resource_mut::<pieced::tuning::Tuning>()
+        .perf
+        .gpu_every = 1;
     app.world_mut()
         .resource_mut::<pieced::tuning::Tuning>()
         .perf
