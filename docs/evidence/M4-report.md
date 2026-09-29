@@ -308,3 +308,8 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - pipelined rendering as the default;
   - cutting the UI (2.17 ms) and post (2.35 ms) full-screen passes toward their 0.5 and 1.0 budgets;
   - a pin on the number of full-screen passes.
+- 2026-09-29: **resumed. Art round 3 merged** (`c9b8ac9`, from `7a02464`).
+  - Checks: 684 passed, 0 failed, 21 ignored; clippy, fmt and `build-art --check` clean.
+  - Offscreen full-wave world pass (mean/p95): 3.31/4.82, 4.15/5.90 and 4.55/6.55 ms, at load 6.4, 6.8 and 7.6. The time rises with machine load, and the quietest run is well inside budget.
+  - The worktrees of the merged weapons and music branches were removed.
+  - The perf follow-up (`m4-perf2`) was resumed to fix the missing GPU marks on the new UI schedule. `pieced-art-reviewer` is running on round 3.
