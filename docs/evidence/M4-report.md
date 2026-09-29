@@ -9,7 +9,7 @@ Every number here names its source (session folder or test), the commit, and the
 | Gate | Status | Evidence |
 |---|---|---|
 | A0 Carried gates closed (M3 W7/W8, M2 S2/S3, W0) | PENDING | |
-| A1 Hit feedback and kills | PENDING (tests pass; play-test 1 due) | Merged `c227c3d`. On `aec1fe2`, `scripts/cargo.sh test --locked` had 629 passed, 0 failed, 16 ignored (52 suites), including `tests/kill_feedback.rs` 18/18 and the gameplay pin. Clippy `-D warnings`, `fmt --check` and `build-art.sh --check` are clean |
+| A1 Hit feedback and kills | **PASS** (`c227c3d`) | Merged `c227c3d`. On `aec1fe2`, `scripts/cargo.sh test --locked` had 629 passed, 0 failed, 16 ignored (52 suites), including `tests/kill_feedback.rs` 18/18 and the gameplay pin. Clippy `-D warnings`, `fmt --check` and `build-art.sh --check` are clean. Play-test 1 recorded: fun 4, AAA feel 3.5, about right, no unfair deaths |
 | A2 Weapons | PENDING | |
 | A3 Audio and music | PENDING | |
 | A4 Knight animation | PENDING | |
@@ -24,6 +24,7 @@ Every number here names its source (session folder or test), the commit, and the
 
 | Date | Commit | Session (power, LPM) | World | Outlines | Far | Effects | UI | Post | Total p95 |
 |---|---|---|---|---|---|---|---|---|---|
+| 1 | Hit feedback and kills | `40ef03c` | **4** | **3.5** | About right | **None** | "I think AAA games just have a certain thing about them that make them feel like real studio premium games and were not quite there yet". Smoothness: "It felt the same smoothness" | `20260929-024538` (battery 18→15%, LPM on, builds paused; 369 s; wave 4, score 3,850, 20 eliminations, 21.6% accuracy, 18 headshots) |
 | Budget | | | 4.5 | 1.5 | 2.0 | 2.0 | 0.5 | 1.0 | ≤ 12.0 |
 
 ## Target board
@@ -138,3 +139,11 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
     Both are candidates for the art slice.
   - Before the release build, the chunk 1 worktree was removed and stale test binaries pruned (5.7 → 12 GB free). `pieced-play` for play-test 1 is building.
 - 2026-09-28 19:38: **`pieced-play` built for play-test 1** (release from `main` `40ef03c`, which is chunk 1 at `c227c3d` plus docs; 22 min 47 s at low priority; 126 MB). Chunk 0 was resumed on its branch, and Jake OK'd the `wgpu` dependency.
+- 2026-09-28 19:45–19:52: **play-test 1** (release `pieced-play` from `40ef03c`, launched by the orchestrator with quiet mode on; battery at 18% falling to 15%, Low Power Mode on). Jake, quoted: "done playing, 4, 3.5, about right, no unfair deaths". He reached wave 4 (score 3,850).
+  - **Launch:** 2,953 ms **cold** (the first launch of a new binary), faster than M3's warm 4.1–4.6 s. Play → controllable took 72 ms.
+  - **Frames: a regression.** `PIECED_S2 FAIL`: mean 25.63 ms, p99 41.26, 7,509 frames > 25 ms, 41.3% < 18 ms (45.2% by the drawable cadence). 86.5% of spikes are `acquire` (18.0 ms on spikes against 6.0 on normal frames), so the GPU is far behind.
+  - Low battery doesn't explain it: M3's `20260928-085054` (`5086a57`, battery 13%, LPM) got mean 16.91 ms and 94.45% < 18, at higher background load (7–25 against 4.5–5.8 now).
+  - **Next:** the chunk 0 builder was redirected to bisect the GPU cost between `fb039a3` and `c227c3d` offscreen with the per-pass timer (chunk 1 is the prime suspect), fix it, and pin it with a test.
+- 2026-09-28: **play-test 1, the rest of Jake's answers.** On smoothness: "It felt the same smoothness". On what's off: "I think AAA games just have a certain thing about them that make them feel like real studio premium games and were not quite there yet".
+  - The builder was told he felt no choppiness, so it checks whether the frame "regression" is a measurement or pacing change from chunk 1's time handling (the hitstop now uses `HitstopFrozen`), not only GPU cost.
+- 2026-09-28: **D120:** chunks 2 (weapons) and 3 (music) run together after the regression check, and play-test 2 covers both. Jake: "yes do weapons and music together".
