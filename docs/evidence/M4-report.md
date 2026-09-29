@@ -119,3 +119,4 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
    - **Needs Jake's OK before merging:** it adds `wgpu = "=29.0.4"` (default features off) as a direct dependency. It's the same wgpu Bevy 0.19.1 already builds, so nothing new compiles. It's needed because Bevy doesn't re-export the timestamp query types.
 5. Then the art slice (board captures in `tests/m4_board.rs`) and chunk 2 (weapons), at most two builds at once.
 6. Music sources are ready in `art/music/src/` for chunk 3. The board V1–V8 is approved.
+- 2026-09-28: **Jake OK'd the direct `wgpu` dependency** for chunk 0: "yes, wgpu is fine". It is `=29.0.4` with default features off, the same wgpu Bevy 0.19.1 builds, for the timestamp query types.
