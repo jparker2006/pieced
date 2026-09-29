@@ -118,7 +118,21 @@ Paused at the usage limit. Both builders were told to commit their work in progr
    - saucer undersides and bank;
    - kill effects that frame the knight.
 
-   Finish it, run the full test suite, clippy, fmt and `build-art --check`, merge, then run `pieced-art-reviewer` on `round3/`. Keep iterating until every view is predicted ≥ 4. Then publish the board page for Jake to score (A6).
+   **Round 3 is committed at `a589809`, not merged.**
+   - Changes:
+     - mid-grey steel `#8E93AB` and a softer rim (2.0 → 1.3);
+     - a belt, greaves and an A-line robe; the wand is now the brightest part of the knight (9,490 triangles, S5 green);
+     - bronze saucer undersides and a 15° bank toward the camera;
+     - gold beams and landing circles;
+     - a low, delayed poof and a bigger helmet pop;
+     - pump bursts 1.4× bigger;
+     - the V8 plinth widened into a wall, and V6 looking up through the window.
+   - **Before merging:**
+     - the full suite on `a589809` (the last run failed only the ship-bank test, since fixed);
+     - confirm that `tests/models.rs` `models_load_headless_and_spawn_with_their_parts` is flaky under load and not broken (it failed once at load 12);
+     - re-run the world-pass GPU timing on a quiet machine (4.61/6.04 under load against 4.06/5.19 in round 2).
+   - **Open:** V2's ADS "brown tube", "DOUBLE!" overlapping the gun in V4, V5's stance (chunk 4) and V7's banner (chunk 5).
+   - Then run `pieced-art-reviewer` on `round3/`. Keep iterating until every view is predicted ≥ 4. Then publish the board page for Jake to score (A6).
 3. **`m4-perf2`** (worktree `.claude/worktrees/agent-ae2f9c1d477f37f63`): in progress:
    - input-to-present latency in the log;
    - pipelined rendering as the default;
