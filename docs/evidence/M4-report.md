@@ -124,7 +124,16 @@ Paused at the usage limit. Both builders were told to commit their work in progr
    - pipelined rendering as the default;
    - cutting the UI and post passes.
 
-   Finish it, verify, merge, build `pieced-play` and give Jake a session (battery, LPM, Start at wave 6 once chunk 5 lands) for A7.
+   **Status (`a775c91`, not merged):**
+   - Done:
+     - The UI camera now draws the HUD and writes the window in one pass; the old 2D pass and the full-screen image are gone. HUD offscreen captures match (SSIM ≥ 0.9989).
+     - Pipelined rendering is the default (`--knobs pipelined=off` turns it off). The presented cadence and `acquire_ms` are now logged under pipelining; before, they read 0.
+     - Input-to-present latency for presses and look goes into `frames.csv`, `session.json`, `PIECED_S2` and `sessions.py --latency`. It isn't yet measured with real input.
+   - Left:
+     - The GPU marks on the UI camera's new schedule never get written, so `ui` reads 0 and `gpu_timing_offscreen` fails. Fix that, then re-measure. Offscreen totals fell from 6.58/10.37 to about 5.4/7.0 without the HUD pass.
+     - Remove the temporary `debug_last_marks` code (`src/gpu_timing.rs`, `tests/wave_cost_offscreen.rs`).
+     - Run the full test suite, clippy and fmt.
+   - Then merge, build `pieced-play`, and give Jake a session (battery, LPM, Start at wave 6 once chunk 5 lands) for A7 and the latency check (≤ 33 ms).
 4. **Not started:**
    - chunk 4 (knight animation), after the art slice merges, since both edit `knight.py`;
    - chunk 5 (presentation and Start at wave; the banner reads `audio::music::WaveStarted`).
