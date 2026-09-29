@@ -55,7 +55,7 @@ pub const BONUS_SIZE: f32 = 28.0;
 /// tilt (rad).
 pub const CALLOUT_SIZE: f32 = 58.0;
 const CALLOUT_BOX: Vec2 = Vec2::new(420.0, 80.0);
-const CALLOUT_OFFSET: Vec2 = Vec2::new(150.0, -96.0);
+const CALLOUT_OFFSET: Vec2 = Vec2::new(185.0, 64.0);
 const CALLOUT_TILT: f32 = -0.12;
 /// Colors: the bonuses' gold and violet.
 pub const HEADSHOT_GOLD: Color = palette::HEADSHOT;

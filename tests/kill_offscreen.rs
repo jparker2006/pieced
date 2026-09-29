@@ -187,7 +187,10 @@ fn stand(app: &mut App, knight: Entity, at: Vec3, hp: f32) {
     let mut e = app.world_mut().entity_mut(knight);
     e.get_mut::<Transform>().unwrap().translation = at;
     e.get_mut::<PreviousFeet>().unwrap().0 = at;
-    e.get_mut::<GruntStats>().unwrap().speed = 0.0;
+    let mut stats = e.get_mut::<GruntStats>().unwrap();
+    stats.speed = 0.0;
+    stats.reaction = 1.0e6;
+    stats.fire_interval = 1.0e6;
     let mut health = e.get_mut::<Health>().unwrap();
     health.hp = hp;
     health.shield = 0.0;
