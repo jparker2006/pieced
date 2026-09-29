@@ -116,6 +116,10 @@ pub enum Setting {
     DamageNumbers,
     CameraShake,
     Volume,
+    /// The score's level (M4).
+    Music,
+    /// The effects' level (M4).
+    Effects,
     Mute,
     Quality,
     WindowMode,
@@ -137,7 +141,7 @@ pub enum SettingKind {
 const SENSITIVITY_DISPLAY: f32 = 1000.0;
 
 impl Setting {
-    pub const ALL: [Setting; 13] = [
+    pub const ALL: [Setting; 15] = [
         Setting::Sensitivity,
         Setting::AdsMultiplier,
         Setting::BuildMultiplier,
@@ -148,6 +152,8 @@ impl Setting {
         Setting::DamageNumbers,
         Setting::CameraShake,
         Setting::Volume,
+        Setting::Music,
+        Setting::Effects,
         Setting::Mute,
         Setting::Quality,
         Setting::WindowMode,
@@ -164,7 +170,9 @@ impl Setting {
             Setting::Bloom => "Crosshair bloom",
             Setting::DamageNumbers => "Damage numbers",
             Setting::CameraShake => "Camera shake",
-            Setting::Volume => "Volume",
+            Setting::Volume => "Master volume",
+            Setting::Music => "Music",
+            Setting::Effects => "Effects",
             Setting::Mute => "Mute",
             Setting::Quality => "Quality",
             Setting::WindowMode => "Window",
@@ -193,11 +201,13 @@ impl Setting {
                 max: 90.0,
                 step: 1.0,
             },
-            Setting::CameraShake | Setting::Volume => SettingKind::Slider {
-                min: 0.0,
-                max: 1.0,
-                step: 0.05,
-            },
+            Setting::CameraShake | Setting::Volume | Setting::Music | Setting::Effects => {
+                SettingKind::Slider {
+                    min: 0.0,
+                    max: 1.0,
+                    step: 0.05,
+                }
+            }
             Setting::Acceleration
             | Setting::AimFriction
             | Setting::Bloom
@@ -222,6 +232,8 @@ impl Setting {
             Setting::DamageNumbers => flag(t.hud.damage_numbers),
             Setting::CameraShake => t.feedback.camera_shake,
             Setting::Volume => t.audio.master_volume,
+            Setting::Music => t.audio.music_volume,
+            Setting::Effects => t.audio.effects_volume,
             Setting::Mute => flag(t.audio.muted),
             Setting::Quality => match t.graphics.preset {
                 QualityPreset::Battery => 0.0,
@@ -263,6 +275,8 @@ impl Setting {
             Setting::DamageNumbers => t.hud.damage_numbers = on,
             Setting::CameraShake => t.feedback.camera_shake = value,
             Setting::Volume => t.audio.master_volume = value,
+            Setting::Music => t.audio.music_volume = value,
+            Setting::Effects => t.audio.effects_volume = value,
             Setting::Mute => t.audio.muted = on,
             Setting::Quality => {
                 t.graphics.preset = if on {
@@ -299,7 +313,9 @@ impl Setting {
             Setting::Sensitivity => format!("{v:.2}"),
             Setting::AdsMultiplier | Setting::BuildMultiplier => format!("{v:.2}x"),
             Setting::Fov => format!("{v:.0}"),
-            Setting::CameraShake | Setting::Volume => format!("{:.0}%", v * 100.0),
+            Setting::CameraShake | Setting::Volume | Setting::Music | Setting::Effects => {
+                format!("{:.0}%", v * 100.0)
+            }
             _ => match self.kind() {
                 SettingKind::Toggle => if v >= 0.5 { "On" } else { "Off" }.into(),
                 SettingKind::Choice(options) => options[v.round() as usize].into(),

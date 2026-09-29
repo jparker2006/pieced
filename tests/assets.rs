@@ -173,6 +173,148 @@ fn ui_icons_and_logo_are_committed_listed_and_embedded() {
     assert_eq!(embedded.len(), expected.len());
 }
 
+/// `(file, made-by, notes)` for every table row whose first cell is a
+/// backticked path.
+fn listed_rows_with_notes(md: &str) -> Vec<(String, String, String)> {
+    md.lines()
+        .filter_map(|line| {
+            let cells: Vec<&str> = line.trim().trim_matches('|').split('|').collect();
+            if cells.len() < 3 {
+                return None;
+            }
+            let file = code_spans(cells[0].trim()).first()?.to_string();
+            Some((
+                file,
+                cells[1].trim().to_string(),
+                cells[2..].join("|").trim().to_string(),
+            ))
+        })
+        .collect()
+}
+
+/// An attribution line in the Freesound style:
+/// `"Title" by Author (freesound.org/s/123/), CC BY 4.0` (or `CC0`).
+#[derive(Debug, PartialEq)]
+struct Attribution {
+    title: String,
+    author: String,
+    source: String,
+    license: String,
+}
+
+impl Attribution {
+    fn line(&self) -> String {
+        format!(
+            "\"{}\" by {} ({}), {}",
+            self.title, self.author, self.source, self.license
+        )
+    }
+}
+
+/// The attribution a music row's notes must carry: a CC0 or CC BY license
+/// with its title, author and source. Anything else is rejected.
+fn music_attribution(notes: &str) -> Result<Attribution, String> {
+    let at = notes.find("Attribution: \"").ok_or_else(|| {
+        format!("no `Attribution: \"Title\" by Author (source), license` in {notes:?}")
+    })?;
+    let rest = &notes[at + "Attribution: \"".len()..];
+    let (title, rest) = rest.split_once("\" by ").ok_or("no `\" by `")?;
+    let (author, rest) = rest.split_once(" (").ok_or("no source in parentheses")?;
+    let (source, rest) = rest
+        .split_once("), ")
+        .ok_or("no license after the source")?;
+    let license = rest.trim().trim_end_matches('.').to_string();
+    if !(license == "CC BY 4.0"
+        || license == "CC BY 3.0"
+        || license == "CC0"
+        || license == "CC0 1.0")
+    {
+        return Err(format!("license {license:?} is not CC0 or CC BY"));
+    }
+    if title.is_empty() || author.trim().is_empty() || !source.contains('/') {
+        return Err("empty title, author or source".into());
+    }
+    Ok(Attribution {
+        title: title.to_string(),
+        author: author.trim().to_string(),
+        source: source.to_string(),
+        license,
+    })
+}
+
+/// M4 chunk 3 (D107, D116): every music file is licensed CC0 or CC BY, names
+/// its credits file, and carries an attribution line that the credits file
+/// also has. A music file without one fails.
+#[test]
+fn every_music_file_is_openly_licensed_and_credited() {
+    let md = fs::read_to_string(repo().join("assets/ASSETS.md")).unwrap();
+    let rows = listed_rows_with_notes(&md);
+    let mut on_disk = BTreeSet::new();
+    let music = repo().join("assets/music");
+    files_under(&music, &music, &mut on_disk);
+    let oggs: Vec<&String> = on_disk.iter().filter(|f| f.ends_with(".ogg")).collect();
+    assert!(oggs.len() >= 5, "the score's files: {oggs:?}");
+    let mut authors = BTreeSet::new();
+    for file in oggs {
+        let (_, made_by, notes) = rows
+            .iter()
+            .find(|(f, _, _)| *f == format!("music/{file}"))
+            .unwrap_or_else(|| panic!("music/{file} is not in assets/ASSETS.md"));
+        let credits: Vec<&str> = code_spans(made_by)
+            .into_iter()
+            .filter(|p| p.ends_with("CREDITS.md") && repo().join(p).is_file())
+            .collect();
+        assert_eq!(
+            credits.len(),
+            1,
+            "music/{file} names its credits file: {made_by}"
+        );
+        assert!(
+            made_by.contains("scripts/build-music.sh"),
+            "music/{file}: {made_by}"
+        );
+        let attribution = music_attribution(notes)
+            .unwrap_or_else(|e| panic!("music/{file} has no valid attribution: {e}"));
+        let credits_text = fs::read_to_string(repo().join(credits[0])).unwrap();
+        assert!(
+            credits_text.contains(&attribution.line()),
+            "music/{file}: {} is missing from {}",
+            attribution.line(),
+            credits[0]
+        );
+        authors.insert(attribution.author);
+    }
+    // The in-game credit names every author.
+    for author in &authors {
+        assert!(
+            pieced::audio::music::MUSIC_CREDIT.contains(author.as_str()),
+            "the in-game credit names {author}"
+        );
+    }
+    assert!(pieced::audio::music::MUSIC_CREDIT.contains("CC BY 4.0"));
+
+    // The audit rejects what it should.
+    for bad in [
+        "Menu loop.",
+        "Attribution: \"Song\" by Someone (example.com/song), All rights reserved",
+        "Attribution: \"Song\" by Someone (example.com/song), CC BY-NC 4.0",
+        "Attribution: \"Song\" by Someone, CC BY 4.0",
+        "Attribution: \"\" by Someone (freesound.org/s/1/), CC BY 4.0",
+    ] {
+        assert!(music_attribution(bad).is_err(), "accepted {bad:?}");
+    }
+    assert_eq!(
+        music_attribution("Loop. Attribution: \"Song\" by Some One (freesound.org/s/1/), CC0")
+            .unwrap(),
+        Attribution {
+            title: "Song".into(),
+            author: "Some One".into(),
+            source: "freesound.org/s/1/".into(),
+            license: "CC0".into(),
+        }
+    );
+}
+
 /// The spec allows one third-party font (with its license), picked from a HUD
 /// mock-up; the other candidate is gone.
 #[test]

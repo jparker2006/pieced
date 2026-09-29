@@ -8,7 +8,9 @@ license = "MIT"
 publish = false
 
 [dependencies]
-bevy = { version = "=0.19.1", features = ["wav"] }
+# `vorbis` (the pure-Rust lewton decoder, OK'd by Jake 2026-09-28): the music is
+# Ogg Vorbis (M4 chunk 3, `assets/music/`).
+bevy = { version = "=0.19.1", features = ["wav", "vorbis"] }
 avian3d = "=0.7.0"
 bevy_egui = "=0.42.0"
 bevy_mod_outline = "=0.13.0"
