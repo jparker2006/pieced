@@ -1,7 +1,10 @@
 //! Pure pose math for the viewmodel: ADS alignment, the crystal ammo glow, the
 //! rifle's crystal-swap reload, the pump's shard reload, rack and spinning
 //! rings, the squash-and-stretch firing kick and the weapon-switch
-//! lower/raise. No ECS here, so it's easy to test.
+//! put-away and draw. No ECS here, so it's easy to test. Every animation
+//! finishes inside its gameplay time (M4, D106): the switch in 0.2 s, the
+//! rifle reload in 2.0 s, each pump shell in 0.5 s, the rack before the next
+//! pump shot.
 //!
 //! Offsets are in gun model space (meters, -Z toward the muzzle, +Y up, +X the
 //! gun's right) unless a doc says otherwise.
@@ -16,9 +19,10 @@ pub fn smoothstep(t: f32) -> f32 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// 0 → 1 → 0 over `t` in 0..=1 (a single soft bump).
+/// 0 → 1 → 0 over `t` in 0..=1 (a single soft bump), exactly 0 at and
+/// beyond both ends.
 pub fn bump(t: f32) -> f32 {
-    if (0.0..=1.0).contains(&t) {
+    if t > 0.0 && t < 1.0 {
         (t * PI).sin()
     } else {
         0.0
@@ -27,9 +31,16 @@ pub fn bump(t: f32) -> f32 {
 
 /// Ease out with a small overshoot past 1 (a cartoon "pop").
 pub fn ease_out_back(t: f32) -> f32 {
+    ease_out_back_by(t, 1.7)
+}
+
+/// Ease out that overshoots past 1 and settles back exactly on 1 at `t` = 1.
+/// `s` sets the overshoot: it peaks at 1 + 4s³ / (27 (s + 1)²) (about 3.7%
+/// for `s` = 1, 10% for 1.7); 0 is a plain ease out.
+pub fn ease_out_back_by(t: f32, s: f32) -> f32 {
     let t = t.clamp(0.0, 1.0) - 1.0;
-    const S: f32 = 1.7;
-    1.0 + t * t * ((S + 1.0) * t + S)
+    let s = s.max(0.0);
+    1.0 + t * t * ((s + 1.0) * t + s)
 }
 
 /// Where `t` is between `a` and `b`, clamped to 0..=1.
@@ -77,13 +88,64 @@ impl std::ops::Add for PoseOffset {
 }
 
 // ---------------------------------------------------------------------------
+// Keyframes
+// ---------------------------------------------------------------------------
+
+/// How a keyframed segment eases into its key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ease {
+    /// Soft start and soft landing.
+    Smooth,
+    /// Starts slow and arrives fast (a push, a slam).
+    In,
+    /// Leaves fast and lands soft (a reach, a lift).
+    Out,
+}
+
+impl Ease {
+    pub fn apply(self, t: f32) -> f32 {
+        let t = t.clamp(0.0, 1.0);
+        match self {
+            Ease::Smooth => smoothstep(t),
+            Ease::In => t * t,
+            Ease::Out => 1.0 - (1.0 - t) * (1.0 - t),
+        }
+    }
+}
+
+/// A keyframed track: `(time, value, ease into it)`, times ascending. Holds the
+/// first value before the first key and the last after the last.
+pub fn keyframes(t: f32, keys: &[(f32, Vec3, Ease)]) -> Vec3 {
+    let Some(&(t0, v0, _)) = keys.first() else {
+        return Vec3::ZERO;
+    };
+    if t <= t0 {
+        return v0;
+    }
+    for pair in keys.windows(2) {
+        let (a, va, _) = pair[0];
+        let (b, vb, ease) = pair[1];
+        if t <= b {
+            return va.lerp(vb, ease.apply(phase(t, a, b)));
+        }
+    }
+    keys.last().map_or(Vec3::ZERO, |k| k.1)
+}
+
+// ---------------------------------------------------------------------------
 // Crystal ammo glow
 // ---------------------------------------------------------------------------
 
-/// The glow of an empty crystal (and of a fresh one before it charges).
+/// The glow of an empty crystal.
 pub const GLOW_MIN: f32 = 0.25;
-/// Seconds a freshly seated rifle crystal takes to charge up.
+/// A fresh rifle crystal glows this much in the glove, before it is seated...
+pub const FRESH_GLOW: f32 = 0.5;
+/// ...charges to this as it seats (from the slot to the reload's end)...
+pub const SEATED_GLOW: f32 = 0.75;
+/// ...and flashes up to full over this many seconds once the reload completes.
 pub const GLOW_RAMP: f32 = 0.3;
+/// How far past full the charge-up flash peaks.
+pub const GLOW_FLASH: f32 = 0.4;
 
 /// Crystal glow for a magazine: 0.25 + 0.75 × (rounds ÷ magazine size).
 pub fn ammo_glow(ammo: u32, magazine: u32) -> f32 {
@@ -94,21 +156,24 @@ pub fn ammo_glow(ammo: u32, magazine: u32) -> f32 {
 /// The rifle crystal's glow. `reload` is the reload's progress while one runs;
 /// `since_reload` is the seconds since the last reload completed.
 ///
-/// It follows the magazine. Mid-reload the old, dim crystal keeps its glow as it
-/// pops out, and the fresh one slides in dark ([`GLOW_MIN`]); the moment the
-/// reload completes, the fresh crystal charges up over [`GLOW_RAMP`] with a
-/// brief overshoot flash.
+/// It follows the magazine. Mid-reload the old, dim crystal keeps its glow as
+/// it pops out; the fresh one the glove brings up glows ([`FRESH_GLOW`]), starts
+/// charging the moment it clicks into the socket, and the moment the reload
+/// completes flashes up to full over [`GLOW_RAMP`].
 pub fn rifle_crystal_glow(ammo: u32, magazine: u32, reload: Option<f32>, since_reload: f32) -> f32 {
     if let Some(p) = reload {
-        return if rifle_reload(p).fresh {
-            GLOW_MIN
-        } else {
+        return if !rifle_reload(p).fresh {
             ammo_glow(ammo, magazine)
+        } else if p < RIFLE_SLOT {
+            FRESH_GLOW
+        } else {
+            FRESH_GLOW + (SEATED_GLOW - FRESH_GLOW) * smoothstep(phase(p, RIFLE_SLOT, 1.0))
         };
     }
     let target = ammo_glow(ammo, magazine);
     if since_reload < GLOW_RAMP {
-        GLOW_MIN + (target - GLOW_MIN) * ease_out_back(since_reload / GLOW_RAMP)
+        let u = since_reload / GLOW_RAMP;
+        SEATED_GLOW + (target - SEATED_GLOW) * smoothstep(u) + GLOW_FLASH * bump(u)
     } else {
         target
     }
@@ -159,105 +224,135 @@ impl CrystalPose {
 /// Everything the rifle's reload moves.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RifleReloadPose {
+    /// How far the gun is in its reload stance (0 = at the hip, 1 = in
+    /// `models::RIFLE_RELOAD`).
+    pub stance: f32,
+    /// The accents on top of the stance: the flick, the lean toward the
+    /// fetching hand, the shove as the crystal seats, the glass's clack.
     pub gun: PoseOffset,
     pub crystal: CrystalPose,
     /// 0 = the glass chamber closed, 1 = slid open into the front collar.
     pub chamber_open: f32,
-    /// Whether the crystal shown is the fresh one (dark until the reload ends).
+    /// Whether the crystal shown is the fresh one.
     pub fresh: bool,
-    /// How far the left glove has left the forend to carry the fresh crystal
-    /// in (0 = on the forend, 1 = holding the crystal).
+    /// How far the left glove has left the forend to work the crystal
+    /// (0 = on the forend, 1 = at [`Self::hand_at`]).
     pub hand: f32,
     /// Where the left glove holds, relative to the crystal socket.
     pub hand_at: Vec3,
 }
 
-/// Reload phases (fractions of the reload time).
-const GLASS_OPEN: (f32, f32) = (0.06, 0.18);
-const POP_OUT: (f32, f32) = (0.14, 0.42);
-const SLIDE_IN: (f32, f32) = (0.46, 0.72);
-const GLASS_CLOSE: (f32, f32) = (0.72, 0.84);
+/// The rifle reload's beats (fractions of its 2.0 s): the glass slides open,
+/// the glove flicks the dim crystal out, grabs a fresh one from below, and
+/// slots it in with a click; the glass shuts.
+pub const RIFLE_GLASS_OPEN: f32 = 0.07;
+pub const RIFLE_POP: f32 = 0.22;
+pub const RIFLE_GRAB: f32 = 0.5;
+pub const RIFLE_SLOT: f32 = 0.8;
+pub const RIFLE_GLASS_SHUT: f32 = 0.87;
 
-/// The rifle reload at progress `p` (0..=1 over the whole reload): the gun rolls
-/// its chamber toward you, the glass slides open, the dim crystal pops up and
-/// spins away, a fresh one slides into the socket, the glass snaps shut, and
-/// the gun comes back up.
+const GLASS_OPEN: (f32, f32) = (RIFLE_GLASS_OPEN, 0.17);
+const GLASS_CLOSE: (f32, f32) = (RIFLE_SLOT, RIFLE_GLASS_SHUT);
+/// The old crystal's flight after the flick.
+const POP_OUT: (f32, f32) = (RIFLE_POP, 0.46);
+/// The glove leaves the forend for the chamber, and is back at the end.
+const HAND_OUT: (f32, f32) = (0.03, 0.16);
+const HAND_BACK: (f32, f32) = (0.84, 0.97);
+
+/// Where the glove reaches down to for the fresh crystal (socket-relative):
+/// well below the gun and a little toward you, off the bottom of the screen.
+pub const RIFLE_FETCH: Vec3 = Vec3::new(-0.12, -0.22, 0.09);
+/// Where the glove lines the fresh crystal up, beside the open socket on your
+/// side, before it pushes it home.
+const RIFLE_STAGE: Vec3 = Vec3::new(-0.075, -0.025, 0.015);
+
+/// The left glove's path through the reload (socket-relative): under the
+/// crystal, a flick up that pops it out, down out of view to fetch a fresh
+/// one, up under the socket, and a push home.
+const RIFLE_HAND_KEYS: [(f32, Vec3, Ease); 10] = [
+    (0.16, Vec3::new(0.0, -0.012, 0.0), Ease::Smooth),
+    (0.195, Vec3::new(0.0, -0.03, 0.004), Ease::Out),
+    (RIFLE_POP, Vec3::new(0.004, 0.022, -0.004), Ease::In),
+    (0.28, Vec3::new(0.012, 0.03, -0.006), Ease::Out),
+    (0.46, RIFLE_FETCH, Ease::Smooth),
+    (RIFLE_GRAB, Vec3::new(-0.12, -0.232, 0.09), Ease::Out),
+    (0.65, RIFLE_STAGE, Ease::Out),
+    (0.73, Vec3::new(-0.069, -0.027, 0.015), Ease::Smooth),
+    (RIFLE_SLOT, Vec3::ZERO, Ease::In),
+    (0.83, Vec3::new(0.0, -0.004, 0.0), Ease::Out),
+];
+
+/// The rifle reload at progress `p` (0..=1 over the whole reload): the gun
+/// turns its chamber toward you and the glass slides open; the left glove
+/// flicks the dim crystal up and out (it spins away), drops out of view,
+/// comes back up with a fresh glowing crystal, lines it up beside the socket
+/// and pushes it home with a click; the glass snaps shut and the gun comes
+/// back up. Everything is back at rest by `p` = 1.
 pub fn rifle_reload(p: f32) -> RifleReloadPose {
     let p = p.clamp(0.0, 1.0);
-    let env = smoothstep(p / 0.12) * (1.0 - smoothstep((p - 0.84) / 0.16));
-    let mut gun = PoseOffset {
-        pos: Vec3::new(-0.035, 0.03, 0.04),
-        euler: Vec3::new(0.14, 0.08, 0.36),
-    }
-    .scaled(env);
-    // A little shove as the fresh crystal seats, and a clack as the glass shuts.
-    let seat = bump(phase(p, 0.66, 0.78));
-    let clack = bump(phase(p, 0.80, 0.88));
-    gun.pos.y -= 0.010 * seat;
-    gun.euler.x += 0.05 * clack;
+    let stance = smoothstep(p / 0.14) * (1.0 - smoothstep(phase(p, 0.86, 1.0)));
+    let mut gun = PoseOffset::default();
+    // The flick jerks the muzzle up; the gun leans toward the hand as it
+    // fetches; the push from below lifts it, and the glass clacks shut.
+    let flick = bump(phase(p, 0.19, 0.3));
+    let lean = bump(phase(p, 0.28, 0.72));
+    let shove = bump(phase(p, RIFLE_SLOT - 0.01, 0.9));
+    let clack = bump(phase(p, RIFLE_GLASS_SHUT - 0.01, 0.93));
+    gun.pos.y += 0.006 * flick + 0.012 * shove;
+    gun.euler.x += 0.06 * flick - 0.045 * shove + 0.03 * clack;
+    gun.euler.z += 0.07 * lean;
 
     let open = smoothstep(phase(p, GLASS_OPEN.0, GLASS_OPEN.1))
         * (1.0 - smoothstep(phase(p, GLASS_CLOSE.0, GLASS_CLOSE.1)));
 
-    let (crystal, fresh) = if p < POP_OUT.0 {
-        // A nervous rattle while the glass opens.
-        let r = phase(p, GLASS_OPEN.0, POP_OUT.0);
-        (
-            CrystalPose {
-                offset: Vec3::new(0.0, 0.006 * bump(r), 0.0),
-                spin: 0.4 * bump(r),
-                ..CrystalPose::SEATED
-            },
-            false,
-        )
-    } else if p < POP_OUT.1 {
-        // Pops up and spins away to the upper right, shrinking into a sparkle.
-        let u = phase(p, POP_OUT.0, POP_OUT.1);
-        (
-            CrystalPose {
-                offset: Vec3::new(0.17 * u, 0.36 * u - 0.24 * u * u, -0.06 * u),
-                spin: 3.0 * TAU * (1.0 - (1.0 - u) * (1.0 - u)),
-                tumble: -1.2 * u,
-                scale: 1.0 - smoothstep(phase(u, 0.55, 1.0)),
-            },
-            false,
-        )
-    } else if p < SLIDE_IN.0 {
-        (
-            CrystalPose {
-                scale: 0.0,
-                ..CrystalPose::SEATED
-            },
-            true,
-        )
-    } else if p < SLIDE_IN.1 {
-        // The fresh crystal slides down from above-left into the socket.
-        let u = phase(p, SLIDE_IN.0, SLIDE_IN.1);
-        let e = smoothstep(u);
-        (
-            CrystalPose {
-                offset: Vec3::new(-0.05, 0.15, 0.02) * (1.0 - e),
-                spin: TAU * (1.0 - e),
-                tumble: 0.0,
-                scale: 0.55 + 0.45 * ease_out_back(phase(u, 0.0, 0.6)),
-            },
-            true,
-        )
-    } else {
-        (CrystalPose::SEATED, true)
-    };
-    // The left glove fetches the fresh crystal from above, carries it down
-    // into the socket and goes back to the forend.
-    let hand = smoothstep(phase(p, HAND_FETCH.0, HAND_FETCH.1))
+    let hand = smoothstep(phase(p, HAND_OUT.0, HAND_OUT.1))
         * (1.0 - smoothstep(phase(p, HAND_BACK.0, HAND_BACK.1)));
-    let hand_at = if p < SLIDE_IN.0 {
-        FRESH_FROM
-    } else if fresh && crystal.visible() {
-        crystal.offset
+    let hand_at = keyframes(p, &RIFLE_HAND_KEYS);
+
+    let fresh = p >= POP_OUT.1;
+    let crystal = if p < RIFLE_POP {
+        // A nervous rattle as the glass opens and the glove gets under it.
+        let r = phase(p, 0.1, RIFLE_POP);
+        CrystalPose {
+            offset: Vec3::new(0.0, 0.005 * bump(r) * (r * 3.0 * TAU).cos().abs(), 0.0),
+            spin: 0.4 * bump(r),
+            ..CrystalPose::SEATED
+        }
+    } else if p < POP_OUT.1 {
+        // Flicked up, it spins away to the upper right, shrinking into a
+        // sparkle.
+        let u = phase(p, POP_OUT.0, POP_OUT.1);
+        CrystalPose {
+            offset: Vec3::new(0.17 * u, 0.36 * u - 0.24 * u * u, -0.06 * u),
+            spin: 3.0 * TAU * (1.0 - (1.0 - u) * (1.0 - u)),
+            tumble: -1.2 * u,
+            scale: 1.0 - smoothstep(phase(u, 0.55, 1.0)),
+        }
+    } else if p < RIFLE_GRAB - 0.02 {
+        // Gone; the glove is out of view fetching the next.
+        CrystalPose {
+            scale: 0.0,
+            ..CrystalPose::SEATED
+        }
+    } else if p < RIFLE_SLOT {
+        // In the glove: it turns a little as it comes up and squares up to
+        // the socket before it goes in.
+        let u = phase(p, RIFLE_GRAB - 0.02, RIFLE_SLOT);
+        CrystalPose {
+            offset: hand_at,
+            spin: 0.9 * TAU * (1.0 - smoothstep(u)),
+            tumble: 0.3 * (1.0 - smoothstep(u)),
+            scale: 0.6 + 0.4 * ease_out_back(phase(p, RIFLE_GRAB - 0.02, RIFLE_GRAB + 0.04)),
+        }
     } else {
-        Vec3::ZERO
+        // Seated with a click: a little swell as it snaps home.
+        CrystalPose {
+            scale: 1.0 + 0.12 * bump(phase(p, RIFLE_SLOT, RIFLE_SLOT + 0.07)),
+            ..CrystalPose::SEATED
+        }
     };
     RifleReloadPose {
+        stance,
         gun,
         crystal,
         chamber_open: open,
@@ -266,13 +361,6 @@ pub fn rifle_reload(p: f32) -> RifleReloadPose {
         hand_at,
     }
 }
-
-/// The left glove leaves the forend to fetch the fresh crystal as the old one
-/// flies, and is back once the crystal is seated.
-const HAND_FETCH: (f32, f32) = (0.30, 0.46);
-const HAND_BACK: (f32, f32) = (0.72, 0.86);
-/// Where the fresh crystal comes from (relative to its socket).
-const FRESH_FROM: Vec3 = Vec3::new(-0.05, 0.15, 0.02);
 
 /// The left glove's forearm direction in its grip frame (`gloves.py`'s
 /// `FOREARM_L` in Bevy axes): down, and out toward the side facing you.
@@ -294,11 +382,18 @@ pub const HAND_SWING_OUT: f32 = 0.09;
 /// below on your side ([`HAND_HOLD_OFFSET`]) with its forearm reaching back
 /// toward you. On the way it swings out on your side, clear of the gun.
 pub fn hand_hold(t: f32, grip: Transform, at: Vec3) -> Transform {
+    hand_hold_by(t, grip, at, HAND_HOLD_OFFSET)
+}
+
+/// [`hand_hold`] with the glove's grip point `offset` from what it holds
+/// (the pump's shards are small, so the glove holds them lower down, at
+/// [`SHARD_HOLD_OFFSET`], to keep them in view above its fingers).
+pub fn hand_hold_by(t: f32, grip: Transform, at: Vec3, offset: Vec3) -> Transform {
     let t = smoothstep(t);
     let hold = Quat::from_rotation_y(HAND_HOLD_YAW)
         * Quat::from_rotation_z(HAND_HOLD_ROLL)
         * grip.rotation;
-    let target = at + HAND_HOLD_OFFSET;
+    let target = at + offset;
     let path = grip.translation.lerp(target, t) + Vec3::new(-HAND_SWING_OUT * bump(t), 0.0, 0.0);
     Transform::from_translation(path).with_rotation(grip.rotation.slerp(hold, t))
 }
@@ -329,11 +424,19 @@ pub const PUMP_RELOAD_STANCE: PoseOffset = PoseOffset {
     euler: Vec3::new(0.12, 0.75, 0.25),
 };
 
+/// Shell progress at which the glove's push lands: the shard is in the rings.
+pub const SHARD_PUSH: f32 = 0.46;
 /// Shell progress at which a shard has merged into the crystal (it counts).
 pub const SHARD_MERGED: f32 = 0.66;
 
-/// Where a shard starts: above the rings, a little toward you.
+/// Where a shard is lined up before the push: above the rings, a little
+/// toward you.
 pub const SHARD_START: Vec3 = Vec3::new(-0.03, 0.13, 0.01);
+/// Where the glove picks up each shard: down on your side of the gun.
+pub const SHARD_FETCH: Vec3 = Vec3::new(-0.11, -0.03, 0.09);
+/// The glove's grip point below a shard it holds (lower than for the rifle's
+/// crystal: the shard is small, and shows above the fingertips).
+pub const SHARD_HOLD_OFFSET: Vec3 = Vec3::new(0.0, -0.095, 0.01);
 
 /// One shard at per-shell progress `p` (0..=1): its pose relative to the
 /// crystal socket, and where the left glove holds (relative to the socket).
@@ -343,35 +446,44 @@ pub struct ShardPose {
     pub hand_at: Vec3,
 }
 
-/// Each shell: the left glove carries a violet shard down in through the rings,
-/// where it spins and melts into the crystal, and goes back up for the next.
+/// The glove's loop through one shell (socket-relative): it picks a shard up
+/// on your side, swings it up over the rings, pushes it down in hard, holds
+/// a beat, and drops back down for the next. It ends where it started, so
+/// shells chain without a seam.
+const SHARD_HAND_KEYS: [(f32, Vec3, Ease); 6] = [
+    (0.06, SHARD_FETCH, Ease::Smooth),
+    (0.3, SHARD_START, Ease::Out),
+    (SHARD_PUSH, Vec3::ZERO, Ease::In),
+    (0.5, Vec3::new(0.0, -0.012, 0.0), Ease::Out),
+    (0.56, Vec3::new(0.0, -0.006, 0.0), Ease::Smooth),
+    (0.94, SHARD_FETCH, Ease::Smooth),
+];
+
+/// Each shell: the left glove picks up a violet shard, lifts it over the
+/// rings and pushes it down in (the gun dips with the push), where it spins
+/// and melts into the crystal; then the glove drops back for the next.
 pub fn pump_shard(p: f32) -> ShardPose {
     let p = p.clamp(0.0, 1.0);
+    let hand_at = keyframes(p, &SHARD_HAND_KEYS);
     let hidden = CrystalPose {
         scale: 0.0,
         ..CrystalPose::SEATED
     };
-    // Carrying the shard in, then back up for the next one.
-    let hand_at = if p < 0.12 {
-        SHARD_START
-    } else if p < 0.52 {
-        SHARD_START * (1.0 - smoothstep(phase(p, 0.12, 0.52)))
-    } else {
-        SHARD_START * smoothstep(phase(p, 0.56, 0.86))
-    };
-    let crystal = if p < 0.12 {
+    let crystal = if p < 0.03 {
         hidden
-    } else if p < 0.52 {
-        let u = smoothstep(phase(p, 0.12, 0.52));
+    } else if p < SHARD_PUSH {
+        // In the glove: it pops into being as the glove closes on it and
+        // spins up as it rises.
+        let u = phase(p, 0.03, SHARD_PUSH);
         CrystalPose {
-            offset: SHARD_START * (1.0 - u),
-            spin: 1.5 * TAU * u,
+            offset: hand_at,
+            spin: 1.5 * TAU * smoothstep(u),
             tumble: 0.0,
-            scale: 0.7 + 0.3 * ease_out_back(phase(p, 0.12, 0.3)),
+            scale: 0.7 + 0.3 * ease_out_back(phase(p, 0.03, 0.2)),
         }
     } else if p < SHARD_MERGED + 0.06 {
-        // Melts into the crystal.
-        let u = phase(p, 0.52, SHARD_MERGED + 0.06);
+        // Pushed home, it melts into the crystal.
+        let u = phase(p, SHARD_PUSH, SHARD_MERGED + 0.06);
         CrystalPose {
             offset: Vec3::ZERO,
             spin: 1.5 * TAU + 2.0 * u,
@@ -384,10 +496,26 @@ pub fn pump_shard(p: f32) -> ShardPose {
     ShardPose { crystal, hand_at }
 }
 
-/// Seconds after a pump shot when the rack starts, reaches the back, and is done.
-pub const RACK_START: f32 = 0.14;
-pub const RACK_BACK: f32 = 0.30;
-pub const RACK_DONE: f32 = 0.47;
+/// The dip the gun takes as each shard is pushed in (added to the stance).
+pub fn shard_push_dip(p: f32) -> PoseOffset {
+    let k = bump(phase(p, SHARD_PUSH - 0.08, SHARD_PUSH + 0.14));
+    PoseOffset {
+        pos: Vec3::new(0.0, -0.012, 0.0),
+        euler: Vec3::new(-0.05, 0.0, 0.03),
+    }
+    .scaled(k)
+}
+
+/// Seconds after a pump shot when the rack starts, reaches the back, starts
+/// forward again, and slams home (the clack). A heavy, deliberate rack:
+/// a strong pull, a beat at the back, and a fast slam forward, all done long
+/// before the next shot (0.9 s).
+pub const RACK_START: f32 = 0.13;
+pub const RACK_BACK: f32 = 0.3;
+pub const RACK_HOLD: f32 = 0.34;
+pub const RACK_DONE: f32 = 0.43;
+/// How long the gun jolts after the clack.
+pub const RACK_JOLT: f32 = 0.14;
 
 /// Pump grip travel (0 = forward, 1 = fully back) `age` seconds after a shot.
 pub fn pump_rack(age: f32) -> f32 {
@@ -395,9 +523,29 @@ pub fn pump_rack(age: f32) -> f32 {
         0.0
     } else if age < RACK_BACK {
         smoothstep((age - RACK_START) / (RACK_BACK - RACK_START))
+    } else if age < RACK_HOLD {
+        1.0
     } else {
-        1.0 - smoothstep((age - RACK_BACK) / (RACK_DONE - RACK_BACK))
+        // Slammed forward: accelerates all the way home.
+        let u = (age - RACK_HOLD) / (RACK_DONE - RACK_HOLD);
+        1.0 - u * u
     }
+}
+
+/// The whole gun's motion during the rack, `age` seconds after a shot: it
+/// tips and rolls toward the pull, then jolts forward with the clack.
+pub fn rack_pose(age: f32) -> PoseOffset {
+    let pull = PoseOffset {
+        pos: Vec3::new(0.0, -0.016, 0.04),
+        euler: Vec3::new(0.15, 0.06, -0.2),
+    }
+    .scaled(pump_rack(age));
+    let jolt = PoseOffset {
+        pos: Vec3::new(0.0, 0.005, -0.022),
+        euler: Vec3::new(-0.07, 0.0, 0.05),
+    }
+    .scaled(bump(phase(age, RACK_DONE, RACK_DONE + RACK_JOLT)));
+    pull + jolt
 }
 
 /// The pump grip's offset along the gun (model +Z is back) for a rack fraction.
@@ -412,11 +560,11 @@ pub fn pump_grip_offset(rack: f32) -> Vec3 {
 /// The rings' slow magical idle spin (rad/s).
 pub const RING_IDLE_SPEED: f32 = 0.8;
 /// Spin added when the pump racks...
-pub const RING_RACK_KICK: f32 = 17.0;
+pub const RING_RACK_KICK: f32 = 22.0;
 /// ...and when a shard merges into the crystal.
 pub const RING_SHARD_KICK: f32 = 7.0;
 /// How fast extra spin bleeds back to the idle speed (1/s).
-pub const RING_DRAG: f32 = 3.0;
+pub const RING_DRAG: f32 = 3.4;
 
 /// The pump's gold rings spin about the gun's axis: slowly at rest, whirring on
 /// every rack and twitching as each shard goes in.
@@ -527,7 +675,7 @@ pub fn squash_transform(x: f32, pivot: Vec3) -> Transform {
 }
 
 // ---------------------------------------------------------------------------
-// Switching
+// Switching: put away, then draw
 // ---------------------------------------------------------------------------
 
 /// The fully lowered pose used for switching and for build mode.
@@ -536,16 +684,41 @@ pub const LOWERED: PoseOffset = PoseOffset {
     euler: Vec3::new(-0.7, -0.1, -0.35),
 };
 
+/// The fraction of the switch spent putting the old item away; the draw
+/// takes the rest.
+pub const DRAW_SPLIT: f32 = 0.4;
+/// How far the draw overshoots as it comes up (the ease-out-back strength).
+pub const DRAW_OVERSHOOT: f32 = 1.4;
+
 /// Weapon switch at progress `t` (0..=1 over the switch time): the old item
-/// lowers during the first half, the new one rises during the second.
-/// Returns (show the previous item, how lowered 0..=1).
+/// drops away quickly, then the new one rises in from below, overshoots a
+/// touch (muzzle up) and settles exactly on its pose at `t` = 1.
+/// Returns (show the previous item, how lowered: 1 = fully down, 0 = up,
+/// below 0 while the draw overshoots).
 pub fn switch_phase(t: f32) -> (bool, f32) {
     let t = t.clamp(0.0, 1.0);
-    if t < 0.5 {
-        (true, smoothstep(t / 0.5))
+    if t < DRAW_SPLIT {
+        let u = t / DRAW_SPLIT;
+        (true, u * u * (3.0 - 2.0 * u))
     } else {
-        (false, 1.0 - smoothstep((t - 0.5) / 0.5))
+        let u = (t - DRAW_SPLIT) / (1.0 - DRAW_SPLIT);
+        (false, 1.0 - ease_out_back_by(u, DRAW_OVERSHOOT))
     }
+}
+
+/// The draw's flourish on top of the rise (`lowered` from [`switch_phase`]
+/// while drawing): the gun rolls in as it comes up, leading with the muzzle.
+pub fn draw_twist(t: f32) -> PoseOffset {
+    let t = t.clamp(0.0, 1.0);
+    if t < DRAW_SPLIT {
+        return PoseOffset::default();
+    }
+    let u = (t - DRAW_SPLIT) / (1.0 - DRAW_SPLIT);
+    PoseOffset {
+        pos: Vec3::ZERO,
+        euler: Vec3::new(0.0, 0.06, 0.12),
+    }
+    .scaled(bump(u) * (1.0 - u))
 }
 
 #[cfg(test)]

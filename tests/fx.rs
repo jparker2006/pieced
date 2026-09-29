@@ -13,7 +13,10 @@ use pieced::{
             bolt_progress, pellet_flight, rifle_flight,
         },
     },
-    viewmodel::{PUMP_KICK, RIFLE_KICK, anim::switch_phase},
+    viewmodel::{
+        PUMP_KICK, RIFLE_KICK,
+        anim::{DRAW_SPLIT, switch_phase},
+    },
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -203,9 +206,11 @@ fn bolts_leave_the_muzzle_at_once_and_reach_the_hit_within_two_frames() {
 #[test]
 fn switching_lowers_the_old_gun_then_raises_the_new_one() {
     assert_eq!(switch_phase(0.0), (true, 0.0));
-    let (prev, low) = switch_phase(0.49);
+    let (prev, low) = switch_phase(DRAW_SPLIT - 0.01);
     assert!(prev && low > 0.99);
-    let (prev, low) = switch_phase(0.51);
+    // The new one is drawn up from fully lowered (M4: it then overshoots a
+    // touch and settles, `tests/viewmodel.rs`).
+    let (prev, low) = switch_phase(DRAW_SPLIT);
     assert!(!prev && low > 0.99);
     assert_eq!(switch_phase(1.0), (false, 0.0));
 }

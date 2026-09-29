@@ -129,11 +129,28 @@ pub const RIFLE_INSPECT: HipPose = HipPose {
     euler: Vec3::new(0.26, 0.84, 0.24),
 };
 
+/// The rifle's reload stance (D106): turned to show you its left side and
+/// canted so the top of the chamber faces you, the crystal a little right of
+/// and below the centre, where you can watch the glove work on it.
+pub const RIFLE_RELOAD: HipPose = HipPose {
+    anchor: Vec3::new(0.12, -0.13, -0.46),
+    euler: Vec3::new(0.2, 0.62, 0.3),
+};
+
 impl HipPose {
     /// The rig translation that puts `spec`'s crystal socket at this pose's
     /// anchor (as [`GunSpec::hip`] does for the hip pose).
     pub fn rig_translation(&self, spec: &GunSpec) -> Vec3 {
         self.anchor - super::anim::euler(self.euler) * spec.socket
+    }
+
+    /// This pose as an offset from `spec`'s hip pose, in the units the rig's
+    /// motion offsets use (they are scaled by [`GunSpec::reach`] at the hip).
+    pub fn offset_from_hip(&self, spec: &GunSpec) -> super::anim::PoseOffset {
+        super::anim::PoseOffset {
+            pos: (self.rig_translation(spec) - spec.hip) / spec.reach.max(1e-3),
+            euler: self.euler - spec.hip_euler,
+        }
     }
 }
 
@@ -175,7 +192,7 @@ pub fn gun_model(kind: WeaponKind) -> &'static str {
 pub const GLOVES_MODEL: &str = "gloves";
 
 /// How far the rack pulls the pump grip back (model +Z).
-pub const PUMP_RACK_TRAVEL: f32 = 0.09;
+pub const PUMP_RACK_TRAVEL: f32 = 0.105;
 
 fn v3(x: f32, y: f32, z: f32) -> Vec3 {
     Vec3::new(x, y, z)

@@ -33,8 +33,11 @@
 //! ([`ViewmodelInspect`]).
 
 pub mod anim;
+pub mod feel;
 pub mod mesh;
 pub mod models;
+
+pub use feel::{WeaponBeat, WeaponCue, WeaponFeelTuning};
 
 use crate::{
     app::BootGate,
@@ -59,14 +62,17 @@ use crate::{
 use anim::{
     CrystalPose, LOWERED, PUMP_RELOAD_STANCE, PUMP_SQUASH, PUMP_SQUASH_PEAK, PoseOffset,
     RACK_START, RIFLE_SQUASH, RIFLE_SQUASH_PEAK, RING_RACK_KICK, RING_SHARD_KICK, RingSpin,
-    SHARD_MERGED, SHARD_START, Squash, ads_translation, chamber_transform, euler, hand_hold,
-    pump_crystal_glow, pump_grip_offset, pump_rack, pump_shard, rifle_crystal_glow, rifle_reload,
-    smoothstep, squash_transform, switch_phase,
+    SHARD_FETCH, SHARD_MERGED, Squash, ads_translation, chamber_transform, draw_twist, euler,
+    hand_hold, pump_crystal_glow, pump_grip_offset, pump_rack, pump_shard, rack_pose,
+    rifle_crystal_glow, rifle_reload, shard_push_dip, smoothstep, squash_transform, switch_phase,
 };
 use bevy::{
     camera::{ClearColorConfig, RenderTarget, visibility::RenderLayers},
     light::{NotShadowCaster, NotShadowReceiver},
     prelude::*,
+};
+use feel::{
+    AdsBlend, CameraKick, RACK_BEATS, RIFLE_RELOAD_BEATS, SHELL_BEATS, breath, breathe, crossed,
 };
 use models::{BLUEPRINT, GLOVES_MODEL, GunSpec, PUMP, RIFLE, gun_model, gun_spec};
 
@@ -205,8 +211,9 @@ pub enum VmModel {
     Gloves(WeaponKind),
 }
 
-/// Seconds to ease into and out of aim-down-sights.
-const ADS_SECONDS: f32 = 0.12;
+/// Seconds to ease into and out of aim-down-sights (M1's; the M4 weight fits
+/// inside it).
+pub const ADS_SECONDS: f32 = 0.12;
 /// Sprint "gun away" pose.
 const SPRINT_POSE: PoseOffset = PoseOffset {
     pos: Vec3::new(-0.025, -0.035, 0.03),
@@ -230,7 +237,11 @@ struct ViewmodelState {
     prev: Option<ActiveTool>,
     /// Switch progress 0..=1 (1 = done).
     switch_t: f32,
-    ads: f32,
+    ads: AdsBlend,
+    /// Idle breathing phase (radians, 0..4π).
+    breath_phase: f32,
+    /// The rifle reload's progress last frame (for its beats).
+    last_rifle_reload: Option<f32>,
     kick: Spring,
     kick_pos: Vec3,
     kick_pos_v: Vec3,
@@ -275,7 +286,9 @@ impl Default for ViewmodelState {
             tool: None,
             prev: None,
             switch_t: 1.0,
-            ads: 0.0,
+            ads: AdsBlend::default(),
+            breath_phase: 0.0,
+            last_rifle_reload: None,
             kick: RIFLE_KICK,
             kick_pos: Vec3::ZERO,
             kick_pos_v: Vec3::ZERO,
@@ -404,7 +417,9 @@ impl Plugin for ViewmodelPlugin {
             .init_resource::<MuzzlePoint>()
             .init_resource::<ViewmodelState>()
             .init_resource::<ViewmodelModels>()
+            .init_resource::<CameraKickState>()
             .init_resource::<BootGate>()
+            .add_message::<WeaponCue>()
             .configure_sets(
                 PostUpdate,
                 ViewmodelSet
@@ -415,10 +430,85 @@ impl Plugin for ViewmodelPlugin {
             .add_systems(Update, (attach_models, configure_models).chain())
             .add_systems(
                 PostUpdate,
+                kick_camera.after(CameraFollowSet).before(ViewmodelSet),
+            )
+            .add_systems(
+                PostUpdate,
                 (animate_viewmodel, animate_gun_parts)
                     .chain()
                     .in_set(ViewmodelSet),
             );
+    }
+}
+
+/// The render-only camera kick (D106).
+#[derive(Resource, Debug)]
+pub struct CameraKickState {
+    kick: CameraKick,
+    rng: FxRng,
+    /// The (pitch, yaw) radians applied to the rendered camera this frame.
+    pub applied: Vec2,
+}
+
+impl Default for CameraKickState {
+    fn default() -> Self {
+        Self {
+            kick: CameraKick::default(),
+            rng: FxRng::new(0x1C1C),
+            applied: Vec2::ZERO,
+        }
+    }
+}
+
+/// Each of your shots snaps the rendered camera up a fraction of a degree
+/// (≤ 0.3°) and it recovers within 0.12 s (D106). It turns the camera after
+/// it has followed the eye, like the shake: `LookAngles`, the eye and every
+/// shot's ray never see it, so it never changes where a shot goes. Off with
+/// the camera shake (the Settings slider at 0), for players who want nothing
+/// between their hand and the camera.
+#[allow(clippy::too_many_arguments)]
+fn kick_camera(
+    time: Res<Time>,
+    tuning: Res<Tuning>,
+    hitstop: Option<Res<crate::shared::HitstopFrozen>>,
+    app_state: Option<Res<State<AppState>>>,
+    mut state: ResMut<CameraKickState>,
+    mut shots: MessageReader<ShotFired>,
+    player: Option<Single<(Entity, &Ads), With<Player>>>,
+    camera: Option<Single<&mut Transform, (With<MainCamera>, Without<Player>)>>,
+) {
+    let feel = &tuning.weapons;
+    let on = tuning.feedback.camera_shake > 0.0
+        && app_state.is_none_or(|s| *s.get() == AppState::Playing);
+    let st = &mut *state;
+    if let Some(player) = player {
+        let (me, ads) = player.into_inner();
+        for shot in shots.read() {
+            if shot.shooter != me || !on {
+                continue;
+            }
+            let deg = match shot.weapon {
+                WeaponKind::Rifle => feel.kick_rifle_deg,
+                WeaponKind::Pump => feel.kick_pump_deg,
+            };
+            let scale = if ads.0 { feel.kick_ads_scale } else { 1.0 };
+            let yaw = st.rng.range(-0.25, 0.25);
+            st.kick.add((deg * scale).to_radians(), Vec2::new(1.0, yaw));
+        }
+    } else {
+        shots.clear();
+    }
+    let dt = crate::shared::HitstopFrozen::delta(hitstop.as_deref(), time.delta_secs());
+    st.kick.step(dt);
+    st.applied = if on {
+        st.kick.angles(feel.kick_seconds)
+    } else {
+        Vec2::ZERO
+    };
+    if st.applied != Vec2::ZERO
+        && let Some(mut camera) = camera
+    {
+        camera.rotation *= Quat::from_euler(EulerRot::YXZ, st.applied.y, st.applied.x, 0.0);
     }
 }
 
@@ -898,6 +988,7 @@ fn animate_viewmodel(
     inspect: Option<Res<ViewmodelInspect>>,
     app_state: Option<Res<State<AppState>>>,
     hitstop: Option<Res<crate::shared::HitstopFrozen>>,
+    mut weapon_cues: MessageWriter<WeaponCue>,
 ) {
     // A kill's hitstop holds the gun too (M4); the shots themselves never wait.
     let dt = crate::shared::HitstopFrozen::delta(hitstop.as_deref(), time.delta_secs());
@@ -920,6 +1011,10 @@ fn animate_viewmodel(
     let st = &mut *state;
     let combat = &tuning.combat;
     let feedback = &tuning.feedback;
+    let feel = &tuning.weapons;
+    let mut emit = |weapon: WeaponKind, beat: WeaponBeat| {
+        weapon_cues.write(WeaponCue { weapon, beat });
+    };
 
     // Tool changes start a lower/raise (not between two build pieces).
     if st.tool != Some(*tool) {
@@ -933,11 +1028,28 @@ fn animate_viewmodel(
         }
         st.tool = Some(*tool);
     }
+    // The switch: the old item drops away, the new one is drawn up from below
+    // and settles, all inside the switch time.
+    let last_switch_t = st.switch_t;
     st.switch_t = (st.switch_t + dt / combat.switch_time.max(0.05)).min(1.0);
-    let (show_prev, lowered) = match st.prev {
-        Some(_) if st.switch_t < 1.0 => switch_phase(st.switch_t),
-        _ => (false, 0.0),
+    let switching = st.prev.is_some() && st.switch_t < 1.0;
+    let (show_prev, lowered) = if switching {
+        switch_phase(st.switch_t)
+    } else {
+        (false, 0.0)
     };
+    let draw = if switching {
+        draw_twist(st.switch_t)
+    } else {
+        PoseOffset::default()
+    };
+    if st.prev.is_some()
+        && last_switch_t < anim::DRAW_SPLIT
+        && st.switch_t >= anim::DRAW_SPLIT
+        && let ActiveTool::Weapon(kind) = *tool
+    {
+        emit(kind, WeaponBeat::Draw);
+    }
     let shown_tool = if show_prev {
         st.prev.unwrap_or(*tool)
     } else {
@@ -947,10 +1059,23 @@ fn animate_viewmodel(
     let spec = spec_of(shown);
     let gun = shown.gun();
 
-    // ADS eases in over ~0.12 s.
+    // ADS eases in over 0.12 s with weight: the gun swings up, overshoots a
+    // touch and settles exactly on the sights by the end of the blend.
     let ads_target = flag(ads.0 && !tool.is_build());
-    st.ads = approach(st.ads, ads_target, dt / ADS_SECONDS);
-    let ads_e = smoothstep(st.ads);
+    if let Some(aiming) = st.ads.step(ads_target, dt, ADS_SECONDS, feel.ads_overshoot)
+        && let ActiveTool::Weapon(kind) = *tool
+    {
+        emit(
+            kind,
+            if aiming {
+                WeaponBeat::AdsIn
+            } else {
+                WeaponBeat::AdsOut
+            },
+        );
+    }
+    let ads_e = st.ads.plain();
+    let ads_pose = st.ads.pose(feel.ads_overshoot);
     let calm = 1.0 - 0.85 * ads_e;
 
     // Shots: spring kick, squash, muzzle flash, pump rack.
@@ -1009,6 +1134,10 @@ fn animate_viewmodel(
             GameCue::Jump { who } if who == me => {
                 st.kick_pos_v.y -= st.kick.kick_for_peak(0.008);
             }
+            GameCue::ReloadDone {
+                who,
+                weapon: WeaponKind::Rifle,
+            } if who == me => emit(WeaponKind::Rifle, WeaponBeat::CrystalCharged),
             _ => {}
         }
     }
@@ -1093,6 +1222,11 @@ fn animate_viewmodel(
     if prev_rack_age < RACK_START && st.rack_age >= RACK_START {
         st.rings.kick(RING_RACK_KICK);
     }
+    if shown == Item::Pump {
+        for beat in crossed(&RACK_BEATS, Some(prev_rack_age), st.rack_age) {
+            emit(WeaponKind::Pump, beat);
+        }
+    }
     let shell = loadout.pump.reload_progress(&combat.pump);
     if let (Some(p), Some(last)) = (shell, st.last_shell)
         && last < SHARD_MERGED
@@ -1100,7 +1234,24 @@ fn animate_viewmodel(
     {
         st.rings.kick(RING_SHARD_KICK);
     }
+    if pump_reloading && let Some(p) = shell {
+        // A new shell starts over from 0.
+        let last = st.last_shell.map(|l| if p >= l { l } else { 0.0 });
+        for beat in crossed(&SHELL_BEATS, last, p) {
+            emit(WeaponKind::Pump, beat);
+        }
+    }
     st.last_shell = shell;
+    let rifle_p = match shown {
+        Item::Rifle => loadout.rifle.reload_progress(&combat.rifle),
+        _ => None,
+    };
+    if let Some(p) = rifle_p {
+        for beat in crossed(&RIFLE_RELOAD_BEATS, st.last_rifle_reload, p) {
+            emit(WeaponKind::Rifle, beat);
+        }
+    }
+    st.last_rifle_reload = rifle_p;
     st.rings.step(dt);
     st.crystal_spin = (st.crystal_spin + CRYSTAL_IDLE_SPIN * dt) % std::f32::consts::TAU;
     st.rack = if shown == Item::Pump {
@@ -1112,23 +1263,24 @@ fn animate_viewmodel(
     st.shard = None;
     match shown {
         Item::Rifle => {
-            if let Some(p) = loadout.rifle.reload_progress(&combat.rifle) {
+            if let Some(p) = rifle_p {
                 let pose = rifle_reload(p);
-                reload = pose.gun;
+                reload = models::RIFLE_RELOAD
+                    .offset_from_hip(spec)
+                    .scaled(pose.stance)
+                    + pose.gun;
                 st.rifle_reload = Some(pose);
             }
         }
         Item::Pump => {
-            reload = PUMP_RELOAD_STANCE.scaled(smoothstep(st.pump_reload));
+            let stance = smoothstep(st.pump_reload);
+            reload = PUMP_RELOAD_STANCE.scaled(stance);
             if pump_reloading && let Some(p) = shell {
                 st.shard = Some(pump_shard(p));
+                reload = reload + shard_push_dip(p).scaled(stance);
             }
-            reload = reload
-                + PoseOffset {
-                    pos: Vec3::new(0.0, -0.006, 0.02),
-                    euler: Vec3::new(0.06, 0.03, -0.09),
-                }
-                .scaled(st.rack);
+            // The heavy rack: tipped into the pull, then jolted by the clack.
+            reload = reload + rack_pose(st.rack_age);
         }
         Item::Blueprint => {}
     }
@@ -1148,14 +1300,31 @@ fn animate_viewmodel(
         },
     };
     let base = if gun.is_some() {
-        hip.scaled(1.0 - ads_e)
+        hip.scaled(1.0 - ads_pose)
             + PoseOffset {
                 pos: ads_translation(spec),
                 euler: Vec3::ZERO,
             }
-            .scaled(ads_e)
+            .scaled(ads_pose)
     } else {
         hip
+    };
+    // The gun swings through the ADS blend (it leans in going up, out coming
+    // down): zero at both ends, so the sights land exactly.
+    let ads_swing = PoseOffset {
+        pos: Vec3::new(0.0, -0.008, 0.0),
+        euler: Vec3::new(0.0, 0.0, feel.ads_swing),
+    }
+    .scaled(if gun.is_some() { st.ads.swing() } else { 0.0 });
+    // Idle breathing: slow and tiny, fading as you walk (the bob takes over)
+    // and almost gone in ADS. Off with the sway.
+    st.breath_phase = breathe(st.breath_phase, dt, feel.breath_seconds);
+    let breathing = if sway_on {
+        let (pos, rot) = breath(st.breath_phase);
+        PoseOffset { pos, euler: rot }
+            .scaled(feel.breath * (1.0 - 0.85 * ads_e) * (1.0 - 0.7 * st.bob_amount.min(1.0)))
+    } else {
+        PoseOffset::default()
     };
     let sway = PoseOffset {
         pos: st.sway_pos,
@@ -1171,7 +1340,10 @@ fn animate_viewmodel(
         + SLIDE_POSE.scaled(smoothstep(st.slide) * calm)
         + reload.scaled(1.0 - 0.5 * ads_e)
         + kick_pose
-        + LOWERED.scaled(lowered);
+        + ads_swing
+        + breathing
+        + LOWERED.scaled(lowered)
+        + draw;
     // The gun is held farther out at the hip than its motion was tuned for:
     // the offsets reach as far, so they move it as far on screen (none of
     // that in ADS, where the gun sits where it always did).
@@ -1308,13 +1480,22 @@ fn animate_gun_parts(
     let mut glove_l = spec.grip_l;
     match kind {
         WeaponKind::Rifle => {
+            // The idle spin carries on through the reload, so the crystal
+            // never snaps round as it starts or ends.
             let (crystal, open) = match state.rifle_reload {
-                Some(r) => (r.crystal, r.chamber_open),
+                Some(r) => (
+                    CrystalPose {
+                        spin: r.crystal.spin + state.crystal_spin,
+                        ..r.crystal
+                    },
+                    r.chamber_open,
+                ),
                 None => (idle, 0.0),
             };
             place(parts.crystal, crystal.transform(spec.socket));
             show(parts.crystal, crystal.visible());
-            // The left glove fetches the fresh crystal and carries it in.
+            // The left glove flicks the old crystal out, fetches the fresh one
+            // and pushes it home.
             if let Some(r) = state.rifle_reload
                 && r.hand > 0.0
             {
@@ -1337,11 +1518,16 @@ fn animate_gun_parts(
                 place(Some(g), g.rest.with_translation(g.rest.translation + grip));
             }
             glove_l.translation += grip;
-            // While loading, the left glove carries each shard down through
-            // the rings.
+            // While loading, the left glove picks up each shard and pushes
+            // it down through the rings.
             if state.pump_loading > 0.0 {
-                let at = state.shard.map_or(SHARD_START, |s| s.hand_at);
-                glove_l = hand_hold(state.pump_loading, glove_l, spec.socket + at);
+                let at = state.shard.map_or(SHARD_FETCH, |s| s.hand_at);
+                glove_l = anim::hand_hold_by(
+                    state.pump_loading,
+                    glove_l,
+                    spec.socket + at,
+                    anim::SHARD_HOLD_OFFSET,
+                );
             }
             let shard = state.shard.map(|s| s.crystal);
             if let Some(pose) = shard {
