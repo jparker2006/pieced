@@ -149,7 +149,7 @@ fn knight_has_its_parts_pivots_and_eye_states() {
     let side = sidecar();
     assert_eq!(side.kind, "knight");
     assert!(
-        side.triangles <= 8000 && side.triangle_budget == 8000,
+        side.triangles <= 11000 && side.triangle_budget == 11000,
         "{} triangles (budget {})",
         side.triangles,
         side.triangle_budget

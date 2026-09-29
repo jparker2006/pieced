@@ -13,6 +13,8 @@
 
 // Must match HALO_MAX_INTENSITY in halo.rs.
 const MAX_INTENSITY: f32 = 8.0;
+// Must match HALO_NEAR_FADE in halo.rs.
+const NEAR_FADE: vec2<f32> = vec2<f32>(0.9, 1.7);
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var halo_texture: texture_2d<f32>;
 @group(#{MATERIAL_BIND_GROUP}) @binding(1) var halo_sampler: sampler;
@@ -57,10 +59,17 @@ fn vertex(v: Vertex) -> VertexOutput {
     ) / 255.0;
     let intensity = f32((tag >> 24u) & 0xFFu) / 255.0 * MAX_INTENSITY;
 
+    // A halo that would swell over much of the screen (an orb's fire a metre
+    // from the eye) fades out instead of washing the whole view: by its
+    // size over its distance, from NEAR_FADE.x to NEAR_FADE.y. The guns'
+    // own glows (a chamber crystal, a muzzle flash) stay well under it.
+    let reach = size / max(eye_distance, 1e-3);
+    let near = 1.0 - smoothstep(NEAR_FADE.x, NEAR_FADE.y, reach);
+
     var out: VertexOutput;
     out.position = position_world_to_clip(world);
     out.uv = v.uv;
-    out.glow = srgb_to_linear(srgb) * intensity;
+    out.glow = srgb_to_linear(srgb) * intensity * near;
     // A dark or zero-intensity halo adds nothing: collapse its quad to a
     // point so it costs no fragments (additive overdraw is the halo cost).
     if max(max(out.glow.r, out.glow.g), out.glow.b) < 1e-3 {

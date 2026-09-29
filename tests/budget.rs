@@ -241,10 +241,10 @@ fn a_full_wave_stays_within_the_draw_triangle_and_particle_budgets() {
     println!("full wave: {most:?}, orbs seen {orbs_seen}, ship {ship_seen}");
     assert!(most.meshes > 0, "8 knights never landed together");
     assert!(ship_seen, "no drop ship");
-    // M2's knight budget (≤ 8k triangles each, plus wands, armor and outline
-    // hulls, which draw every knight mesh twice).
+    // The knight budget (M4 art: ≤ 11k triangles each, wand included, and
+    // outline hulls, which draw every knight mesh twice).
     assert!(
-        most.knights_triangles <= 8 * 2 * 9_000,
+        most.knights_triangles <= 8 * 2 * KNIGHT_TRIANGLES,
         "knights: {} triangles",
         most.knights_triangles
     );
@@ -262,9 +262,18 @@ fn a_full_wave_stays_within_the_draw_triangle_and_particle_budgets() {
 /// their outline hulls), 66 glows. These leave ~10% headroom (glows more:
 /// spell bursts come and go). A feature that needs more must pay for it or
 /// raise these with GPU numbers to back it (docs/M4-SPEC.md, D99).
-const SCENE_TRIANGLES: usize = 540_000;
-const SCENE_MESHES: usize = 1_600;
-const SCENE_BATCHES: usize = 170;
+///
+/// M4 art pass: the detailed knight (≤ 11k triangles each with every eye
+/// state, about 10.7k shown) and the round-puffed trees (≤ 3k) raised the
+/// triangles to 632k (knights 172k) at 1,372 meshes in 150 batches, with the
+/// offscreen full-wave GPU timer unchanged (world pass 4.15/5.57 ms mean/p95
+/// against 4.20/5.42 before; `tests/wave_cost_offscreen.rs`). Triangles are
+/// pinned 5% above that so art can't grow them silently; the mesh and batch
+/// counts (the draws) are pinned tighter than before: art may not add draws.
+const SCENE_TRIANGLES: usize = 665_000;
+const KNIGHT_TRIANGLES: usize = 11_000;
+const SCENE_MESHES: usize = 1_500;
+const SCENE_BATCHES: usize = 160;
 const SCENE_GLOWS: usize = 120;
 
 // ---------------------------------------------------------------------------

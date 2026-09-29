@@ -3,18 +3,18 @@
   "kind": "tree",
   "source": "art/blender/assets/props.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 1398,
-  "triangle_budget": 1500,
+  "triangles": 2863,
+  "triangle_budget": 3000,
   "bounds": {
     "min": [
-      -2.7436,
+      -2.7524,
       0.0,
-      -2.3742
+      -2.4045
     ],
     "max": [
-      3.0229,
+      3.0146,
       6.2643,
-      2.356
+      2.3656
     ]
   },
   "parts": {
@@ -22,17 +22,17 @@
       "parent": "tree_b",
       "bounds": {
         "min": [
-          -2.7436,
+          -2.7524,
           3.0587,
-          -2.3742
+          -2.4045
         ],
         "max": [
-          3.0229,
+          3.0146,
           6.2643,
-          2.356
+          2.3656
         ]
       },
-      "triangles": 1120,
+      "triangles": 2585,
       "colors": [
         "foliage",
         "foliage_light",

@@ -239,7 +239,10 @@ fn spec_budget(kind: &str) -> u32 {
         // S1 round 3 (rounder, smooth-shaded guns): up from the spec's 6k.
         "gun" => 8000,
         "gloves" => 2000,
-        "knight" => 8000,
+        // M4 art (the coordinator's raised budgets, backed by the offscreen
+        // full-wave GPU timer): the detailed knight, round tree puffs and
+        // rounder rocks.
+        "knight" => 11000,
         "wall" => 600,
         "floor" | "ramp" => 400,
         // M2 Amendment A (D43, D44): the cone, and the edit tile sets (a set
@@ -248,8 +251,10 @@ fn spec_budget(kind: &str) -> u32 {
         "wall_tiles" => 2600,
         "floor_tiles" => 700,
         "ramp_tiles" => 800,
-        "tree" | "far_island" => 1500,
-        "rock" | "stump" => 300,
+        "tree" => 3000,
+        "far_island" => 1500,
+        "rock" => 600,
+        "stump" => 300,
         "station" => 25000,
         "ship" => 500,
         // M3 (docs/M3-SPEC.md → The grunt, item 10): the grunt's crystal wand.

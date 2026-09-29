@@ -33,13 +33,16 @@ from lib.registry import BUDGETS, Asset
 
 BUDGETS.setdefault("dropship", 2000)
 
-STEEL = "knight_steel"
+# M4 art (targets M4-V1, V7): a gilded airship. Brass hull, a dark bronze
+# belly, knight-purple flanks and wings, glowing blue windows.
+STEEL = "gun_brass"
+BELLY = "gun_brass_dark"
 PURPLE = "knight_purple"
 BRASS = guns.BRASS
 IRON = "gun_iron"
-RED = "ghost_red"
+RED = "gun_brass_light"
 CANOPY = "crystal_blue"
-WINDOW = "glass_yellow"
+WINDOW = "crystal_blue"
 EXHAUST = "crystal_violet"
 CRYSTAL = "crystal_violet"
 CRYSTAL_LIGHT = "glass_violet"
@@ -73,6 +76,8 @@ def hull():
             name = PURPLE
         elif n.z > 0.93 and abs(c.x) < 0.7:
             name = PURPLE
+        elif n.z < -0.4:
+            name = BELLY
         else:
             name = STEEL
         palette.tag(bm, [f], name)

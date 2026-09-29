@@ -62,6 +62,35 @@ pub fn raise_rotation(raise: f32) -> Quat {
     Quat::from_rotation_x(RAISE * raise.clamp(0.0, 1.0))
 }
 
+/// The rest of the body's wind-up stance, in the knight's model space, at a
+/// raise of `raise` (0..=1): extra rotations for the off arm, the boots and
+/// the torso.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WindupStance {
+    pub off_arm: Quat,
+    pub leg_l: Quat,
+    pub leg_r: Quat,
+    pub torso: Quat,
+}
+
+/// Off arm forward and out (rad), boots apart (rad each), lean back (rad).
+pub const STANCE_OFF_ARM: f32 = 0.55;
+pub const STANCE_LEGS: f32 = 0.2;
+pub const STANCE_LEAN: f32 = 0.12;
+
+pub fn windup_stance(raise: f32) -> WindupStance {
+    let k = raise.clamp(0.0, 1.0);
+    WindupStance {
+        // His left arm is on model -X: forward (about +X) and a little out.
+        off_arm: Quat::from_rotation_x(STANCE_OFF_ARM * k) * Quat::from_rotation_z(-0.25 * k),
+        // Each boot swings out to its own side.
+        leg_l: Quat::from_rotation_z(-STANCE_LEGS * k),
+        leg_r: Quat::from_rotation_z(STANCE_LEGS * k),
+        // The top leans back (toward +Z, away from his front).
+        torso: Quat::from_rotation_x(STANCE_LEAN * k),
+    }
+}
+
 /// Where the wand tip is in the knight's model space (feet at the origin)
 /// with the arm raised by `raise` (0..=1) and no other pose. At 1 this is
 /// the orb's launch point, `orb::WAND_TIP`.
@@ -149,12 +178,17 @@ fn create_wand_assets(mut commands: Commands, mut materials: ResMut<Assets<ToonM
 
 /// The wand root's transform under the knight's `PivotArmR` glTF node: the
 /// grip and rest aim, from model space into the node's space (glTF nodes sit
-/// under the model's forward fix).
-fn wand_in_arm() -> Transform {
+/// under the model's forward fix). The wand's root is already in its own
+/// model space (its scene carries its own forward fix), so its crystal, along
+/// the root's -Z, points along `rest_rotation() * -Z` in the knight's model
+/// space: forward and down at rest, up toward the target when the wind-up
+/// raises the arm (M4 art: it used to point back, so a raised wand hung its
+/// crystal under the glove).
+pub fn wand_in_arm() -> Transform {
     let fix = MODEL_FORWARD_FIX;
     Transform {
         translation: fix.inverse() * (GRIP_R - SHOULDER_R),
-        rotation: fix.inverse() * rest_rotation() * fix,
+        rotation: fix.inverse() * rest_rotation(),
         scale: Vec3::splat(WAND_SCALE),
     }
 }
@@ -276,11 +310,23 @@ fn pose_wands(
         };
         let progress = owner.windup_progress(tuning.grunt.windup);
         let raise = raise_amount(progress, wand.since_release);
-        if raise > 1e-4
-            && let Ok(mut arm) = transforms.get_mut(rig.joints[4].0)
-        {
+        if raise > 1e-4 {
             let fix = MODEL_FORWARD_FIX;
-            arm.rotation = fix.inverse() * raise_rotation(raise) * fix * arm.rotation;
+            // The wind-up stance (M4-V5): the wand arm up, the other flung
+            // forward for balance, boots planted wide, leaning back into the
+            // cast. Visual only, on top of the animation.
+            let stance = windup_stance(raise);
+            for (joint, turn) in [
+                (4, raise_rotation(raise)),
+                (3, stance.off_arm),
+                (1, stance.leg_l),
+                (2, stance.leg_r),
+                (0, stance.torso),
+            ] {
+                if let Ok(mut t) = transforms.get_mut(rig.joints[joint].0) {
+                    t.rotation = fix.inverse() * turn * fix * t.rotation;
+                }
+            }
         }
         let glow = glow_amount(progress, wand.since_release);
         if let Some(assets) = &assets {
@@ -326,6 +372,20 @@ mod tests {
         assert_eq!(glow_amount(None, 0.0), 1.0);
         assert_eq!(glow_amount(None, FLARE_TIME), 0.0);
         assert_eq!(glow_amount(None, f32::MAX), 0.0);
+    }
+
+    #[test]
+    fn the_wand_model_points_where_the_orb_leaves() {
+        // Knight model space = the knight scene's forward fix × the arm node
+        // (identity at rest) × the wand root; the crystal is the root's -Z.
+        let fix = MODEL_FORWARD_FIX;
+        let crystal = fix * wand_in_arm().rotation * Vec3::NEG_Z;
+        let aim = rest_rotation() * Vec3::NEG_Z;
+        assert!(crystal.distance(aim) < 1e-5, "{crystal} vs {aim}");
+        // Raised, the crystal points up and forward, toward the orb's tip.
+        let arm = fix.inverse() * raise_rotation(1.0) * fix;
+        let raised = fix * arm * wand_in_arm().rotation * Vec3::NEG_Z;
+        assert!(raised.y > 0.3 && raised.z < 0.0, "{raised}");
     }
 
     #[test]

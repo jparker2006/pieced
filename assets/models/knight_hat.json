@@ -3,8 +3,8 @@
   "kind": "knight",
   "source": "art/blender/assets/knight.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 776,
-  "triangle_budget": 8000,
+  "triangles": 1140,
+  "triangle_budget": 11000,
   "bounds": {
     "min": [
       -0.2964,
@@ -28,13 +28,15 @@
         ],
         "max": [
           0.2896,
-          0.3538,
+          0.3543,
           0.2849
         ]
       },
-      "triangles": 564,
+      "triangles": 928,
       "colors": [
+        "gold_rings",
         "knight_purple",
+        "knight_purple_shadow",
         "star_gold"
       ]
     },

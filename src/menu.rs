@@ -28,7 +28,7 @@ mod panel;
 mod pause;
 
 pub use controls::{ControlsButton, ControlsStatus, KeyChip};
-pub use main_menu::{LastPlay, MainMenuButton, OrbitCamera, orbit_eye};
+pub use main_menu::{HeroCamera, LastPlay, MainMenuButton, hero_eye};
 pub use pause::PauseButton;
 
 use crate::{render::QualityPreset, scenario::ScenarioRun, shared::AppState, tuning::Tuning};

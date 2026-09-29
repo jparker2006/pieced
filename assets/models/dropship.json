@@ -56,14 +56,12 @@
       "colors": [
         "crystal_blue",
         "crystal_violet",
-        "ghost_red",
         "glass_violet",
-        "glass_yellow",
         "gun_brass",
+        "gun_brass_dark",
         "gun_brass_light",
         "gun_iron",
-        "knight_purple",
-        "knight_steel"
+        "knight_purple"
       ]
     }
   },

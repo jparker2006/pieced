@@ -148,8 +148,8 @@ pub mod cartoon {
     pub const INK: Color = rgb(0x02, 0x04, 0x02);
     pub const KNIGHT_PURPLE: Color = rgb(0x72, 0x2F, 0x9F);
     pub const KNIGHT_PURPLE_SHADOW: Color = rgb(0x43, 0x17, 0x6F);
-    pub const KNIGHT_STEEL: Color = rgb(0x82, 0x82, 0x96);
-    pub const KNIGHT_STEEL_SHADOW: Color = rgb(0x57, 0x5D, 0x76);
+    pub const KNIGHT_STEEL: Color = rgb(0xA9, 0xAE, 0xC4);
+    pub const KNIGHT_STEEL_SHADOW: Color = rgb(0x64, 0x6B, 0x8C);
     pub const MORTAR: Color = rgb(0xBA, 0xA7, 0x9D);
     pub const MORTAR_SHADOW: Color = rgb(0x78, 0x71, 0x82);
     pub const NAIL_HEAD: Color = rgb(0x84, 0x83, 0x9A);
