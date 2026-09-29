@@ -108,6 +108,7 @@ impl PluginGroup for ClientPlugins {
             .add(crate::perf::PerfPlugin)
             .add(InputAdapterPlugin)
             .add(InputProbePlugin)
+            .add(crate::latency::InputLatencyPlugin)
             .add(RenderSetupPlugin)
             .add(LookPlugin)
             .add(ModelsPlugin)
@@ -322,10 +323,12 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     let scenario = options.scenario.map(ScenarioRun::new).transpose()?;
     // Parsed before the window and renderer exist: some knobs shape them.
     let knobs = crate::perf_knobs::PerfKnobs::from_args(&std::env::args().collect::<Vec<_>>());
-    let knob = |f: fn(&crate::perf_knobs::PerfKnobs) -> Option<bool>| {
-        knobs.as_ref().and_then(f).unwrap_or(false)
-    };
-    let frame_latency = knobs.as_ref().and_then(|k| k.latency).unwrap_or(1);
+    // Pipelined rendering is the default since the M4 performance follow-up
+    // (play-test 2: mean 17.40 ms and 92% < 18 against 25.63 and 41%
+    // serial); `--knobs pipelined=off` goes back. The session log records
+    // the input-to-present latency it costs (`crate::latency`, G3 ≤ 33 ms).
+    let pacing = crate::render::RenderPacing::from_knobs(knobs.as_ref());
+    let frame_latency = pacing.frame_latency;
     let windowed = options.windowed || !tuning.graphics.fullscreen;
     let window = Window {
         title: "Pieced".into(),
@@ -345,7 +348,7 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
         ..default()
     };
     let mut plugins = DefaultPlugins.build();
-    if !knob(|k| k.pipelined) {
+    if !pacing.pipelined {
         plugins = plugins.disable::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
     }
     let mut app = App::new();
@@ -367,6 +370,7 @@ pub fn game_app(options: GameOptions) -> anyhow::Result<App> {
     .add_plugins(SimPlugins)
     .add_plugins(ClientPlugins)
     .insert_resource(tuning)
+    .insert_resource(pacing)
     .insert_resource(mode)
     .insert_resource(boot_target)
     // Waves runs keep the personal best and the run log in `userdata/`.

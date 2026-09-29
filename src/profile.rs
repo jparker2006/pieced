@@ -29,6 +29,16 @@
 //! | `idle_ms` | from the end of rendering to the next frame's `First` (the winit event loop and the OS) |
 //! | `vsync_dt_ms` | the interval between the last two drawable acquisitions: the display-paced cadence, for comparing with `dt_ms` (the CPU-side interval S2 measures) |
 //! | `gpu_ms` | the GPU time of a timed frame, first mark to last (1 frame in 8 by default; it arrives a few frames late, and `gpu_frame` names the frame it measured; see [`crate::gpu_timing`]) |
+//! | `press_latency_ms`, `motion_latency_ms` | input-to-present latency samples resolved this frame (see [`crate::latency`]) |
+//!
+//! **Pipelined rendering** (the default since the M4 performance follow-up;
+//! `--knobs pipelined=off` turns it off): the render world of frame N runs
+//! on its own thread beside main N+1, so its marks can't split this frame's
+//! interval. The main-world buckets stay as above; of the render buckets,
+//! `acquire_ms` and `vsync_dt_ms` come from each render frame's drawable
+//! acquisition in turn (a small lock-free ring, so every presented interval
+//! lands in exactly one row, a frame or two late), and the rest read zero
+//! (`idle` then covers extract and the hand-off to the render thread).
 //!
 //! **What happened.** [`FrameCounters`] counts this frame's events (knights
 //! spawned, orbs fired, pieces placed, cracked and broken, sounds started,
@@ -58,7 +68,7 @@ use bevy::{
 };
 use std::sync::{
     Arc,
-    atomic::{AtomicU32, AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering},
 };
 
 // ---------------------------------------------------------------------------
@@ -122,10 +132,14 @@ enum TickMark {
     PhysicsEnd,
 }
 
+/// Drawable acquisitions remembered for pipelined rendering.
+const ACQUIRE_RING: usize = 8;
+
 /// The frame's clock readings, shared by the main and render worlds (the
 /// same `Arc` is a resource in both). Every slot is written by one marker and
-/// read in `Last`; pipelined rendering is off, so all of it happens on one
-/// thread and the atomics only make the type `Sync`.
+/// read in `Last`. Without pipelined rendering all of it happens on one
+/// thread; with it, the render world's acquisitions reach the main world
+/// through the ring (single writer, single reader).
 #[derive(Debug, Default)]
 pub struct ProfileSlots {
     marks: [AtomicU64; Mark::ALL.len()],
@@ -136,13 +150,22 @@ pub struct ProfileSlots {
     ticks: AtomicU32,
     pipelines_ok: AtomicU32,
     pipelines_compiled: AtomicU32,
+    /// Pipelined rendering is on: the render parts come from the ring.
+    pipelined: AtomicBool,
+    /// Each acquisition's end (ns) and its wait (ns), by sequence number.
+    acquired_at: [AtomicU64; ACQUIRE_RING],
+    acquire_wait: [AtomicU64; ACQUIRE_RING],
+    /// Acquisitions written (render world) and read (main world).
+    acquired: AtomicU64,
+    acquired_read: AtomicU64,
 }
 
 /// Shared handle on [`ProfileSlots`].
 #[derive(Resource, Debug, Clone, Default)]
 pub struct FrameProfile(pub Arc<ProfileSlots>);
 
-fn now_ns() -> u64 {
+/// Nanoseconds since process start (the clock every mark uses).
+pub fn now_ns() -> u64 {
     process_start().elapsed().as_nanos() as u64
 }
 
@@ -163,6 +186,13 @@ impl FrameProfile {
             Mark::ViewsEnd => {
                 let before = slots.marks[Mark::ViewsEnd as usize].load(Ordering::Relaxed);
                 slots.views_end_prev.store(before, Ordering::Relaxed);
+                // Into the ring too (read under pipelined rendering).
+                let start = slots.marks[Mark::ViewsStart as usize].load(Ordering::Relaxed);
+                let n = slots.acquired.load(Ordering::Relaxed);
+                let i = (n % ACQUIRE_RING as u64) as usize;
+                slots.acquired_at[i].store(t_ns, Ordering::Relaxed);
+                slots.acquire_wait[i].store(t_ns.saturating_sub(start), Ordering::Relaxed);
+                slots.acquired.store(n + 1, Ordering::Release);
             }
             _ => {}
         }
@@ -171,6 +201,32 @@ impl FrameProfile {
 
     fn get(&self, mark: Mark) -> u64 {
         self.0.marks[mark as usize].load(Ordering::Relaxed)
+    }
+
+    /// Marks the render parts as coming from another thread (pipelined
+    /// rendering; see the module docs).
+    pub fn set_pipelined(&self, on: bool) {
+        self.0.pipelined.store(on, Ordering::Relaxed);
+    }
+
+    /// The next drawable acquisition the main world hasn't read yet:
+    /// (interval since the one before, its wait), in ms; zeros when none
+    /// is new. Each acquisition is read once.
+    fn next_acquisition(&self) -> (f32, f32) {
+        let slots = &self.0;
+        let written = slots.acquired.load(Ordering::Acquire);
+        let mut k = slots.acquired_read.load(Ordering::Relaxed);
+        if k >= written {
+            return (0.0, 0.0);
+        }
+        // Fell behind by a whole ring (never in lockstep play): skip ahead.
+        k = k.max(written.saturating_sub(ACQUIRE_RING as u64 - 1));
+        let at = |n: u64| slots.acquired_at[(n % ACQUIRE_RING as u64) as usize].load(Ordering::Relaxed);
+        let t = at(k);
+        let wait = slots.acquire_wait[(k % ACQUIRE_RING as u64) as usize].load(Ordering::Relaxed);
+        let dt = if k > 0 { t.saturating_sub(at(k - 1)) } else { 0 };
+        slots.acquired_read.store(k + 1, Ordering::Relaxed);
+        (dt as f32 * 1e-6, wait as f32 * 1e-6)
     }
 
     /// Records the start of one tick's physics step.
@@ -220,7 +276,11 @@ impl FrameProfile {
         // began.
         let main_end = m(MainEnd);
         let render_start = m(RenderStart);
-        let render_ok = render_start >= main_end && render_start <= frame_start && main_end > 0;
+        let pipelined = self.0.pipelined.load(Ordering::Relaxed);
+        let render_ok = !pipelined
+            && render_start >= main_end
+            && render_start <= frame_start
+            && main_end > 0;
         let r = |mark| if render_ok { m(mark) } else { 0 };
         let render_end = r(RenderEnd);
         let idle_from = if render_ok && render_end > 0 {
@@ -233,6 +293,11 @@ impl FrameProfile {
             self.0.views_end_prev.load(Ordering::Relaxed)
         } else {
             0
+        };
+        let (ring_dt, ring_wait) = if pipelined {
+            self.next_acquisition()
+        } else {
+            (0.0, 0.0)
         };
         FrameCost {
             pre_ms: span(frame_start, m(FixedStart)),
@@ -247,11 +312,21 @@ impl FrameProfile {
                 0.0
             },
             prepare_ms: span(render_start, r(ViewsStart)) + span(views_end, r(GraphStart)),
-            acquire_ms: span(r(ViewsStart), views_end),
+            acquire_ms: if pipelined {
+                ring_wait
+            } else {
+                span(r(ViewsStart), views_end)
+            },
             graph_ms: span(r(GraphStart), r(GraphEnd)),
             render_end_ms: span(r(GraphEnd), render_end),
             idle_ms: span(idle_from, frame_start),
-            vsync_dt_ms: span(views_prev, views_end),
+            vsync_dt_ms: if pipelined {
+                ring_dt
+            } else {
+                span(views_prev, views_end)
+            },
+            press_latency_ms: 0.0,
+            motion_latency_ms: 0.0,
             gpu: GpuSample::default(),
             counters: FrameCounters {
                 pipelines_compiled: self
@@ -286,6 +361,10 @@ pub struct FrameCost {
     pub render_end_ms: f32,
     pub idle_ms: f32,
     pub vsync_dt_ms: f32,
+    /// Input-to-present latency samples resolved this frame, for earlier
+    /// frames (0 = none; see [`crate::latency`]).
+    pub press_latency_ms: f32,
+    pub motion_latency_ms: f32,
     /// A GPU timing sample that arrived this frame (for an earlier frame;
     /// `gpu.frame == 0` when none did). Its total is the `gpu_ms` column.
     pub gpu: GpuSample,
@@ -530,12 +609,13 @@ impl Plugin for FrameProfilePlugin {
         }
         app.add_systems(Last, gather_counters.in_set(ProfileSystems));
 
-        // Under pipelined rendering (`--knobs pipelined=on`) the render world
-        // runs beside the next frame's main world, so its marks would not
-        // describe the interval: leave its parts at zero (idle then covers
-        // the wait for the render thread).
+        // Under pipelined rendering (the default) the render world runs
+        // beside the next frame's main world, so its marks can't split the
+        // interval: the acquisitions go through the ring instead (see the
+        // module docs).
         let pipelined =
             app.is_plugin_added::<bevy::render::pipelined_rendering::PipelinedRenderingPlugin>();
+        profile.set_pipelined(pipelined);
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app.insert_resource(profile);
             render_app.add_systems(
@@ -544,9 +624,6 @@ impl Plugin for FrameProfilePlugin {
                     .after(RenderSystems::Render)
                     .before(RenderSystems::Cleanup),
             );
-            if pipelined {
-                return;
-            }
             let world = render_app.world_mut();
             add_mark_schedule(
                 world,
@@ -739,6 +816,31 @@ mod tests {
         assert_eq!(p.cost().counters.pipelines_compiled, 0);
         p.pipelines_ready(123);
         assert_eq!(p.cost().counters.pipelines_compiled, 3);
+    }
+
+    #[test]
+    fn pipelined_rows_take_each_acquisition_once_in_order() {
+        let p = FrameProfile::default();
+        p.set_pipelined(true);
+        let ms = |v: f64| (v * 1e6) as u64;
+        // Two acquisitions land before the first row, none before the second.
+        p.mark_at(Mark::ViewsStart, ms(8.0));
+        p.mark_at(Mark::ViewsEnd, ms(10.0));
+        p.mark_at(Mark::ViewsStart, ms(22.0));
+        p.mark_at(Mark::ViewsEnd, ms(26.7));
+        let first = p.cost();
+        assert_eq!(first.vsync_dt_ms, 0.0, "the first has no previous one");
+        assert!((first.acquire_ms - 2.0).abs() < 1e-3, "{first:?}");
+        let second = p.cost();
+        assert!((second.vsync_dt_ms - 16.7).abs() < 1e-3, "{second:?}");
+        assert!((second.acquire_ms - 4.7).abs() < 1e-3);
+        let third = p.cost();
+        assert_eq!((third.vsync_dt_ms, third.acquire_ms), (0.0, 0.0), "nothing new");
+        p.mark_at(Mark::ViewsStart, ms(40.0));
+        p.mark_at(Mark::ViewsEnd, ms(43.4));
+        assert!((p.cost().vsync_dt_ms - 16.7).abs() < 1e-3);
+        // The serial render buckets stay zero: they can't split the interval.
+        assert_eq!(p.cost().graph_ms, 0.0);
     }
 
     #[test]

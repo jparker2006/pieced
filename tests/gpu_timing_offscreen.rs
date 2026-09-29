@@ -198,3 +198,28 @@ fn gpu_timing_reports_every_pass_on_this_gpu() {
     }
     assert!(full_total >= world, "the total covers the world pass");
 }
+
+/// The render graph's size, pinned: the passes each camera schedule runs
+/// (Bevy's own, the look's, the timing marks). The UI camera's schedule is
+/// the HUD, its fallback clear, the composite and two marks; a new pass in
+/// either schedule shows up here (see also `tests/render_passes.rs`).
+#[test]
+#[ignore = "needs a GPU: run by hand to check the render graph"]
+fn the_camera_schedules_have_a_pinned_number_of_passes() {
+    use bevy::{
+        core_pipeline::{Core2d, Core3d},
+        ecs::schedule::Schedules,
+        render::RenderApp,
+    };
+    use pieced::render::UiComposite;
+    let mut app = probe_app();
+    app.update();
+    let render = app.sub_app_mut(RenderApp).world_mut();
+    let schedules = render.resource::<Schedules>();
+    let ui = schedules.get(UiComposite).map_or(0, |s| s.systems_len());
+    let core3d = schedules.get(Core3d).map_or(0, |s| s.systems_len());
+    let core2d = schedules.get(Core2d).map_or(0, |s| s.systems_len());
+    println!("RENDER_GRAPH ui_composite={ui} core3d={core3d} core2d={core2d}");
+    assert_eq!(ui, 6, "ui_pass, clear_unused_ui, composite and three marks");
+    assert!(core3d > 0 && core2d > 0);
+}

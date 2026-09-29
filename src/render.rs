@@ -1,18 +1,44 @@
 //! Render pipeline setup (client only): the 3D world renders into an offscreen
 //! target at a controllable resolution, shown full-screen under a crisp native
 //! resolution UI. Owns the main camera, its interpolated follow and FOV/zoom.
+//!
+//! **Full-screen passes per frame** (M4 performance follow-up; pinned by
+//! `tests/render_passes.rs` through [`full_screen_passes`]):
+//!
+//! | pass | size | where |
+//! |---|---|---|
+//! | FXAA (Battery) | render (≤ 1.4 MP) | the viewmodel camera, the last 3D camera |
+//! | the 3D image into [`WorldTarget`] | render | the viewmodel camera's output; the world camera skips its own copy when both share one main texture ([`route_world_output`]) |
+//! | HUD over the 3D image, into the window | window (Retina) | the UI camera's [`UiComposite`] schedule |
+//!
+//! The HUD itself draws into the UI camera's native-resolution texture (its
+//! first draw clears it; no separate clear, no depth). Nothing else runs
+//! full-screen at the window's resolution.
+
+mod composite;
+
+pub use composite::{
+    COMPOSITE_SHADER_PATH, UiComposite, UiCompositeSystems, ensure_ui_composite_schedule,
+};
 
 use crate::{
     combat::GunTuning,
     shared::{ActiveTool, Ads, AppState, EyeHeight, LookAngles, Player, PreviousFeet, WeaponKind},
     tuning::Tuning,
+    viewmodel::ViewmodelCamera,
 };
 use bevy::{
-    camera::{RenderTarget, visibility::RenderLayers},
+    anti_alias::{contrast_adaptive_sharpening::ContrastAdaptiveSharpening, fxaa::Fxaa},
+    camera::{
+        CameraMainTextureUsages, CameraOutputMode, ClearColorConfig, Hdr, RenderTarget,
+        visibility::RenderLayers,
+    },
+    core_pipeline::tonemapping::Tonemapping,
     prelude::*,
     render::{
         Extract, ExtractSchedule, Render, RenderApp, RenderSystems,
-        render_resource::{Extent3d, TextureFormat, TextureUsages},
+        camera::CameraRenderGraph,
+        render_resource::{BlendState, Extent3d, TextureFormat, TextureUsages},
     },
     window::{PresentMode, PrimaryWindow},
 };
@@ -59,6 +85,46 @@ impl Default for GraphicsTuning {
     }
 }
 
+/// How frames are paced, as the game was built (`--knobs pipelined=off`,
+/// `latency=N`): recorded in the session log next to the input latency.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenderPacing {
+    /// Bevy's pipelined rendering: the render world of frame N runs on its
+    /// own thread while the main world simulates N+1 (the default since the
+    /// M4 performance follow-up).
+    pub pipelined: bool,
+    /// The window's `desired_maximum_frame_latency`.
+    pub frame_latency: u32,
+}
+
+impl RenderPacing {
+    /// The pacing without knobs.
+    pub const DEFAULT: Self = Self {
+        pipelined: true,
+        frame_latency: 1,
+    };
+
+    /// From the `pipelined` and `latency` knobs (unset = the default).
+    pub fn from_knobs(knobs: Option<&crate::perf_knobs::PerfKnobs>) -> Self {
+        Self {
+            pipelined: knobs
+                .and_then(|k| k.pipelined)
+                .unwrap_or(Self::DEFAULT.pipelined),
+            frame_latency: knobs
+                .and_then(|k| k.latency)
+                .unwrap_or(Self::DEFAULT.frame_latency),
+        }
+    }
+
+    pub fn label(&self) -> String {
+        format!(
+            "pipelined {}, frame latency {}",
+            if self.pipelined { "on" } else { "off" },
+            self.frame_latency
+        )
+    }
+}
+
 /// The offscreen image the world (and the viewmodel) render into.
 #[derive(Resource, Debug, Clone)]
 pub struct WorldTarget {
@@ -69,10 +135,6 @@ pub struct WorldTarget {
 /// The first-person world camera.
 #[derive(Component, Debug)]
 pub struct MainCamera;
-
-/// The full-screen UI image that displays [`WorldTarget`].
-#[derive(Component, Debug)]
-pub struct WorldView;
 
 /// Render layer for first-person gun models (drawn by the viewmodel camera only).
 pub const VIEWMODEL_LAYER: usize = 1;
@@ -119,13 +181,20 @@ impl Plugin for RenderSetupPlugin {
             )
             .add_systems(PostUpdate, follow_player_eye.in_set(CameraFollowSet))
             .add_systems(OnEnter(AppState::Playing), snap_camera)
-            .add_systems(Update, sync_present_mode);
+            .add_systems(Update, sync_present_mode)
+            // After every system that turns the viewmodel camera on or off.
+            .add_systems(Last, route_world_output);
+        composite::build(app);
         if let Some(render_app) = app.get_sub_app_mut(RenderApp) {
             render_app
                 .init_resource::<FrameLimiter>()
                 .add_systems(ExtractSchedule, extract_frame_limit)
                 .add_systems(Render, limit_frame_rate.after(RenderSystems::PostCleanup));
         }
+    }
+
+    fn finish(&self, app: &mut App) {
+        composite::finish(app);
     }
 }
 
@@ -307,7 +376,7 @@ fn setup_render_target(
         Name::new("Main camera"),
         MainCamera,
         Camera3d::default(),
-        RenderTarget::Image(image.clone().into()),
+        RenderTarget::Image(image.into()),
         Camera {
             order: MAIN_CAMERA_ORDER,
             clear_color: ClearColorConfig::Custom(Color::srgb(0.62, 0.78, 0.95)),
@@ -327,6 +396,9 @@ fn setup_render_target(
     commands.spawn((
         Name::new("UI camera"),
         Camera2d,
+        // Not `Core2d`: the HUD over a transparent clear, then one full-screen
+        // composite of HUD and 3D image into the window (`composite`).
+        CameraRenderGraph::new(UiComposite),
         IsDefaultUiCamera,
         RenderLayers::layer(UI_LAYER),
         // The UI draws at native Retina resolution (up to ~7 MP); Bevy's UI shader
@@ -334,24 +406,169 @@ fn setup_render_target(
         Msaa::Off,
         Camera {
             order: UI_CAMERA_ORDER,
+            clear_color: ClearColorConfig::Custom(Color::NONE),
+            // The composite writes the window; Bevy's own copy never runs.
+            output_mode: CameraOutputMode::Skip,
             ..default()
         },
-        // COPY_DST lets the GPU timing's last mark wait for the final copy
-        // into the drawable (`crate::gpu_timing`).
-        bevy::camera::CameraMainTextureUsages::default().with(TextureUsages::COPY_DST),
+        // COPY_DST lets the GPU timing's last mark wait for the composite's
+        // read of this texture (`crate::gpu_timing`).
+        CameraMainTextureUsages::default().with(TextureUsages::COPY_DST),
     ));
-    commands.spawn((
-        Name::new("World view"),
-        WorldView,
-        Node {
-            position_type: PositionType::Absolute,
-            width: percent(100),
-            height: percent(100),
-            ..default()
-        },
-        ImageNode::new(image),
-        GlobalZIndex(-1000),
-    ));
+}
+
+/// The parts of a 3D camera that decide whether it shares Bevy's main
+/// texture with another (same target, MSAA, HDR and texture usages).
+type CameraRoute<'a> = (
+    &'a mut Camera,
+    &'a RenderTarget,
+    &'a Msaa,
+    Has<Hdr>,
+    &'a CameraMainTextureUsages,
+);
+
+/// Whether the world and viewmodel cameras draw into one shared main
+/// texture, with the viewmodel camera, which draws last, active.
+fn shares_main_texture(
+    world: (&RenderTarget, &Msaa, bool, &CameraMainTextureUsages),
+    viewmodel: (bool, &RenderTarget, &Msaa, bool, &CameraMainTextureUsages),
+) -> bool {
+    let same_target = match (world.0, viewmodel.1) {
+        (RenderTarget::Image(a), RenderTarget::Image(b)) => a.handle == b.handle,
+        _ => false,
+    };
+    viewmodel.0
+        && same_target
+        && world.1 == viewmodel.2
+        && world.2 == viewmodel.3
+        && world.3.0 == viewmodel.4.0
+}
+
+/// The viewmodel camera's output when it writes the whole shared image: a
+/// straight copy over a cleared target (nothing to blend with or load).
+pub const VIEWMODEL_SOLE_OUTPUT: CameraOutputMode = CameraOutputMode::Write {
+    blend_state: Some(BlendState::REPLACE),
+    clear_color: ClearColorConfig::Custom(Color::BLACK),
+};
+
+/// One copy of the 3D image into [`WorldTarget`] per frame. Both 3D cameras
+/// normally share one main texture, and the viewmodel camera (drawing last,
+/// with FXAA) copies all of it: the world camera's own copy would be
+/// overwritten unseen, so it skips it. When they don't share (the split MSAA
+/// knob) or the viewmodel camera is off (the death beat, `viewmodel=off`),
+/// each camera writes as Bevy does by default.
+pub fn route_world_output(
+    mut world: Query<CameraRoute, (With<MainCamera>, Without<ViewmodelCamera>)>,
+    mut viewmodel: Query<CameraRoute, (With<ViewmodelCamera>, Without<MainCamera>)>,
+) {
+    let (Ok(world), Ok(viewmodel)) = (world.single_mut(), viewmodel.single_mut()) else {
+        // Without a viewmodel camera the world camera writes (the default).
+        return;
+    };
+    let (mut world_camera, world_target, world_msaa, world_hdr, world_usages) = world;
+    let (mut vm_camera, vm_target, vm_msaa, vm_hdr, vm_usages) = viewmodel;
+    let shared = shares_main_texture(
+        (world_target, world_msaa, world_hdr, world_usages),
+        (vm_camera.is_active, vm_target, vm_msaa, vm_hdr, vm_usages),
+    );
+    // Written only on a change: `Camera` changes are not free.
+    if shared != matches!(world_camera.output_mode, CameraOutputMode::Skip) {
+        world_camera.output_mode = if shared {
+            CameraOutputMode::Skip
+        } else {
+            CameraOutputMode::default()
+        };
+        vm_camera.output_mode = if shared {
+            VIEWMODEL_SOLE_OUTPUT
+        } else {
+            CameraOutputMode::default()
+        };
+    }
+}
+
+/// Where a full-screen pass runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PassSize {
+    /// The 3D render size (≤ [`GraphicsTuning::max_megapixels`]).
+    Render,
+    /// The window's native (Retina) size.
+    Window,
+}
+
+/// A full-screen pass the cameras run each frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FullScreenPass {
+    pub name: &'static str,
+    pub size: PassSize,
+}
+
+/// Every full-screen pass the active cameras run per frame, in camera
+/// order, read from the components the render graph acts on:
+/// post-processing (tonemapping, FXAA, sharpening), each 3D camera's copy
+/// into its output, full-screen UI images, and the UI camera's composite
+/// (or a stock `Core2d` camera's clear and copy). `tests/render_passes.rs`
+/// pins it, so a new full-screen pass can't slip in unnoticed.
+pub fn full_screen_passes(world: &mut World) -> Vec<FullScreenPass> {
+    let mut cameras: Vec<(isize, Entity)> = world
+        .query::<(Entity, &Camera)>()
+        .iter(world)
+        .filter(|(_, c)| c.is_active)
+        .map(|(e, c)| (c.order, e))
+        .collect();
+    cameras.sort();
+    let pass = |name, size| FullScreenPass { name, size };
+    let mut out = Vec::new();
+    for (_, entity) in cameras {
+        let e = world.entity(entity);
+        let Some(camera) = e.get::<Camera>() else {
+            continue;
+        };
+        let size = if matches!(e.get::<RenderTarget>(), Some(RenderTarget::Image(_))) {
+            PassSize::Render
+        } else {
+            PassSize::Window
+        };
+        let writes = !matches!(camera.output_mode, CameraOutputMode::Skip);
+        if e.contains::<Camera3d>() {
+            if e.get::<Tonemapping>().is_some_and(|t| *t != Tonemapping::None) {
+                out.push(pass("tonemapping", size));
+            }
+            if e.get::<Fxaa>().is_some_and(|f| f.enabled) {
+                out.push(pass("fxaa", size));
+            }
+            if e
+                .get::<ContrastAdaptiveSharpening>()
+                .is_some_and(|c| c.enabled)
+            {
+                out.push(pass("sharpening", size));
+            }
+            if writes {
+                out.push(pass("copy_to_output", size));
+            }
+        } else if e
+            .get::<CameraRenderGraph>()
+            .is_some_and(|g| g.0 == bevy::ecs::schedule::ScheduleLabel::intern(&UiComposite))
+        {
+            out.push(pass("ui_composite", PassSize::Window));
+        } else {
+            out.push(pass("clear_2d", size));
+            if writes {
+                out.push(pass("copy_to_output", size));
+            }
+        }
+    }
+    // A UI image stretched over the whole screen is a full-screen pass at
+    // the window's resolution (how the 3D image used to be shown).
+    let full = |v: Val| matches!(v, Val::Percent(p) if p >= 99.9) || v == Val::Vw(100.0);
+    let screen_images = world
+        .query_filtered::<&Node, With<ImageNode>>()
+        .iter(world)
+        .filter(|n| full(n.width) && full(n.height))
+        .count();
+    for _ in 0..screen_images {
+        out.push(pass("ui_fullscreen_image", PassSize::Window));
+    }
+    out
 }
 
 fn resize_world_target(
@@ -476,6 +693,26 @@ mod tests {
         assert_eq!(
             render_size(Vec2::new(1280.0, 800.0), 0.5, 1.4),
             UVec2::new(640, 400)
+        );
+    }
+
+    #[test]
+    fn pipelined_rendering_is_the_default_and_a_knob_turns_it_off() {
+        use crate::perf_knobs::PerfKnobs;
+        let default = RenderPacing::from_knobs(None);
+        assert_eq!(default, RenderPacing::DEFAULT);
+        assert!(default.pipelined);
+        assert_eq!(default.frame_latency, 1);
+        assert_eq!(default.label(), "pipelined on, frame latency 1");
+        let off = RenderPacing::from_knobs(Some(&PerfKnobs::parse("pipelined=off")));
+        assert!(!off.pipelined);
+        let other = RenderPacing::from_knobs(Some(&PerfKnobs::parse("latency=2,fxaa=off")));
+        assert_eq!(
+            other,
+            RenderPacing {
+                pipelined: true,
+                frame_latency: 2
+            }
         );
     }
 

@@ -159,6 +159,7 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 | `shaders/barrier.wgsl` | hand-written, used by `src/arena/visuals/barrier.rs` | The island's shimmering rune barrier on the arena edge (translucent, fades in near the player) |
 | `shaders/waterfall.wgsl` | hand-written, used by `src/far/waterfall.rs` | Additive scrolling waterfall streaks for the far models |
 | `shaders/spell.wgsl` | hand-written, used by `src/fx/material.rs` | Additive, vertex-coloured spell glow (bolts, sparks, bursts, shield glass) tinted per effect through its `MeshTag` |
+| `shaders/composite.wgsl` | hand-written, used by `src/render/composite.rs` | The frame's one full-screen pass at window resolution: the native-resolution HUD over the stretched 3D image, into the window |
 
 ## UI images (`assets/ui/`)
 

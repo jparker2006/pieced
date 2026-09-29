@@ -5,6 +5,7 @@ Usage:
   python3 scripts/sessions.py [--root DIR] [--s2] [--launches] [--limit N]
   python3 scripts/sessions.py [--root DIR] --spikes SESSION
   python3 scripts/sessions.py [--root DIR] --gpu SESSION
+  python3 scripts/sessions.py [--root DIR] --latency SESSION
 
 Reads userdata/sessions/<stamp>/session.json (stamps are UTC; times are shown
 in local time). DIR defaults to $PIECED_ROOT/userdata/sessions, else the
@@ -30,6 +31,12 @@ repo's userdata/sessions.
                GPU samples (1 frame in 8 by default) against its budget, the
                total against 12 ms, the share of timed frames over 12 ms, and
                the timing's own cost (full minus bare samples).
+  --latency S  input-to-present latency for session S: for the counted
+               frames that consumed a key or button press, and those that
+               consumed trackpad look motion, the time from the OS input
+               event to the present of the frame that used it (mean, median,
+               p95, max) against M1's G3 target (median <= 33 ms). Excludes
+               the GPU's work after present and the display's scanout.
 
 A session whose session.json says "final": false ended without quitting
 (a crash or a kill); its numbers are from the last periodic rewrite.
@@ -106,12 +113,19 @@ GPU_PASS_HELP = {
     "outlines": "the hull outlines draw inside the opaque pass: counted in world",
     "far": "far layer on its own camera (farres=half); otherwise counted in world",
     "effects": "halos, particles, spell bursts, transparents",
-    "ui": "HUD and the full-screen composite of the 3D image",
-    "post": "FXAA, sharpening, copies into each output",
+    "ui": "the HUD at native resolution",
+    "post": "FXAA, sharpening, the 3D copy, the one window-size composite",
     "slack": "",
 }
 # A timed frame whose GPU total is at least this long can't make 60 Hz.
 GPU_FRAME_MS = 16.0
+
+# M1's G3: median input-to-frame latency at most two 60 Hz frames.
+LATENCY_TARGET_MS = 33.0
+LATENCY_KINDS = [
+    ("press", "press_latency_ms", "key and button presses (exact event time)"),
+    ("motion", "motion_latency_ms", "trackpad look (newest event of each frame's batch)"),
+]
 
 
 def default_root():
@@ -548,6 +562,65 @@ def print_gpu(folder):
         print(f"Mean acquire wait {acquire:.2f} ms; with this GPU p95 that points at {hint}.")
 
 
+def latency_stats(values):
+    """(n, mean, median, nearest-rank p95, max), or None without samples."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    n = len(ordered)
+    median = ordered[n // 2] if n % 2 else (ordered[n // 2 - 1] + ordered[n // 2]) / 2
+    rank = max(1, min(n, -(-95 * n // 100)))
+    return n, sum(ordered) / n, median, ordered[rank - 1], ordered[-1]
+
+
+def latency_report(rows):
+    """Each kind's input-to-present samples in the counted frames."""
+    flags = counted_flags(rows)
+    rep = {kind: [] for kind, _, _ in LATENCY_KINDS}
+    for r, counted in zip(rows, flags):
+        if not counted:
+            continue
+        for kind, column, _ in LATENCY_KINDS:
+            v = r.get(column)
+            if v is not None and v > 0:
+                rep[kind].append(v)
+    return rep
+
+
+def print_latency(folder):
+    rows = read_frames(folder)
+    name = os.path.basename(os.path.normpath(folder))
+    doc = {}
+    json_path = os.path.join(folder, "session.json")
+    if os.path.isfile(json_path):
+        with open(json_path, encoding="utf-8") as f:
+            doc = json.load(f)
+    print(f"Session {name}  commit {doc.get('commit', '?')}  {doc.get('graphics', '')}")
+    pacing = (doc.get("input_latency") or {}).get("pacing")
+    if pacing:
+        print(f"Pacing: {pacing}")
+    if not rows or "press_latency_ms" not in rows[0]:
+        print("\nThis session predates the input-to-present latency columns.")
+        return
+    rep = latency_report(rows)
+    print(
+        f"\nInput to present (ms) over the counted frames; G3 target: median <= "
+        f"{LATENCY_TARGET_MS:.0f} ms (GPU work after present and scanout excluded)."
+    )
+    print(f"\n  {'kind':7} {'n':>6} {'mean':>6} {'median':>6} {'p95':>6} {'max':>6}  status")
+    for kind, _, help_text in LATENCY_KINDS:
+        stats = latency_stats(rep[kind])
+        if stats is None:
+            print(f"  {kind:7} {0:6d} {'-':>6} {'-':>6} {'-':>6} {'-':>6}  n/a  {help_text}")
+            continue
+        n, mean, median, p95, top = stats
+        status = "ok" if median <= LATENCY_TARGET_MS else "OVER"
+        print(
+            f"  {kind:7} {n:6d} {mean:6.2f} {median:6.2f} {p95:6.2f} {top:6.2f}  "
+            f"{status}  {help_text}"
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--root", default=default_root(), help="the sessions folder")
@@ -556,8 +629,15 @@ def main():
     parser.add_argument("--limit", type=int, default=0, help="only the newest N sessions")
     parser.add_argument("--spikes", metavar="SESSION", help="the spike report for one session")
     parser.add_argument("--gpu", metavar="SESSION", help="GPU time per pass for one session")
+    parser.add_argument(
+        "--latency", metavar="SESSION", help="input-to-present latency for one session"
+    )
     args = parser.parse_args()
-    for which, report in ((args.spikes, print_spikes), (args.gpu, print_gpu)):
+    for which, report in (
+        (args.spikes, print_spikes),
+        (args.gpu, print_gpu),
+        (args.latency, print_latency),
+    ):
         if not which:
             continue
         folder = find_session(args.root, which)

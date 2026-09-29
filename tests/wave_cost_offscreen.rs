@@ -8,7 +8,8 @@
 //!
 //! `PIECED_PROBE_LEVERS=farres,dynres,overdraw` turns the M4 levers on
 //! (any subset), and `PIECED_PROBE_SHOT=<file.png>` saves the 3D image at the
-//! end, for comparing a lever's look.
+//! end, for comparing a lever's look; `PIECED_PROBE_UI_SHOT=<file.png>` saves
+//! the finished Retina frame (the HUD composited over the 3D image).
 //!
 //! It needs a GPU, so it is ignored by default:
 //!
@@ -88,7 +89,7 @@ fn wave_app() -> App {
 }
 
 /// The UI camera draws into an image the size of the Air's Retina window.
-fn retina_ui(app: &mut App) {
+fn retina_ui(app: &mut App) -> Handle<Image> {
     let image = app
         .world_mut()
         .resource_mut::<Assets<Image>>()
@@ -105,7 +106,8 @@ fn retina_ui(app: &mut App) {
         .expect("the UI camera");
     world
         .entity_mut(ui)
-        .insert(RenderTarget::Image(image.into()));
+        .insert(RenderTarget::Image(image.clone().into()));
+    image
 }
 
 fn wait_gpu(app: &App) -> f64 {
@@ -168,7 +170,7 @@ fn a_full_wave_costs() {
             .resource::<pieced::telemetry::BootPhases>()
             .line()
     );
-    retina_ui(&mut app);
+    let ui_image = retina_ui(&mut app);
     {
         let world = app.world_mut();
         let player = world
@@ -217,6 +219,9 @@ fn a_full_wave_costs() {
             .resource::<pieced::gpu_timing::GpuResults>()
             .take()
         {
+            if samples.len() < 3 {
+                println!("WAVE_MARKS {:?}", pieced::gpu_timing::debug_last_marks());
+            }
             samples.push(s);
         }
     }
@@ -278,15 +283,21 @@ fn a_full_wave_costs() {
         layers[1],
         layers[2] + layers[3],
     );
-    if let Ok(path) = std::env::var("PIECED_PROBE_SHOT") {
+    let world_image = app
+        .world()
+        .resource::<pieced::render::WorldTarget>()
+        .image
+        .clone();
+    for (var, image) in [
+        ("PIECED_PROBE_SHOT", world_image),
+        ("PIECED_PROBE_UI_SHOT", ui_image),
+    ] {
+        let Ok(path) = std::env::var(var) else {
+            continue;
+        };
         use bevy::render::view::screenshot::{Screenshot, save_to_disk};
         let path = std::path::PathBuf::from(path);
         let _ = std::fs::remove_file(&path);
-        let image = app
-            .world()
-            .resource::<pieced::render::WorldTarget>()
-            .image
-            .clone();
         app.world_mut()
             .spawn(Screenshot::image(image))
             .observe(save_to_disk(path.clone()));
