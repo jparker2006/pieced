@@ -221,10 +221,15 @@ impl FrameProfile {
         }
         // Fell behind by a whole ring (never in lockstep play): skip ahead.
         k = k.max(written.saturating_sub(ACQUIRE_RING as u64 - 1));
-        let at = |n: u64| slots.acquired_at[(n % ACQUIRE_RING as u64) as usize].load(Ordering::Relaxed);
+        let at =
+            |n: u64| slots.acquired_at[(n % ACQUIRE_RING as u64) as usize].load(Ordering::Relaxed);
         let t = at(k);
         let wait = slots.acquire_wait[(k % ACQUIRE_RING as u64) as usize].load(Ordering::Relaxed);
-        let dt = if k > 0 { t.saturating_sub(at(k - 1)) } else { 0 };
+        let dt = if k > 0 {
+            t.saturating_sub(at(k - 1))
+        } else {
+            0
+        };
         slots.acquired_read.store(k + 1, Ordering::Relaxed);
         (dt as f32 * 1e-6, wait as f32 * 1e-6)
     }
@@ -277,10 +282,8 @@ impl FrameProfile {
         let main_end = m(MainEnd);
         let render_start = m(RenderStart);
         let pipelined = self.0.pipelined.load(Ordering::Relaxed);
-        let render_ok = !pipelined
-            && render_start >= main_end
-            && render_start <= frame_start
-            && main_end > 0;
+        let render_ok =
+            !pipelined && render_start >= main_end && render_start <= frame_start && main_end > 0;
         let r = |mark| if render_ok { m(mark) } else { 0 };
         let render_end = r(RenderEnd);
         let idle_from = if render_ok && render_end > 0 {
@@ -835,7 +838,11 @@ mod tests {
         assert!((second.vsync_dt_ms - 16.7).abs() < 1e-3, "{second:?}");
         assert!((second.acquire_ms - 4.7).abs() < 1e-3);
         let third = p.cost();
-        assert_eq!((third.vsync_dt_ms, third.acquire_ms), (0.0, 0.0), "nothing new");
+        assert_eq!(
+            (third.vsync_dt_ms, third.acquire_ms),
+            (0.0, 0.0),
+            "nothing new"
+        );
         p.mark_at(Mark::ViewsStart, ms(40.0));
         p.mark_at(Mark::ViewsEnd, ms(43.4));
         assert!((p.cost().vsync_dt_ms - 16.7).abs() < 1e-3);

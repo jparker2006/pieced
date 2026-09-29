@@ -679,24 +679,8 @@ impl GpuTimer {
         }
         slot.readback.unmap();
         slot.set(FREE);
-        DEBUG_WRITTEN.store(u32::from(slot.written), Ordering::Relaxed);
-        for (d, t) in DEBUG_TICKS.iter().zip(ticks) {
-            d.store(t.unwrap_or(0), Ordering::Relaxed);
-        }
         sample_from_marks(slot.frame, slot.full, &ticks, self.period_ns)
     }
-}
-
-static DEBUG_WRITTEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-static DEBUG_TICKS: [std::sync::atomic::AtomicU64; MARKS] =
-    [const { std::sync::atomic::AtomicU64::new(0) }; MARKS];
-
-#[doc(hidden)]
-pub fn debug_last_marks() -> (u32, [u64; MARKS]) {
-    (
-        DEBUG_WRITTEN.load(Ordering::Relaxed),
-        std::array::from_fn(|i| DEBUG_TICKS[i].load(Ordering::Relaxed)),
-    )
 }
 
 /// Reads back finished slots and decides whether this frame is timed.

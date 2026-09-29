@@ -138,7 +138,10 @@ pub(super) fn finish(app: &mut App) {
     };
     render_app.add_systems(
         UiComposite,
-        (bevy_egui::render::prepare_egui_pass, bevy_egui::render::egui_pass)
+        (
+            bevy_egui::render::prepare_egui_pass,
+            bevy_egui::render::egui_pass,
+        )
             .chain()
             .after(clear_unused_ui)
             .in_set(UiCompositeSystems::Ui),

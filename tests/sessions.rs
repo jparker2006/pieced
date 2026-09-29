@@ -554,7 +554,10 @@ fn the_writer_reports_input_to_present_latency_over_counted_frames() {
     assert_eq!(l["target_median_ms"], 33.0);
     assert_eq!(l["press"]["median_ms"], 24.0);
     assert_eq!(l["press"]["p95_ms"], 31.0);
-    assert!(l["press"]["max_ms"].as_f64().unwrap() < 32.0, "launch frames don't count");
+    assert!(
+        l["press"]["max_ms"].as_f64().unwrap() < 32.0,
+        "launch frames don't count"
+    );
     assert!(l["press"]["samples"].as_u64().unwrap() > 900);
     assert_eq!(l["motion"]["median_ms"], 18.0);
     assert_eq!(l["press_within_target"], true);
@@ -570,7 +573,10 @@ fn the_writer_reports_input_to_present_latency_over_counted_frames() {
     // And the CSV rows: the sample where it resolved, empty elsewhere.
     let csv = std::fs::read_to_string(dir.join("frames.csv")).unwrap();
     let header: Vec<&str> = csv.lines().next().unwrap().split(',').collect();
-    let press = header.iter().position(|c| *c == "press_latency_ms").unwrap();
+    let press = header
+        .iter()
+        .position(|c| *c == "press_latency_ms")
+        .unwrap();
     let values: Vec<&str> = csv
         .lines()
         .skip(1)

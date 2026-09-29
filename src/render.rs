@@ -407,8 +407,10 @@ fn setup_render_target(
         Camera {
             order: UI_CAMERA_ORDER,
             clear_color: ClearColorConfig::Custom(Color::NONE),
-            // The composite writes the window; Bevy's own copy never runs.
-            output_mode: CameraOutputMode::Skip,
+            // Keeps Bevy's default `Write` output mode: with `Skip`, Bevy
+            // prepares no output attachment and, since the camera clears,
+            // drops the view entirely. Its `upscaling` copy never runs anyway
+            // (it isn't in `UiComposite`); the composite writes the output.
             ..default()
         },
         // COPY_DST lets the GPU timing's last mark wait for the composite's
@@ -530,14 +532,15 @@ pub fn full_screen_passes(world: &mut World) -> Vec<FullScreenPass> {
         };
         let writes = !matches!(camera.output_mode, CameraOutputMode::Skip);
         if e.contains::<Camera3d>() {
-            if e.get::<Tonemapping>().is_some_and(|t| *t != Tonemapping::None) {
+            if e.get::<Tonemapping>()
+                .is_some_and(|t| *t != Tonemapping::None)
+            {
                 out.push(pass("tonemapping", size));
             }
             if e.get::<Fxaa>().is_some_and(|f| f.enabled) {
                 out.push(pass("fxaa", size));
             }
-            if e
-                .get::<ContrastAdaptiveSharpening>()
+            if e.get::<ContrastAdaptiveSharpening>()
                 .is_some_and(|c| c.enabled)
             {
                 out.push(pass("sharpening", size));

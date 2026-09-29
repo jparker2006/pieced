@@ -16,8 +16,7 @@ use bevy::{
 use pieced::{
     look::LookSettings,
     render::{
-        FullScreenPass, MainCamera, PassSize, RenderSetupPlugin, UiComposite,
-        full_screen_passes,
+        FullScreenPass, MainCamera, PassSize, RenderSetupPlugin, UiComposite, full_screen_passes,
     },
     shared::tick_duration,
     tuning::Tuning,
@@ -102,7 +101,9 @@ fn a_battery_frame_runs_fxaa_one_copy_and_one_window_size_pass() {
         .query_filtered::<(&Camera, &bevy::render::camera::CameraRenderGraph), With<IsDefaultUiCamera>>()
         .single(world)
         .unwrap();
-    assert!(matches!(ui.0.output_mode, CameraOutputMode::Skip));
+    // `Write`, or Bevy would drop the view (no output attachment); its copy
+    // isn't in the composite schedule, so it never runs.
+    assert!(matches!(ui.0.output_mode, CameraOutputMode::Write { .. }));
     assert_eq!(
         ui.1.0,
         bevy::ecs::schedule::ScheduleLabel::intern(&UiComposite)

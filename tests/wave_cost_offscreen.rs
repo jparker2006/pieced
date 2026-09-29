@@ -219,9 +219,6 @@ fn a_full_wave_costs() {
             .resource::<pieced::gpu_timing::GpuResults>()
             .take()
         {
-            if samples.len() < 3 {
-                println!("WAVE_MARKS {:?}", pieced::gpu_timing::debug_last_marks());
-            }
             samples.push(s);
         }
     }
