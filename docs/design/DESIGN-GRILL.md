@@ -284,6 +284,12 @@ The goal, from Jake: make Pieced "play and feel like a AAA game". Story and real
 |---|---|---|
 | D121 | **The helmet may overhang the head hitbox, visually only (Q121).** | <ul><li>The helmet's visual radius may be up to **+45%** of the head sphere's (about 0.29 m, roughly 9 cm of overhang all round), up from S5's +25% (5 cm).</li><li>It is cosmetic, like the hat (D49): the hitboxes, the head sphere and every gameplay number are unchanged, and the gameplay pin stays green.</li><li>The tradeoff Jake accepted: a shot that clips the outer rim of the helmet can miss.</li><li>The headshot feedback fires only on real head-sphere hits.</li><li>S5's helmet check becomes "within the head sphere + 0.09 m"; the body parts keep the 5 cm rule.</li></ul> |
 
+**Pacing and latency, 2026-09-29** (after the interim battery session `20260929-215209`: presented 16.73 ms, 99.59% < 18; input-to-present press 40.9 ms, look 34.6 ms median). Jake: "rec on Q122".
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D122 | **Pipelined rendering stays on (Q122).** | <ul><li>It stays the default, since it bought the smoothness (41% → 99.6% of frames < 18 ms) and Jake felt no lag.</li><li>The session log also records **input-to-submit** latency, comparable with M1's G3 (≤ 33 ms median).</li><li>The next perf pass tries to trim latency, for example by reading input as late as possible in the frame.</li><li>Input-to-present (41 ms press, 35 ms look) is reported but not gated.</li></ul> |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**

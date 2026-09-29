@@ -342,3 +342,4 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - **The remaining spikes are CPU hitches, not GPU.** Of the 393 CPU spikes, 62% are `pre` (window and input events, state changes; 7.9 ms on spikes against 0.5 on normal frames), 20% are `idle` (the OS) and 15% `acquire`. The entity count grew from 7,666 to 8,448 over 10 minutes, probably built pieces; to be checked.
   - **Input-to-present latency** (the first real numbers): presses 40.9 ms median, 50.0 p95; trackpad look 34.6 median, 39.6 p95. The spec's ≤ 33 ms comes from M1's G3, which measured input-to-*submit* (24.3 ms then). This measure ends at *present*, so it isn't directly comparable. Asked Jake as Q122 whether to keep pipelining.
   - **Launch:** 3,332 ms cold; Play → controllable 35 ms.
+- 2026-09-29: **D122:** pipelined rendering stays on. Input-to-submit is to be logged for comparison with G3, and latency trimmed where possible. Jake: "rec on Q122".
