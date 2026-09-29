@@ -514,10 +514,10 @@ fn launch(
     let out = (start - feet).with_y(0.0).normalize_or(away);
     let side = Vec3::Y.cross(away);
     let (vel, spin, restitution) = match part {
-        // The helmet pops straight up off his head, spinning end over end.
+        // The helmet pops up off his head, spinning end over end, and a
+        // little toward the shooter so it reads big over the poof (M4-V4).
         0 => (
-            Vec3::Y * rng.range(5.0, 5.8)
-                + away * rng.range(0.9, 1.5)
+            Vec3::Y * rng.range(5.4, 6.2) - away * rng.range(0.6, 1.0)
                 + side * rng.range(-0.7, 0.7),
             side * rng.range(11.0, 15.0) + Vec3::Y * rng.range(-3.0, 3.0),
             0.42,

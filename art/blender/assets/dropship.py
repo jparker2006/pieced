@@ -65,12 +65,15 @@ def disc():
     """The saucer: a purple underside dish, a bright brass rim band, a brass
     top sloping up to the canopy's collar. A surface of revolution about Z
     (its inner, hidden faces close it)."""
-    profile = [(-1.25, 1.45), (-0.95, 4.0), (-0.45, 6.4), (-0.1, 7.1), (0.25, RIM),
+    # The underside (what the island sees, M4-V1): bronze panel rings and a
+    # glowing blue emitter ring round the crystal's socket, on purple.
+    profile = [(-1.25, 1.45), (-1.2, 2.2), (-1.12, 2.55), (-0.95, 4.0), (-0.85, 4.45),
+               (-0.45, 6.4), (-0.1, 7.1), (0.25, RIM),
                (0.55, 7.26), (0.75, 6.7), (1.3, 5.2), (1.4, 4.9), (1.55, 4.8),
                (2.0, 3.2), (2.15, 2.8), (2.2, 0.25), (-1.25, 0.25)]
-    colors = [PURPLE, PURPLE, BELLY, RED, RED, BELLY, STEEL, BELLY, STEEL, STEEL, BELLY,
-              STEEL, PURPLE, PURPLE]
-    return guns.lathe((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), profile, colors, seg=28)
+    colors = [BELLY, WINDOW, PURPLE, BELLY, PURPLE, BELLY, RED, RED, BELLY, STEEL, BELLY,
+              STEEL, STEEL, BELLY, STEEL, PURPLE, PURPLE]
+    return guns.lathe((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), profile, colors, seg=24)
 
 
 def canopy():

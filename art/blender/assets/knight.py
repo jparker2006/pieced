@@ -86,7 +86,6 @@ TRIM = "gold_rings"
 DARK = "gun_iron"  # undersuit, sleeves, soles
 BLACK = "pupil_black"  # pupils and the visor's dark inside
 WHITE = "eye_white"
-LEATHER = "stock"
 GEM = "crystal_violet"
 LINING = "knight_purple_shadow"  # robe, coat and cape insides: depth in the openings
 RIVET = "star_gold"
@@ -756,7 +755,7 @@ def build_torso():
              (0.768, 0.164, 0.134, 0.08), (0.771, 0.14, 0.11, 0.07)]]
     faces = [f for band in loft(bm, belt) for f in band]
     faces += [cap(bm, belt[0], up=False), cap(bm, belt[-1], up=True)]
-    b.tag(faces, LEATHER)
+    b.tag(faces, DARK)
     buckle_c = Vector((0.0, -0.138, 0.736))
     outer_pts = rrect(0.056, 0.046, 0.014, corner=3)
     inner_pts = rrect(0.03, 0.02, 0.007, corner=3)
@@ -769,7 +768,7 @@ def build_torso():
     bk_o, bk_i = plate_ring(outer_pts, -0.006), plate_ring(inner_pts, -0.003)
     b.tag(shapes.bridge(bm, fr_o, fr_i) + shapes.bridge(bm, bk_o, fr_o)
           + shapes.bridge(bm, fr_i, bk_i) + shapes.bridge(bm, bk_i, bk_o), GOLD)
-    b.tag([cap(bm, bk_i, up=True)], LEATHER)
+    b.tag([cap(bm, bk_i, up=True)], DARK)
 
     # Dark mail at the waist under a small, keeled steel breastplate that runs up
     # under the mantle.
@@ -852,7 +851,7 @@ def sheet(bm, point, ts, us, thick):
 
 
 ROBE_TOP = 0.752  # tucked under the belt
-ROBE_HEM = 0.22  # mid-shin at the back; the front edges ride higher
+ROBE_HEM = 0.3  # below the knee at the back; the front edges ride higher
 
 
 def robe_point(t, u, inset):
@@ -864,8 +863,9 @@ def robe_point(t, u, inset):
     e = t ** 0.85
     # A full bell: the hem swings out to the body capsule's edge, so he reads
     # round and stocky like the targets (M4-V1, V5).
-    a = 0.165 + (0.318 - 0.165) * e
-    d = 0.14 + (0.296 - 0.14) * e
+    # An A-line bell: the hem swings out to the capsule's edge.
+    a = 0.165 + (0.35 - 0.165) * e
+    d = 0.14 + (0.315 - 0.14) * e
     # Pleats: rounded crests and tighter valleys, deepening toward the hem.
     f = math.sin(9.0 * th + 0.3)
     k = 1.0 + 0.055 * t ** 1.1 * math.copysign(abs(f) ** 0.7, f)
@@ -954,7 +954,9 @@ def build_arm(s):
 
 
 def build_leg(s):
-    """Dark thigh, winged knee cop, steel greave and a big round-toed boot."""
+    """Dark thigh, a knee cop over one continuous steel greave flaring to a
+    cuff, and a big round-toed dark boot (M4 art: one smooth leg shape, not
+    a stack of beads, and dark feet grounding him)."""
     b = Builder()
     bm = b.bm
 
@@ -963,14 +965,11 @@ def build_leg(s):
 
     b.tag(tube(bm, [(m(0.108, 0.0, 0.66), 0.066), (m(0.128, 0.0, 0.5), 0.066),
                     (m(0.144, 0.0, 0.385), 0.062)], segments=10), DARK)
-    b.tag(blob(bm, m(0.147, -0.04, 0.374), (0.066, 0.042, 0.06), exponent=2.3, segments=12,
+    b.tag(blob(bm, m(0.147, -0.03, 0.39), (0.07, 0.05, 0.058), exponent=2.3, segments=12,
                rings=6), STEEL)
-    b.tag(blob(bm, m(0.2, -0.01, 0.374), (0.018, 0.055, 0.064), segments=8, rings=4),
-          STEEL)
-    b.tag(tube(bm, [(m(0.147, 0.0, 0.372), 0.058), (m(0.156, 0.0, 0.29), 0.063),
-                    (m(0.162, 0.0, 0.215), 0.075)], segments=12), STEEL)
-    b.tag(tube(bm, [(m(0.162, 0.0, 0.235), 0.075), (m(0.164, 0.0, 0.208), 0.092),
-                    (m(0.165, -0.004, 0.168), 0.097)], segments=14), STEEL)
+    b.tag(tube(bm, [(m(0.147, 0.0, 0.4), 0.064), (m(0.154, 0.0, 0.31), 0.07),
+                    (m(0.16, 0.0, 0.24), 0.08), (m(0.164, -0.002, 0.2), 0.096),
+                    (m(0.165, -0.004, 0.165), 0.1)], segments=14), STEEL)
 
 
     def toe_bulge(p):
@@ -980,8 +979,7 @@ def build_leg(s):
 
     boot = blob(bm, m(0.156, -0.062, 0.084), (0.102, 0.178, 0.088), exponent=2.4,
                 segments=16, rings=10, floor=0.0, shape=toe_bulge)
-    b.tag(boot, STEEL)
-    b.tag([f for f in boot if f.calc_center_median().z < 0.012], DARK)  # the sole
+    b.tag(boot, DARK)
     return b
 
 
