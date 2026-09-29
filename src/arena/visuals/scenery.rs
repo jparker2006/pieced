@@ -38,7 +38,7 @@ pub const PROP_BUSH_MAX_HEIGHT: f32 = 0.72;
 /// How far (m) a bush hugging a prop may reach past the prop's footprint.
 pub const PROP_BUSH_REACH: f32 = 0.45;
 /// The merged scenery's triangle budget on the Battery preset (models aside).
-pub const ISLAND_TRIANGLE_BUDGET: usize = 130_000;
+pub const ISLAND_TRIANGLE_BUDGET: usize = 140_000;
 /// Side of the square the island's clutter is chunked over (m), and chunks per
 /// side: tufts and flowers are split into this grid so the camera culls them.
 const CHUNK_SPAN: f32 = 80.0;
@@ -1108,7 +1108,8 @@ fn flowers(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
         (lin(cartoon::FLOWER_PINK), lin(cartoon::SPELL_GOLD)),
     ];
     // Flowers grow in little clusters of one kind.
-    for _ in 0..235 {
+    // M4 art: denser and a touch bigger, so the lawn reads flowery (M4-V1, V2).
+    for _ in 0..330 {
         let Some((p, on_floor)) = island_point(outline, rng, 0.6) else {
             continue;
         };
@@ -1123,7 +1124,7 @@ fn flowers(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
             flower(
                 &mut geo[chunk(q.x, q.y)],
                 Vec3::new(q.x, 0.0, q.y),
-                rng.range(0.08, 0.12),
+                rng.range(0.1, 0.15),
                 petal,
                 centre,
                 rng,

@@ -16,7 +16,7 @@ const GRADE_VIBRANCE: f32 = 0.22;
 const GRADE_CONTRAST: f32 = 1.1;
 const GRADE_PIVOT: f32 = 0.45;
 const GRADE_COOL: vec3<f32> = vec3<f32>(-0.008, 0.0, 0.018);
-const GRADE_WARM: vec3<f32> = vec3<f32>(0.024, 0.012, -0.02);
+const GRADE_WARM: vec3<f32> = vec3<f32>(0.032, 0.018, -0.026);
 
 fn grade(linear_rgb: vec3<f32>) -> vec3<f32> {
     var p = sqrt(max(linear_rgb, vec3<f32>(0.0)));

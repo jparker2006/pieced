@@ -100,19 +100,20 @@ SHOULDER = Vector((0.20, 0.0, 1.20))
 NECK = Vector((0.0, 0.0, 1.42))
 NAPE = Vector((0.0, 0.14, 1.28))
 WAIST = Vector((0.0, 0.0, 0.745))
-HAT_BASE = Vector((0.0, 0.0, 1.705))  # under the brim, so the dropped hat rests low on it
+# M4 art: the helmet grew to the head sphere's limit (a taller bucket), so the
+# hat rides this much higher than Milestone 2's.
+HAT_LIFT = 0.083
+HAT_BASE = Vector((0.0, 0.0, 1.705 + HAT_LIFT))  # under the brim, so the dropped hat rests low on it
 TORSO_ORIGIN = Vector((0.0, 0.0, 0.62))
 
 # Helmet: rings are shrunk to stay this far inside the head sphere's centre.
-HELMET_FIT = HEAD_RADIUS + 0.038  # leaves room for rivets and trims
-SLIT = (1.572, 1.706)  # visor slit, bottom and top: tall, for the big eyes
+HELMET_FIT = HEAD_RADIUS + 0.046  # the head sphere plus nearly all its tolerance
+SLIT = (1.585, 1.76)  # the visor: one tall dark band for the big eyes
 SLIT_DEPTH = 0.035
-SLOTS = (1.49, 1.55)  # the grille's breathing slots, bottom and top
-SLOT_DEPTH = 0.02
-PLATE = (0.225, 0.19, 0.11)  # the face plate's ring: half width, half depth, corner radius
-EYE_X = 0.058
-EYE_Z = 1.639
-EYE_R = (0.052, 0.061)  # the open eye's half width and half height (a tall cartoon oval)
+PLATE = (0.232, 0.19, 0.1)  # the face plate's ring: half width, half depth, corner radius
+EYE_X = 0.062
+EYE_Z = 1.672
+EYE_R = (0.058, 0.075)  # the open eye's half width and half height (a tall cartoon oval)
 
 
 def mirror(v, s):
@@ -391,41 +392,33 @@ class Builder:
 # Head: helmet, eyes, hat
 # ---------------------------------------------------------------------------
 
-# x of the grille's slot edges on the face plate: four even slots, centred.
-_SLOT_EDGES = (0.012, 0.036, 0.06, 0.084)
-
-
-def build_helmet(details=True):
-    """A big round bucket helmet filling the head sphere (and its tolerance): a flat
-    face plate with a tall visor slit for the eyes over a clean four-slot grille,
-    well-rounded corners, a bulging belly and a domed top under the hat."""
+def build_helmet():
+    """A big round bucket helmet filling the head sphere (and its tolerance),
+    as tall as it allows so he reads chibi (M4-V1, V5): a plain face plate
+    with one tall dark visor band for the big eyes (no grille bars: they read
+    as teeth at range), well-rounded corners and a domed top under the hat."""
     b = Builder()
     bm = b.bm
     ax = PLATE[0] - PLATE[2]
     # (z, a, b, c) as drawn; each ring is then shrunk into the head sphere, which
     # tapers the bottom and domes the top.
     profile = [
-        (1.446, 0.15, 0.13, 0.09),
-        (1.461, 0.18, 0.158, 0.1),
-        (1.475, 0.204, 0.176, 0.106),
-        (SLOTS[0], *PLATE),
-        (SLOTS[1], *PLATE),
+        (1.415, 0.13, 0.115, 0.08),
+        (1.43, 0.17, 0.15, 0.095),
+        (1.455, 0.2, 0.172, 0.1),
+        (1.5, *PLATE),
         (SLIT[0], *PLATE),
         (SLIT[1], *PLATE),
-        (1.713, 0.212, 0.18, 0.11),
-        (1.721, 0.194, 0.166, 0.104),
-        (1.73, 0.162, 0.14, 0.094),
-        (1.737, 0.118, 0.103, 0.074),
-        (1.742, 0.07, 0.062, 0.05),
+        (1.785, 0.215, 0.182, 0.1),
+        (1.8, 0.19, 0.163, 0.1),
+        (1.812, 0.155, 0.135, 0.09),
+        (1.82, 0.11, 0.097, 0.07),
+        (1.825, 0.06, 0.055, 0.045),
     ]
     rings = []
     for z, a, d, c in profile:
         a, d, c = fit_in_sphere(z, a, d, c, HEAD_CENTER, HELMET_FIT)
-        # The face plate's columns stand at the grille's slot edges on every
-        # ring wide enough, so the slots come out upright and even.
-        flat = a - min(c, a - 1e-4, d - 1e-4)
-        front = tuple(x / (flat if flat > 0.09 else ax) for x in _SLOT_EDGES)
-        rings.append(ring(bm, rrect(a, d, c, corner=4, front=front, side=1, back=2), z))
+        rings.append(ring(bm, rrect(a, d, c, corner=4, front=(0.5,), side=1, back=2), z))
     faces = [f for band in loft(bm, rings) for f in band]
     faces.append(cap(bm, rings[0], up=False))
     faces.append(cap(bm, rings[-1], up=True))
@@ -437,43 +430,13 @@ def build_helmet(details=True):
                 if z0 < f.calc_center_median().z < z1 and f.normal.y < facing
                 and any(x0 < f.calc_center_median().x < x1 for x0, x1 in xs)]
 
-    lim = ax * 0.99
-    b.tag(recess(bm, front_faces(SLIT[0], SLIT[1], [(-lim, lim)], -0.97), SLIT_DEPTH), BLACK)
-    e = _SLOT_EDGES
-    slot_xs = [(e[0], e[1]), (e[2], e[3]), (-e[1], -e[0]), (-e[3], -e[2])]
-    # The grille sits where the helmet already tapers, so its face tilts down a little.
-    slots = front_faces(SLOTS[0], SLOTS[1], slot_xs, -0.9)
-    if len(slots) != 4:
-        raise ValueError(f"the grille found {len(slots)} slot faces, not 4")
-    b.tag(recess(bm, slots, SLOT_DEPTH), BLACK)
+    lim = ax * 1.2
+    b.tag(recess(bm, front_faces(SLIT[0], SLIT[1], [(-lim, lim)], -0.9), SLIT_DEPTH), BLACK)
     # Round "ear" bolts.
     for s in (1, -1):
-        b.tag(blob(bm, (s * (PLATE[0] - 0.006), 0.02, 1.62), (0.018, 0.036, 0.036),
+        b.tag(blob(bm, (s * (PLATE[0] - 0.012), 0.02, 1.62), (0.02, 0.04, 0.04),
                    segments=10, rings=5), STEEL)
-    if details:
-        helmet_details(b)
     return b
-
-
-def helmet_details(b, avoid=None):
-    """Premium detail that costs nothing on the GPU: a raised nose ridge down
-    the grille's middle and gold rivets round the face plate. `avoid` =
-    (centre, radius): leave out rivets there (the dent's hollow)."""
-    bm = b.bm
-    ridge = []
-    for z in (1.566, 1.54, 1.51, 1.482):
-        at, nrm = surface_hit(bm, (0.0, -0.5, z), (0.0, 1.0, 0.0))
-        ridge.append((at + nrm * 0.003, 0.011))
-    b.tag(tube(bm, ridge, segments=6), STEEL)
-    studs = []
-    for s in (1, -1):
-        for x, z in ((0.168, 1.5), (0.18, 1.585), (0.176, 1.672)):
-            at, nrm = surface_hit(bm, (s * x, -0.5, z), (0.0, 1.0, 0.0))
-            studs.append((at, nrm))
-    for at, nrm in studs:
-        if avoid is not None and (at - avoid[0]).length < avoid[1]:
-            continue
-        b.tag(rivet(bm, at, nrm, radius=0.0125, proud=0.007), RIVET)
 
 
 # The headshot dent (M4, D105): where it is pressed in (a direction from the
@@ -491,7 +454,7 @@ def build_dented_helmet():
     beside the visor, its hollow in shadowed steel, so the cartoon ding reads
     for the rest of his life. Pressed inward only, so it stays inside the head
     sphere. The mesh is refined round the dent first so it presses in smooth."""
-    b = build_helmet(details=False)
+    b = build_helmet()
     bm = b.bm
     head = Vector((0.0, 0.0, HEAD_CENTER))
     centre, _ = surface_hit(bm, head + DENT_DIR * 0.5, -DENT_DIR)
@@ -527,9 +490,6 @@ def build_dented_helmet():
             lip.append(f)
     b.tag(hollow, STEEL_SHADOW)
     b.tag(lip, STEEL_SHINE)
-    # The ridge and rivets go on after the dent (none in its hollow), so the
-    # refinement above only ever sees the plain shell.
-    helmet_details(b, avoid=(centre, DENT_RADIUS * 1.3))
     # Element order out of the bmesh operators above can vary run to run, and
     # `canonical` keeps vertex order: sort the vertices by position so
     # `build-art.sh --check` stays byte-identical.
@@ -578,7 +538,7 @@ def build_eye(s, state):
     if state == "open":
         b.tag(blob(bm, c, (rx, 0.03, rz), segments=14, rings=5), WHITE)
         p = c + Vector((inward * 0.012, -0.026, -0.008))
-        b.tag(blob(bm, p, (0.029, 0.009, 0.034), segments=10, rings=4), BLACK)
+        b.tag(blob(bm, p, (0.032, 0.009, 0.038), segments=10, rings=4), BLACK)
         # A catchlight up and to the viewer's right in each pupil: the eyes
         # read alive and wet at any distance.
         b.tag(blob(bm, p + Vector((0.009, -0.007, 0.012)), (0.0085, 0.004, 0.0095),
@@ -606,27 +566,28 @@ def build_eye(s, state):
 
 # The hat's brim cross-section, (radius, height), inside to outside along the top
 # and back underneath: thick and floppy, drooping at its edge.
-_BRIM = [(0.14, 1.741), (0.2, 1.736), (0.248, 1.725), (0.28, 1.711), (0.293, 1.7),
-         (0.281, 1.694), (0.226, 1.706), (0.14, 1.722)]
+_BRIM = [(r, z + HAT_LIFT) for r, z in (
+    (0.14, 1.741), (0.2, 1.736), (0.248, 1.725), (0.28, 1.711), (0.293, 1.7),
+    (0.281, 1.694), (0.226, 1.706), (0.14, 1.722))]
 
 # The hat's crown: a tall soft cone, leaning back, that bends over to the
 # knight's right (-x) and droops (targets T03-T07). The ring at `TIP_AT` is
 # where the floppy tip turns (PivotHatTip): `Hat` is the crown up to it, `HatTip`
 # the rest.
 _CROWN = [
-    ((0.0, 0.0, 1.712), 0.18),
-    ((0.0, 0.006, 1.78), 0.152),
-    ((-0.002, 0.016, 1.85), 0.124),
-    ((-0.006, 0.03, 1.92), 0.097),
-    ((-0.014, 0.046, 1.985), 0.074),
-    ((-0.028, 0.06, 2.04), 0.057),
-    ((-0.052, 0.072, 2.078), 0.045),
-    ((-0.088, 0.082, 2.098), 0.035),
-    ((-0.13, 0.09, 2.096), 0.027),
-    ((-0.166, 0.096, 2.075), 0.019),
-    ((-0.19, 0.1, 2.045), 0.013),
-    ((-0.2, 0.1, 2.018), 0.007),
-    ((-0.203, 0.1, 2.0), 0.002),
+    ((0.0, 0.0, 1.712 + HAT_LIFT), 0.18),
+    ((0.0, 0.006, 1.78 + HAT_LIFT), 0.152),
+    ((-0.002, 0.016, 1.85 + HAT_LIFT), 0.124),
+    ((-0.006, 0.03, 1.92 + HAT_LIFT), 0.097),
+    ((-0.014, 0.046, 1.985 + HAT_LIFT), 0.074),
+    ((-0.028, 0.06, 2.04 + HAT_LIFT), 0.057),
+    ((-0.052, 0.072, 2.078 + HAT_LIFT), 0.045),
+    ((-0.088, 0.082, 2.098 + HAT_LIFT), 0.035),
+    ((-0.13, 0.09, 2.096 + HAT_LIFT), 0.027),
+    ((-0.166, 0.096, 2.075 + HAT_LIFT), 0.019),
+    ((-0.19, 0.1, 2.045 + HAT_LIFT), 0.013),
+    ((-0.2, 0.1, 2.018 + HAT_LIFT), 0.007),
+    ((-0.203, 0.1, 2.0 + HAT_LIFT), 0.002),
 ]
 TIP_AT = 5
 
@@ -658,12 +619,12 @@ def build_wizard_hat():
     b.tag(brim, PURPLE)
     b.tag(tube(bm, [(Vector(p), r) for p, r in _CROWN[:TIP_AT + 1]], segments=16), PURPLE)
     # A dark velvet hat band edged in gold where the crown meets the brim.
-    b.tag(tube(bm, [(Vector((0.0, 0.0017, 1.738)), 0.1745), (Vector((0.0, 0.0045, 1.772)), 0.161)],
-               segments=16), LINING)
-    for z, r in ((1.74, 0.1745), (1.771, 0.1615)):
+    b.tag(tube(bm, [(Vector((0.0, 0.0017, 1.738 + HAT_LIFT)), 0.1745),
+                    (Vector((0.0, 0.0045, 1.772 + HAT_LIFT)), 0.161)], segments=16), LINING)
+    for z, r in ((1.74 + HAT_LIFT, 0.1745), (1.771 + HAT_LIFT, 0.1615)):
         b.tag(band(bm, (0.0, 0.003, z), r, r, 0.0055, n_major=16, n_minor=4), TRIM)
     # The gold star sits on the crown's front, facing out along the surface.
-    at, normal = surface_hit(bm, (0.0, -0.5, 1.832), (0.0, 1.0, 0.0))
+    at, normal = surface_hit(bm, (0.0, -0.5, 1.832 + HAT_LIFT), (0.0, 1.0, 0.0))
     b.tag(star_prism(bm, at + normal * 0.005, outer=0.064, inner=0.028, depth=0.014,
                      normal=normal, up=(0.0, 0.0, 1.0)), GOLD)
     return b
@@ -749,9 +710,11 @@ def build_hat():
 # The coat's bodice, collar to belt: (z, half width, half depth, the front
 # opening's half angle in degrees) of a rounded-square cross-section, a little
 # outside the breastplate and mail everywhere.
-_COAT = [(1.442, 0.11, 0.1, 12.0), (1.39, 0.15, 0.13, 13.0), (1.3, 0.194, 0.162, 14.0),
-         (1.2, 0.22, 0.178, 14.0), (1.08, 0.214, 0.176, 14.0), (0.96, 0.204, 0.172, 14.0),
-         (0.86, 0.194, 0.164, 15.0), (0.758, 0.184, 0.154, 17.0)]
+# M4 art: nearly closed over the chest, so he reads purple-bodied with a
+# gold seam down his front (three values at range: silver, purple, gold).
+_COAT = [(1.442, 0.11, 0.1, 7.0), (1.39, 0.15, 0.13, 3.0), (1.3, 0.194, 0.162, 2.5),
+         (1.2, 0.22, 0.178, 2.5), (1.08, 0.214, 0.176, 2.5), (0.96, 0.204, 0.172, 3.0),
+         (0.86, 0.194, 0.164, 4.0), (0.758, 0.184, 0.154, 6.0)]
 # Columns round the coat from the opening's left edge: a thin gold trim at each edge.
 COAT_US = [0.0] + [0.016 + 0.968 * k / 11 for k in range(12)] + [1.0]
 
@@ -840,16 +803,12 @@ def build_torso():
     b.tag(gold + sides, GOLD)
 
     # Medallion: a gold ring with a violet gem on a short gold chain.
-    med = Vector((0.0, -0.148, 1.175))
+    med = Vector((0.0, -0.192, 1.185))
     tilt = Matrix.Rotation(math.radians(-10.0), 3, "X")
     b.tag(torus(bm, med, 0.041, 0.011, n_major=14, n_minor=5, rot=tilt), GOLD)
     b.tag(blob(bm, med + Vector((0.0, -0.003, 0.0)), (0.031, 0.013, 0.031), segments=10,
                rings=5, rot=tilt), GEM)
-    # Gold rivets along the belly lame's edge.
-    for x in (-0.092, 0.092, -0.046, 0.046):
-        at, nrm = surface_hit(bm, (x, -0.5, 0.963), (0.0, 1.0, 0.0))
-        if at.z > 0.94 and abs(at.x) > 0.02:
-            b.tag(rivet(bm, at, nrm, radius=0.011, proud=0.006), RIVET)
+
     for s in (1, -1):
         b.tag(tube(bm, [(Vector((s * 0.1, -0.118, 1.262)), 0.006),
                         (Vector((s * 0.05, -0.142, 1.222)), 0.006),
@@ -864,8 +823,6 @@ def build_torso():
                    segments=16, rings=7, floor=1.172), STEEL)
         b.tag(band(bm, (s * 0.214, 0.0, 1.175), 0.117, 0.128, 0.0105, n_major=20,
                    n_minor=5, squash=0.9), TRIM)
-        at, nrm = surface_hit(bm, (s * 0.236, -0.03, 1.7), (0.0, 0.0, -1.0))
-        b.tag(rivet(bm, at, nrm, radius=0.015, proud=0.008), RIVET)
     return b
 
 
@@ -895,7 +852,7 @@ def sheet(bm, point, ts, us, thick):
 
 
 ROBE_TOP = 0.752  # tucked under the belt
-ROBE_HEM = 0.3  # at the back; the front edges ride higher
+ROBE_HEM = 0.22  # mid-shin at the back; the front edges ride higher
 
 
 def robe_point(t, u, inset):
@@ -907,11 +864,11 @@ def robe_point(t, u, inset):
     e = t ** 0.85
     # A full bell: the hem swings out to the body capsule's edge, so he reads
     # round and stocky like the targets (M4-V1, V5).
-    a = 0.165 + (0.334 - 0.165) * e
-    d = 0.14 + (0.31 - 0.14) * e
+    a = 0.165 + (0.318 - 0.165) * e
+    d = 0.14 + (0.296 - 0.14) * e
     # Pleats: rounded crests and tighter valleys, deepening toward the hem.
     f = math.sin(9.0 * th + 0.3)
-    k = 1.0 + 0.068 * t ** 1.1 * math.copysign(abs(f) ** 0.7, f)
+    k = 1.0 + 0.055 * t ** 1.1 * math.copysign(abs(f) ** 0.7, f)
     hem = ROBE_HEM + 0.07 * ((1.0 - math.sin(th)) / 2.0) ** 2
     z = ROBE_TOP - t * (ROBE_TOP - hem)
     return Vector(((a * k - inset) * math.cos(th), (d * k - inset) * math.sin(th), z))
@@ -975,8 +932,6 @@ def build_arm(s):
                segments=14), GOLD)
     b.tag(tube(bm, [(m(0.254, -0.004, 0.998), 0.061), (m(0.262, -0.02, 0.87), 0.066)],
                segments=10), STEEL)
-    b.tag(band(bm, m(0.258, -0.012, 0.935), 0.064, 0.064, 0.009, n_major=12, n_minor=4),
-          TRIM)
     b.tag(tube(bm, [(m(0.264, -0.024, 0.884), 0.069), (m(0.266, -0.03, 0.85), 0.094),
                     (m(0.266, -0.034, 0.824), 0.1)], segments=14), STEEL)
     hand = (0.266, -0.034, 0.752)
@@ -1012,20 +967,18 @@ def build_leg(s):
                rings=6), STEEL)
     b.tag(blob(bm, m(0.2, -0.01, 0.374), (0.018, 0.055, 0.064), segments=8, rings=4),
           STEEL)
-    at = m(0.147, -0.083, 0.378)
-    b.tag(rivet(bm, at, (0.0, -1.0, 0.1), radius=0.013, proud=0.008), RIVET)
     b.tag(tube(bm, [(m(0.147, 0.0, 0.372), 0.058), (m(0.156, 0.0, 0.29), 0.063),
                     (m(0.162, 0.0, 0.215), 0.075)], segments=12), STEEL)
     b.tag(tube(bm, [(m(0.162, 0.0, 0.235), 0.075), (m(0.164, 0.0, 0.208), 0.092),
                     (m(0.165, -0.004, 0.168), 0.097)], segments=14), STEEL)
-    b.tag(band(bm, m(0.164, -0.002, 0.2), 0.091, 0.091, 0.009, n_major=14, n_minor=4), TRIM)
+
 
     def toe_bulge(p):
         # Wider and taller towards the toe (front, -y), flatter at the heel.
         f = max(0.0, -p.y)
         return Vector((p.x * (1.0 + 0.1 * f), p.y, p.z * (1.0 + 0.12 * f)))
 
-    boot = blob(bm, m(0.167, -0.064, 0.08), (0.09, 0.171, 0.088), exponent=2.4,
+    boot = blob(bm, m(0.156, -0.062, 0.084), (0.102, 0.178, 0.088), exponent=2.4,
                 segments=16, rings=10, floor=0.0, shape=toe_bulge)
     b.tag(boot, STEEL)
     b.tag([f for f in boot if f.calc_center_median().z < 0.012], DARK)  # the sole

@@ -58,7 +58,7 @@ pub const CIRCLE_TINT: Color = Color::srgb(1.0, 0.55, 0.95);
 pub const CRYSTAL_GLOW: Color = Color::srgb(0.72, 0.38, 1.0);
 /// The beam's and circle's peak glow intensities.
 pub const BEAM_INTENSITY: f32 = 1.4;
-pub const CIRCLE_INTENSITY: f32 = 2.0;
+pub const CIRCLE_INTENSITY: f32 = 2.6;
 /// The landing flash: its length (s), colour and size (m).
 pub const POOF_SECONDS: f32 = 0.45;
 pub const POOF_COLOR: Color = Color::srgb(1.0, 0.85, 1.0);
@@ -558,7 +558,7 @@ fn pose_ships(
         if *tag != want {
             *tag = want;
         }
-        let want_halo = Halo::new(CIRCLE_TINT, CIRCLE_RADIUS * 1.2, 0.6 * level);
+        let want_halo = Halo::new(CIRCLE_TINT, CIRCLE_RADIUS * 1.2, 0.9 * level);
         if *halo != want_halo {
             *halo = want_halo;
         }

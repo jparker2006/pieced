@@ -3,18 +3,18 @@
   "kind": "dropship",
   "source": "art/blender/assets/dropship.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 1632,
+  "triangles": 1936,
   "triangle_budget": 2000,
   "bounds": {
     "min": [
-      -7.95,
+      -7.3,
       -2.9,
-      -8.2072
+      -7.3
     ],
     "max": [
-      7.95,
-      3.9,
-      8.4
+      7.3,
+      3.58,
+      7.3
     ]
   },
   "parts": {
@@ -42,25 +42,22 @@
       "parent": "dropship",
       "bounds": {
         "min": [
-          -7.95,
+          -7.3,
           -1.65,
-          -8.2072
+          -7.3
         ],
         "max": [
-          7.95,
-          3.9,
-          8.4
+          7.3,
+          3.58,
+          7.3
         ]
       },
-      "triangles": 1608,
+      "triangles": 1912,
       "colors": [
         "crystal_blue",
-        "crystal_violet",
-        "glass_violet",
         "gun_brass",
         "gun_brass_dark",
         "gun_brass_light",
-        "gun_iron",
         "knight_purple"
       ]
     }

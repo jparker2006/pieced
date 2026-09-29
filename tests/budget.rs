@@ -270,9 +270,12 @@ fn a_full_wave_stays_within_the_draw_triangle_and_particle_budgets() {
 /// against 4.20/5.42 before; `tests/wave_cost_offscreen.rs`). Triangles are
 /// pinned 5% above that so art can't grow them silently; the mesh and batch
 /// counts (the draws) are pinned tighter than before: art may not add draws.
+/// Round 2 added three wand swirl sparks per knight: halo sprites, which
+/// share the one halo batch and collapse to nothing while dark (1,509 meshes
+/// in 153 batches, 624k triangles; world pass 4.06/5.19 ms offscreen).
 const SCENE_TRIANGLES: usize = 665_000;
 const KNIGHT_TRIANGLES: usize = 11_000;
-const SCENE_MESHES: usize = 1_500;
+const SCENE_MESHES: usize = 1_560;
 const SCENE_BATCHES: usize = 160;
 const SCENE_GLOWS: usize = 120;
 

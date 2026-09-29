@@ -25,6 +25,12 @@
       "sheen": 0.15,
       "tint": 0.0
     },
+    "polished": {
+      "specular": 1.0,
+      "shininess": 11.0,
+      "sheen": 0.22,
+      "tint": 0.08
+    },
     "satin": {
       "specular": 0.14,
       "shininess": 8.0,
@@ -39,7 +45,7 @@
     "gun_brass_light": "brass",
     "star_gold": "brass",
     "gun_iron": "steel",
-    "knight_steel": "steel",
+    "knight_steel": "polished",
     "nail_head": "steel",
     "crystal_blue": "crystal",
     "crystal_violet": "crystal",
