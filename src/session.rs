@@ -12,7 +12,9 @@
 //!   time, the S2 verdict over the counted frames, the spike report
 //!   ([`SpikeStats`]; `scripts/sessions.py --spikes` prints it), GPU time per
 //!   pass ([`GpuStats`]; `--gpu`), and the Waves runs: each run's starting
-//!   wave and the highest wave reached ([`WaveRecord`]; A7 needs wave ≥ 6).
+//!   wave and the highest wave reached ([`WaveRecord`]; A7 needs wave ≥ 6),
+//!   and the input-to-present latency ([`LatencyLog`]; M1's G3 wants a
+//!   median ≤ 33 ms) with the pacing it was measured under.
 //!
 //! **S2 on presented frames (M4, D98).** The bar is unchanged, but the
 //! verdict is judged on the intervals between the frames that reach the
@@ -27,9 +29,10 @@
 //! final summary at quit, so a crash still leaves the data and a recent
 //! summary. At quit the game prints one line (see [`quit_line`]):
 //!
-//! `PIECED_S2 PASS|FAIL|N/A <mean> <p99> <n>>25ms <pct>%<18ms <why> presented; cpu <mean> <p99> <n>>25ms <pct>%<18ms`
+//! `PIECED_S2 PASS|FAIL|N/A <mean> <p99> <n>>25ms <pct>%<18ms <why> presented; cpu <mean> <p99> <n>>25ms <pct>%<18ms[; latency press <median>/<p95> motion <median>/<p95> ms (median/p95)]`
 //!
-//! (the first numbers are the verdict's measure).
+//! (the first numbers are the verdict's measure; the latency part appears
+//! once any input-to-present sample was counted).
 //!
 //! Every native launch (scenarios included, since they warm the same shader
 //! caches) is **cold** when the binary's build id differs from the previous
@@ -44,8 +47,8 @@ use crate::{
     render::QualityPreset,
     shared::AppState,
     telemetry::{
-        self, BootPhases, FrameSummary, GateResult, LastFrame, LaunchTime, PowerState,
-        RunConditions, TelemetrySystems, evaluate_g2, g2, summarize,
+        self, BootPhases, FrameSummary, GateResult, LastFrame, LatencyStats, LaunchTime,
+        PowerState, RunConditions, TelemetrySystems, evaluate_g2, g2, latency_stats, summarize,
     },
     tuning::Tuning,
 };
@@ -165,6 +168,10 @@ impl SessionFrame {
     }
 }
 
+/// The input-to-present latency columns, last in `frames.csv` (empty when
+/// no sample resolved on that row).
+pub const LATENCY_COLUMNS: [&str; 2] = ["press_latency_ms", "motion_latency_ms"];
+
 /// The `frames.csv` header: the M3 chunk 0 columns, then the attribution
 /// columns (see [`crate::profile`]).
 pub fn csv_header() -> String {
@@ -173,6 +180,7 @@ pub fn csv_header() -> String {
         .iter()
         .chain(COUNTER_COLUMNS.iter())
         .chain(GPU_COLUMNS.iter())
+        .chain(LATENCY_COLUMNS.iter())
     {
         h.push(',');
         h.push_str(c);
@@ -225,6 +233,13 @@ pub fn write_csv_row(out: &mut impl Write, row: &SessionFrame) -> std::io::Resul
     }
     for v in c.gpu.passes {
         opt(out, v)?;
+    }
+    for v in [c.press_latency_ms, c.motion_latency_ms] {
+        if v > 0.0 {
+            write!(out, ",{v:.3}")?;
+        } else {
+            write!(out, ",")?;
+        }
     }
     Ok(())
 }
@@ -577,7 +592,65 @@ impl GpuStats {
             "total_bare": mean_p95(&self.bare_totals),
             "passes": passes,
             "timing_cost_ms": self.timing_cost_ms().map(|v| (v * 1000.0).round() / 1000.0),
-            "notes": "counted frames only; GPU ms per pass from compute-pass marks between Bevy's passes (src/gpu_timing.rs): world includes the outline hulls (never split: they draw inside the opaque pass) and the far layer unless it has its own camera (farres=half); ui includes the full-screen composite of the 3D image; post is FXAA/sharpening and the copies into each output; timing_cost_ms = mean full total - mean bare total",
+            "notes": "counted frames only; GPU ms per pass from compute-pass marks between Bevy's passes (src/gpu_timing.rs): world includes the outline hulls (never split: they draw inside the opaque pass) and the far layer unless it has its own camera (farres=half); ui is the HUD at native resolution; post is FXAA/sharpening, the 3D image copy and the one window-size composite of HUD and 3D image; timing_cost_ms = mean full total - mean bare total",
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Input-to-present latency (M4 performance follow-up; G3 ≤ 33 ms)
+// ---------------------------------------------------------------------------
+
+/// M1's G3 target for the median input-to-present latency.
+pub const LATENCY_TARGET_MS: f64 = 33.0;
+
+/// The counted frames' input-to-present samples ([`crate::latency`]), per
+/// kind, built on the writer thread.
+#[derive(Debug, Clone, Default)]
+pub struct LatencyLog {
+    pub press: Vec<f64>,
+    pub motion: Vec<f64>,
+}
+
+impl LatencyLog {
+    pub fn observe(&mut self, cost: &FrameCost) {
+        if cost.press_latency_ms > 0.0 {
+            self.press.push(f64::from(cost.press_latency_ms));
+        }
+        if cost.motion_latency_ms > 0.0 {
+            self.motion.push(f64::from(cost.motion_latency_ms));
+        }
+    }
+
+    pub fn press_stats(&self) -> LatencyStats {
+        latency_stats(&self.press)
+    }
+
+    pub fn motion_stats(&self) -> LatencyStats {
+        latency_stats(&self.motion)
+    }
+
+    pub fn to_json(&self, pacing: &str) -> serde_json::Value {
+        let press = self.press_stats();
+        json!({
+            "press": press,
+            "motion": self.motion_stats(),
+            "target_median_ms": LATENCY_TARGET_MS,
+            "press_within_target": (press.samples > 0).then_some(press.median_ms <= LATENCY_TARGET_MS),
+            "pacing": pacing,
+            "method": "counted frames only; the time from the OS input event (macOS HID event time) to the present call of the frame that consumed it (after RenderSystems::Render). press = key and mouse-button presses (exact); motion = trackpad look, the newest event of each frame's batch (the batch's oldest is at most one frame older). Excludes the GPU's work after present and display scanout: input-to-photon adds up to one refresh plus the GPU time left",
+        })
+    }
+
+    /// ` latency press <median>/<p95> motion <median>/<p95> ms` for the quit line.
+    pub fn quit_text(&self) -> Option<String> {
+        let press = self.press_stats();
+        let motion = self.motion_stats();
+        (press.samples + motion.samples > 0).then(|| {
+            format!(
+                "; latency press {:.1}/{:.1} motion {:.1}/{:.1} ms (median/p95)",
+                press.median_ms, press.p95_ms, motion.median_ms, motion.p95_ms
+            )
         })
     }
 }
@@ -873,6 +946,11 @@ fn measure(f: &FrameSummary) -> String {
 /// are the verdict's measure; a presented-frame verdict adds the CPU-side
 /// measure after it: `... <why> presented; cpu <mean> <p99> <n>>25ms <pct>%<18ms`.
 pub fn quit_line(report: &S2Report) -> String {
+    quit_line_with(report, None)
+}
+
+/// [`quit_line`] plus the latency part, when there is one.
+pub fn quit_line_with(report: &S2Report, latency: Option<&str>) -> String {
     let why = if report.reasons.is_empty() {
         "ok".to_string()
     } else {
@@ -886,6 +964,9 @@ pub fn quit_line(report: &S2Report) -> String {
     if report.basis == S2Basis::Presented {
         line.push_str(" presented; cpu ");
         line.push_str(&measure(&report.cpu));
+    }
+    if let Some(latency) = latency {
+        line.push_str(latency);
     }
     line
 }
@@ -1169,6 +1250,9 @@ pub struct SessionMeta {
     pub battery_preset: bool,
     pub launch: LaunchInfo,
     pub started_unix_s: f64,
+    /// How frames were paced (pipelined rendering, frame latency), for the
+    /// latency report.
+    pub pacing: String,
 }
 
 pub struct WriterConfig {
@@ -1391,6 +1475,7 @@ struct WriterState {
     spikes: SpikeStats,
     gpu: GpuStats,
     waves: WaveLog,
+    latency: LatencyLog,
 }
 
 impl WriterState {
@@ -1420,6 +1505,7 @@ impl WriterState {
             spikes: SpikeStats::default(),
             gpu: GpuStats::default(),
             waves: WaveLog::default(),
+            latency: LatencyLog::default(),
         };
         match create_session_dir(&config.sessions_dir, &config.stamp) {
             Ok(dir) => {
@@ -1474,6 +1560,7 @@ impl WriterState {
             self.gpu.observe(&row.cost.gpu);
         }
         if counted {
+            self.latency.observe(&row.cost);
             self.counted.push(row.dt_ms);
             if row.cost.vsync_dt_ms > 0.0 {
                 self.counted_presented.push(f64::from(row.cost.vsync_dt_ms));
@@ -1566,10 +1653,11 @@ impl WriterState {
             "sessions_pruned": self.pruned,
             "errors": self.errors,
             "s2": report,
-            "s2_line": quit_line(&report),
+            "s2_line": self.quit_line(&report),
             "spikes": self.spikes.to_json(),
             "gpu": self.gpu.to_json(),
             "waves": self.waves.to_json(),
+            "input_latency": self.latency.to_json(&self.meta.pacing),
             "s2_rules": {
                 "counted_frames": "Playing only; not the first 10 s after launch nor the first 1 s after each return to Playing",
                 "qualifies": "≥ 300 s counted play, every power sample on battery with Low Power Mode on, never occluded during counted play, release build, Battery preset",
@@ -1599,9 +1687,13 @@ impl WriterState {
         let report = self.report();
         SessionOutcome {
             dir: self.dir.clone(),
-            line: quit_line(&report),
+            line: self.quit_line(&report),
             report,
         }
+    }
+
+    fn quit_line(&self, report: &S2Report) -> String {
+        quit_line_with(report, self.latency.quit_text().as_deref())
     }
 }
 
@@ -1653,6 +1745,7 @@ impl Plugin for SessionPlugin {
                     .chain()
                     .after(TelemetrySystems)
                     .after(ProfileSystems)
+                    .after(crate::latency::LatencySystems)
                     .after(bevy::window::ExitSystems)
                     .run_if(resource_exists::<SessionLog>),
             );
@@ -1729,6 +1822,7 @@ fn start_session(
     mut commands: Commands,
     settings: Res<SessionSettings>,
     tuning: Option<Res<Tuning>>,
+    pacing: Option<Res<crate::render::RenderPacing>>,
 ) {
     let settings = &settings.0;
     let build_id = current_build_id();
@@ -1750,6 +1844,7 @@ fn start_session(
         started_unix_s: now
             .duration_since(UNIX_EPOCH)
             .map_or(0.0, |d| d.as_secs_f64()),
+        pacing: pacing.map_or_else(|| "unknown".to_string(), |p| p.label()),
     };
     let config = WriterConfig {
         sessions_dir: settings.sessions_dir.clone(),
@@ -1770,6 +1865,7 @@ fn frame_cost(
     profile: Option<&FrameProfile>,
     counters: Option<&LastCounters>,
     gpu: Option<&LastGpu>,
+    latency: Option<&crate::latency::LastLatency>,
 ) -> FrameCost {
     let mut cost = profile.map(FrameProfile::cost).unwrap_or_default();
     if let Some(counters) = counters {
@@ -1778,6 +1874,10 @@ fn frame_cost(
         cost.counters.pipelines_compiled = compiled;
     }
     cost.gpu = gpu.map(|g| g.0).unwrap_or_default();
+    if let Some(latency) = latency {
+        cost.press_latency_ms = latency.press_ms;
+        cost.motion_latency_ms = latency.motion_ms;
+    }
     cost
 }
 
@@ -1790,16 +1890,22 @@ fn push_frame(
         Option<Res<FrameProfile>>,
         Option<Res<LastCounters>>,
         Option<Res<LastGpu>>,
+        Option<Res<crate::latency::LastLatency>>,
     ),
 ) {
-    let (profile, counters, gpu) = attribution;
+    let (profile, counters, gpu, latency) = attribution;
     log.writer.push(SessionFrame {
         frame: last.frame,
         t_ms: last.t_ms,
         dt_ms: last.dt_ms,
         state: FrameState::of(state.get()),
         occluded: conditions.occluded_now,
-        cost: frame_cost(profile.as_deref(), counters.as_deref(), gpu.as_deref()),
+        cost: frame_cost(
+            profile.as_deref(),
+            counters.as_deref(),
+            gpu.as_deref(),
+            latency.as_deref(),
+        ),
     });
 }
 

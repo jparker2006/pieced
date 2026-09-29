@@ -494,6 +494,7 @@ fn meta(release: bool) -> SessionMeta {
             previous_build_id: Some("abc123:00ff".into()),
         },
         started_unix_s: 1.0,
+        pacing: "pipelined on, frame latency 1".into(),
     }
 }
 
@@ -516,6 +517,74 @@ fn simulated_rows(play_s: f64) -> Vec<SessionFrame> {
 
 fn read_json(path: &Path) -> serde_json::Value {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+#[test]
+fn the_writer_reports_input_to_present_latency_over_counted_frames() {
+    let root = temp_dir("writer-latency");
+    let mut writer = SessionWriter::spawn(WriterConfig {
+        sessions_dir: root.clone(),
+        stamp: "20260929-100000".into(),
+        keep: KEEP_SESSIONS,
+        power: sampler("Battery Power", Some(true)),
+        meta: meta(true),
+    })
+    .unwrap();
+    let mut rows = simulated_rows(360.0);
+    for (i, r) in rows.iter_mut().enumerate() {
+        // A press every 20th frame: 24 ms, every 10th press 31 ms. Look
+        // motion on every other frame: 18 ms. Launch frames (not counted)
+        // carry 90 ms, which must not show up.
+        if i % 20 == 0 {
+            r.cost.press_latency_ms = if (i / 20) % 10 == 9 { 31.0 } else { 24.0 };
+        }
+        if i % 2 == 0 {
+            r.cost.motion_latency_ms = 18.0;
+        }
+        if r.t_ms < 10_000.0 && i % 20 == 0 {
+            r.cost.press_latency_ms = 90.0;
+        }
+        writer.push_wait(*r);
+    }
+    let outcome = writer.finish(Duration::from_secs(10)).unwrap().clone();
+    let dir = outcome.dir.unwrap();
+    let doc = read_json(&dir.join("session.json"));
+    let l = &doc["input_latency"];
+    assert_eq!(l["pacing"], "pipelined on, frame latency 1");
+    assert_eq!(l["target_median_ms"], 33.0);
+    assert_eq!(l["press"]["median_ms"], 24.0);
+    assert_eq!(l["press"]["p95_ms"], 31.0);
+    assert!(
+        l["press"]["max_ms"].as_f64().unwrap() < 32.0,
+        "launch frames don't count"
+    );
+    assert!(l["press"]["samples"].as_u64().unwrap() > 900);
+    assert_eq!(l["motion"]["median_ms"], 18.0);
+    assert_eq!(l["press_within_target"], true);
+    // The quit line carries it after the S2 measures.
+    assert!(
+        outcome
+            .line
+            .ends_with("; latency press 24.0/31.0 motion 18.0/18.0 ms (median/p95)"),
+        "{}",
+        outcome.line
+    );
+    assert_eq!(doc["s2_line"], outcome.line.as_str());
+    // And the CSV rows: the sample where it resolved, empty elsewhere.
+    let csv = std::fs::read_to_string(dir.join("frames.csv")).unwrap();
+    let header: Vec<&str> = csv.lines().next().unwrap().split(',').collect();
+    let press = header
+        .iter()
+        .position(|c| *c == "press_latency_ms")
+        .unwrap();
+    let values: Vec<&str> = csv
+        .lines()
+        .skip(1)
+        .map(|l| l.split(',').nth(press).unwrap())
+        .collect();
+    assert_eq!(values[1000], "24.000");
+    assert_eq!(values[1001], "");
+    let _ = std::fs::remove_dir_all(root);
 }
 
 #[test]
@@ -850,7 +919,7 @@ const ATTRIBUTED_HEADER: &str = "frame,t_ms,dt_ms,state,occluded,pre_ms,fixed_ms
     vsync_dt_ms,gpu_ms,work_ms,knights,knights_spawned,orbs,orbs_fired,shots,damage,placed,\
     cracked,broken,particles,debris,spell_fx,potions,damage_numbers,voices,voices_started,\
     pipelines_compiled,entities,gpu_frame,gpu_full,gpu_world_ms,gpu_outlines_ms,gpu_far_ms,\
-    gpu_effects_ms,gpu_ui_ms,gpu_post_ms";
+    gpu_effects_ms,gpu_ui_ms,gpu_post_ms,press_latency_ms,motion_latency_ms";
 
 #[test]
 fn the_csv_header_lists_every_attribution_column() {

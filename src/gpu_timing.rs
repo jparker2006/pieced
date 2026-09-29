@@ -8,8 +8,9 @@
 //! `gpu=on` knob logged nothing.
 //!
 //! **How this works.** Bevy 0.19 runs each camera's render graph as a
-//! schedule (`Core3d` for the world and viewmodel cameras, `Core2d` for the UI
-//! camera) whose passes are systems, each encoding its own command buffer. We
+//! schedule (`Core3d` for the world and viewmodel cameras,
+//! [`UiComposite`](crate::render::UiComposite) for the UI camera, `Core2d`
+//! for any stock 2D camera) whose passes are systems, each encoding its own command buffer. We
 //! add *mark* systems between the passes. A mark is a one-thread compute pass
 //! whose end-of-pass timestamp is a stage-boundary sample, which Metal supports.
 //! Apple GPUs overlap neighbouring passes when nothing ties them together, so a
@@ -27,14 +28,16 @@
 //! | `FarStart`, `MainStart` | nothing (the frame's first camera begins) | a write to its output image, so it waits for the previous frame's last read of it |
 //! | `*Opaque` | `main_opaque_pass_3d` | the camera's main texture |
 //! | `*Main` | the main (opaque + transparent) passes | the main texture |
-//! | `*End` | `upscaling` into the camera's output | the output image |
-//! | `UiPass` | `ui_pass` | the UI main texture |
-//! | `UiEnd` | `upscaling` into the drawable | a write to the UI main texture |
+//! | `*End` | `upscaling` into the camera's output (none when the camera skips its output copy) | the output image |
+//! | `UiStart` | the 3D cameras (the UI camera begins) | a write to the UI main texture, so the HUD, which no longer reads the 3D image, can't overlap the 3D passes and hide in their spans |
+//! | `UiPass` | the HUD (`ui_pass`, and the dev panel) | the UI main texture |
+//! | `UiEnd` | the composite into the drawable | a write to the UI main texture |
 //!
 //! **Passes** ([`GpuPass`]), as the budget names them:
 //!
 //! - `world` = world camera start → after its opaque pass, plus the world
-//!   camera's end → the viewmodel's opaque pass (the viewmodel camera starts
+//!   camera's end (or, when it skips its copy, its main passes' end) → the
+//!   viewmodel's opaque pass (the viewmodel camera starts
 //!   where the world camera ends, which saves a mark): the toon world, props, pieces, knights, **the ink
 //!   outline hulls** (they draw in the opaque pass), **the far layer** unless
 //!   it has its own camera (`farres=half`), the skybox, and the gun.
@@ -45,13 +48,15 @@
 //! - `far` = the far camera, only with `farres=half` (otherwise inside `world`).
 //! - `effects` = after opaque → after the main passes: the transparent phase
 //!   (halos, particles, spell bursts, ghosts), on both 3D cameras.
-//! - `ui` = the viewmodel's end → after `ui_pass`: the HUD and the full-screen
-//!   composite of the 3D image at native resolution.
-//! - `post` = FXAA, sharpening and each camera's upscale/copy into its output,
-//!   plus the UI camera's final copy into the drawable.
+//! - `ui` = the viewmodel's end → after the HUD: the HUD drawn at native
+//!   resolution over a transparent clear.
+//! - `post` = FXAA, sharpening and each 3D camera's copy into its output,
+//!   plus the UI camera's composite of HUD and 3D image into the drawable
+//!   (the frame's one full-screen pass at window resolution).
 //! - `total` = first mark → last mark, including the gaps between cameras.
 //!
-//! **Cost and sampling.** A full frame has 9 marks (11 with the far camera):
+//! **Cost and sampling.** A full frame has 9 marks (11 with the far camera;
+//! the world camera's end mark is left out when it skips its copy):
 //! each is a 1-texel copy and a 1-thread dispatch, but it stops the GPU
 //! overlapping the passes it separates. Measured offscreen on the M4
 //! (`tests/gpu_timing_offscreen.rs`), back-to-back marks are 0.07 ms apart
@@ -67,7 +72,10 @@
 //! the frame they arrive on (see [`crate::session`]).
 
 use crate::{
-    render::{FAR_CAMERA_ORDER, MAIN_CAMERA_ORDER, UI_CAMERA_ORDER, VIEWMODEL_CAMERA_ORDER},
+    render::{
+        FAR_CAMERA_ORDER, MAIN_CAMERA_ORDER, UI_CAMERA_ORDER, UiComposite, UiCompositeSystems,
+        VIEWMODEL_CAMERA_ORDER, ensure_ui_composite_schedule,
+    },
     telemetry::MainFrame,
     tuning::Tuning,
 };
@@ -159,12 +167,13 @@ pub enum GpuMark {
     ViewOpaque,
     ViewMain,
     ViewEnd,
+    UiStart,
     UiPass,
     UiEnd,
 }
 
 /// Marks per timed frame (at most).
-pub const MARKS: usize = 11;
+pub const MARKS: usize = 12;
 
 impl GpuMark {
     pub const ALL: [GpuMark; MARKS] = [
@@ -177,6 +186,7 @@ impl GpuMark {
         GpuMark::ViewOpaque,
         GpuMark::ViewMain,
         GpuMark::ViewEnd,
+        GpuMark::UiStart,
         GpuMark::UiPass,
         GpuMark::UiEnd,
     ];
@@ -250,7 +260,9 @@ pub fn mark_for(kind: CameraKind, at: MarkAt) -> Option<GpuMark> {
         (C::Viewmodel, A::Opaque) => M::ViewOpaque,
         (C::Viewmodel, A::Main) => M::ViewMain,
         (C::Viewmodel, A::End) => M::ViewEnd,
-        (C::Ui, A::Start) => return None,
+        // Only orders the HUD after the 3D cameras (see `mark_2d`); its
+        // time isn't a pass boundary of its own.
+        (C::Ui, A::Start) => M::UiStart,
         (C::Ui, A::Opaque) => return None,
         (C::Ui, A::Main) => M::UiPass,
         (C::Ui, A::End) => M::UiEnd,
@@ -313,9 +325,16 @@ pub fn sample_from_marks(
     };
     let mut passes = [None; 6];
     if full {
+        // Without a `MainEnd` (the world camera skipped its output copy),
+        // the viewmodel's opaque pass follows the world camera's main passes.
+        let view_start = if t(M::MainEnd).is_some() {
+            M::MainEnd
+        } else {
+            M::MainMain
+        };
         passes[GpuPass::World as usize] = sum(&[
             span(M::MainStart, M::MainOpaque),
-            span(M::MainEnd, M::ViewOpaque),
+            span(view_start, M::ViewOpaque),
         ]);
         passes[GpuPass::Far as usize] = span(M::FarStart, M::FarEnd);
         passes[GpuPass::Effects as usize] = sum(&[
@@ -431,6 +450,18 @@ impl Plugin for GpuTimingPlugin {
                     mark_2d::<3>.after(upscaling),
                 ),
             );
+        // The UI camera's own schedule: the HUD, then the composite.
+        ensure_ui_composite_schedule(render_app);
+        render_app.add_systems(
+            UiComposite,
+            (
+                mark_2d::<0>.before(UiCompositeSystems::Ui),
+                mark_2d::<2>
+                    .after(UiCompositeSystems::Ui)
+                    .before(UiCompositeSystems::Composite),
+                mark_2d::<3>.after(UiCompositeSystems::Composite),
+            ),
+        );
     }
 
     fn finish(&self, app: &mut App) {
@@ -693,6 +724,9 @@ enum Dependency<'a> {
     Read(&'a wgpu::Texture),
     /// Write one texel into this texture (the previous pass read it).
     Write(&'a wgpu::Texture),
+    /// Both: wait for the pass that wrote the first texture, and make the
+    /// next pass that writes the second wait for this mark.
+    ReadThenWrite(&'a wgpu::Texture, &'a wgpu::Texture),
 }
 
 fn write_mark(
@@ -709,12 +743,14 @@ fn write_mark(
         height: 1,
         depth_or_array_layers: 1,
     };
-    let texel = |texture| wgpu::TexelCopyTextureInfo {
-        texture,
-        mip_level: 0,
-        origin: wgpu::Origin3d::ZERO,
-        aspect: wgpu::TextureAspect::All,
-    };
+    fn texel(texture: &wgpu::Texture) -> wgpu::TexelCopyTextureInfo<'_> {
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        }
+    }
     let copyable = |t: &wgpu::Texture, usage| {
         t.usage().contains(usage)
             && t.sample_count() == 1
@@ -722,39 +758,45 @@ fn write_mark(
                 .block_copy_size(None)
                 .is_some_and(|n| u64::from(n) <= TEXEL_OFFSET)
     };
+    let read = |encoder: &mut wgpu::CommandEncoder, texture: &wgpu::Texture| {
+        if copyable(texture, wgpu::TextureUsages::COPY_SRC) {
+            encoder.copy_texture_to_buffer(
+                texel(texture),
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &timer.scratch,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: TEXEL_OFFSET,
+                        bytes_per_row: None,
+                        rows_per_image: None,
+                    },
+                },
+                one,
+            );
+        }
+    };
+    let write = |encoder: &mut wgpu::CommandEncoder, texture: &wgpu::Texture| {
+        if copyable(texture, wgpu::TextureUsages::COPY_DST) {
+            encoder.copy_buffer_to_texture(
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &timer.scratch,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: None,
+                        rows_per_image: None,
+                    },
+                },
+                texel(texture),
+                one,
+            );
+        }
+    };
     match dependency {
         Dependency::None => {}
-        Dependency::Read(texture) => {
-            if copyable(texture, wgpu::TextureUsages::COPY_SRC) {
-                encoder.copy_texture_to_buffer(
-                    texel(texture),
-                    wgpu::TexelCopyBufferInfo {
-                        buffer: &timer.scratch,
-                        layout: wgpu::TexelCopyBufferLayout {
-                            offset: TEXEL_OFFSET,
-                            bytes_per_row: None,
-                            rows_per_image: None,
-                        },
-                    },
-                    one,
-                );
-            }
-        }
-        Dependency::Write(texture) => {
-            if copyable(texture, wgpu::TextureUsages::COPY_DST) {
-                encoder.copy_buffer_to_texture(
-                    wgpu::TexelCopyBufferInfo {
-                        buffer: &timer.scratch,
-                        layout: wgpu::TexelCopyBufferLayout {
-                            offset: 0,
-                            bytes_per_row: None,
-                            rows_per_image: None,
-                        },
-                    },
-                    texel(texture),
-                    one,
-                );
-            }
+        Dependency::Read(texture) => read(encoder, texture),
+        Dependency::Write(texture) => write(encoder, texture),
+        Dependency::ReadThenWrite(first, second) => {
+            read(encoder, first);
+            write(encoder, second);
         }
     }
     {
@@ -802,6 +844,14 @@ fn mark_3d<const AT: u8>(
     else {
         return;
     };
+    // A camera that skips its output copy (the world camera when the
+    // viewmodel camera writes the shared image) has nothing to time there:
+    // its end mark would only add a mark's cost to `post`.
+    if MarkAt::from_u8(AT) == MarkAt::End
+        && matches!(camera.output_mode, bevy::camera::CameraOutputMode::Skip)
+    {
+        return;
+    }
     let output = image_texture(camera, &images);
     let dependency = match MarkAt::from_u8(AT) {
         // The frame's first camera: wait until the previous frame is done
@@ -818,6 +868,7 @@ fn mark_2d<const AT: u8>(
     view: ViewQuery<(&ExtractedCamera, &ViewTarget)>,
     timer: Option<ResMut<GpuTimer>>,
     images: Res<RenderAssets<GpuImage>>,
+    world_target: Option<Res<crate::render::WorldTarget>>,
     mut ctx: RenderContext,
 ) {
     let Some(mut timer) = timer else { return };
@@ -831,12 +882,26 @@ fn mark_2d<const AT: u8>(
         return;
     };
     let dependency = match MarkAt::from_u8(AT) {
-        MarkAt::Start => Dependency::None,
+        // The HUD no longer reads the 3D image, so on its own the GPU would
+        // overlap it with the 3D cameras and their marks would come back out
+        // of order: wait for the 3D image, then make the HUD's pass (which
+        // clears this texture) wait for the mark.
+        MarkAt::Start => {
+            let world = world_target
+                .as_deref()
+                .and_then(|w| images.get(&w.image))
+                .map(|i| &*i.texture);
+            match world {
+                Some(world) => Dependency::ReadThenWrite(world, target.main_texture()),
+                None => Dependency::Write(target.main_texture()),
+            }
+        }
         MarkAt::Opaque | MarkAt::Main => Dependency::Read(target.main_texture()),
         MarkAt::End => match image_texture(camera, &images) {
             Some(texture) => Dependency::Read(texture),
-            // The drawable can't be read: wait for `upscaling`'s read of the
-            // main texture by writing to it.
+            // The drawable can't be read: wait for the last pass's read of
+            // the main texture (the composite's, or `upscaling`'s) by
+            // writing to it.
             None => Dependency::Write(target.main_texture()),
         },
     };
@@ -1057,6 +1122,31 @@ mod tests {
     }
 
     #[test]
+    fn a_world_camera_that_skips_its_copy_hands_straight_to_the_viewmodel() {
+        use GpuMark as M;
+        // No `MainEnd`: the viewmodel's opaque pass follows `MainMain`.
+        let t = ticks(&[
+            (M::MainStart, 1_000_000),
+            (M::MainOpaque, 5_000_000),
+            (M::MainMain, 6_000_000),
+            (M::ViewOpaque, 6_400_000),
+            (M::ViewMain, 6_500_000),
+            (M::ViewEnd, 6_900_000),
+            (M::UiPass, 7_200_000),
+            (M::UiEnd, 7_900_000),
+        ]);
+        let s = sample_from_marks(9, true, &t, 1.0);
+        let near = |a: Option<f32>, b: f32| a.is_some_and(|a| (a - b).abs() < 1e-4);
+        assert!(near(s.pass(GpuPass::World), 4.0 + 0.4), "{s:?}");
+        assert!(near(s.pass(GpuPass::Effects), 1.0 + 0.1));
+        assert!(near(s.pass(GpuPass::Post), 0.4 + 0.7));
+        assert!(near(s.pass(GpuPass::Ui), 0.3));
+        let sum: f32 = s.passes.iter().flatten().sum();
+        assert!((sum - 6.9).abs() < 1e-4, "the passes add up to the total");
+        assert!(near(s.total_ms, 6.9));
+    }
+
+    #[test]
     fn a_bare_frame_has_only_a_total_and_bad_marks_are_ignored() {
         use GpuMark as M;
         let t = ticks(&[(M::MainStart, 1_000), (M::UiEnd, 11_000)]);
@@ -1082,6 +1172,10 @@ mod tests {
     #[test]
     fn every_camera_marks_its_own_points() {
         assert_eq!(mark_for(CameraKind::Ui, MarkAt::Opaque), None);
+        assert_eq!(
+            mark_for(CameraKind::Ui, MarkAt::Start),
+            Some(GpuMark::UiStart)
+        );
         assert_eq!(mark_for(CameraKind::Viewmodel, MarkAt::Start), None);
         assert_eq!(mark_for(CameraKind::Far, MarkAt::Main), None);
         assert_eq!(

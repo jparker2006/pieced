@@ -20,10 +20,13 @@
 //!   two Metal drawables). `latency=2` lets one slow frame be absorbed by a
 //!   third drawable instead of missing a vblank, at the cost of up to one
 //!   more frame of display latency.
-//! - `pipelined=on`: Bevy's pipelined rendering (the render world of frame N
-//!   runs on another thread while the main world simulates N+1). More CPU
-//!   headroom per frame, one more frame of latency; the session log's render
-//!   buckets read zero under it (they assume one thread).
+//! - `pipelined=on|off`: Bevy's pipelined rendering (the render world of
+//!   frame N runs on another thread while the main world simulates N+1).
+//!   **On by default** since the M4 performance follow-up (play-test 2);
+//!   `pipelined=off` runs main and render one after the other, as M1–M3 did.
+//!   More CPU headroom per frame for up to one more frame of latency, which
+//!   the session log measures ([`crate::latency`]). Under it the log's render
+//!   buckets read zero except `acquire_ms` and the presented cadence.
 //!
 //! Milestone 4 knobs:
 //! - `gpu=on|off|N`: GPU pass timing ([`crate::gpu_timing`]) on every frame,
@@ -57,7 +60,7 @@ pub struct PerfKnobs {
     pub fxaa: Option<bool>,
     /// `desired_maximum_frame_latency` for the window (`latency=N`).
     pub latency: Option<u32>,
-    /// Keep Bevy's pipelined rendering (`pipelined=on`).
+    /// Bevy's pipelined rendering (`pipelined=on|off`; on when unset).
     pub pipelined: Option<bool>,
     /// GPU pass timing on 1 frame in N (`gpu=on` = 1, `gpu=off` = 0, `gpu=N`).
     pub gpu: Option<u32>,

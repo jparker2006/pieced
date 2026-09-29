@@ -149,11 +149,34 @@ class SessionsTest(unittest.TestCase):
         write_frames(os.path.join(self.root, "20260927-130000"), attributed=True)
         with open(os.path.join(self.root, "20260927-130000", "frames.csv"), encoding="utf-8") as f:
             lines = f.read().splitlines()
-        old = [",".join(line.split(",")[: HEADER.count(",") - 7]) for line in lines]
+        keep = HEADER.split(",").index("gpu_frame")
+        old = [",".join(line.split(",")[:keep]) for line in lines]
         with open(os.path.join(self.root, "20260927-130000", "frames.csv"), "w", encoding="utf-8") as f:
             f.write("\n".join(old) + "\n")
         out = run(["--root", self.root, "--gpu", "20260927-130000"])
         self.assertIn("predates per-pass GPU timing", out)
+
+    def test_latency_prints_each_kind_against_g3(self):
+        write_frames(os.path.join(self.root, "20260927-130000"), attributed=True, latency=True)
+        out = run(["--root", self.root, "--latency", "latest"])
+        self.assertIn("Session 20260927-130000", out)
+        self.assertIn("median <= 33 ms", out)
+        lines = {line.split()[0]: line for line in out.splitlines() if line.startswith("  ")}
+        # Counted frames only: 20 s of presses, one in ten at 40 ms.
+        self.assertRegex(lines["press"], r"press\s+\d+\s+22\.\d\d\s+20\.00\s+40\.00\s+40\.00\s+ok")
+        self.assertRegex(lines["motion"], r"motion\s+\d+\s+12\.00\s+12\.00\s+12\.00\s+12\.00\s+ok")
+        self.assertNotIn("99.00", out)
+
+    def test_latency_on_an_old_session(self):
+        write_frames(os.path.join(self.root, "20260927-130000"), attributed=True)
+        with open(os.path.join(self.root, "20260927-130000", "frames.csv"), encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        keep = HEADER.split(",").index("press_latency_ms")
+        old = [",".join(line.split(",")[:keep]) for line in lines]
+        with open(os.path.join(self.root, "20260927-130000", "frames.csv"), "w", encoding="utf-8") as f:
+            f.write("\n".join(old) + "\n")
+        out = run(["--root", self.root, "--latency", "20260927-130000"])
+        self.assertIn("predates the input-to-present latency columns", out)
 
     def test_spikes_for_a_missing_session(self):
         out = run(["--root", self.root, "--spikes", "20990101-000000"])
@@ -165,11 +188,12 @@ HEADER = (
     "extract_ms,prepare_ms,acquire_ms,graph_ms,render_end_ms,idle_ms,vsync_dt_ms,gpu_ms,work_ms,"
     "knights,knights_spawned,orbs,orbs_fired,shots,damage,placed,cracked,broken,particles,debris,"
     "spell_fx,potions,damage_numbers,voices,voices_started,pipelines_compiled,entities,"
-    "gpu_frame,gpu_full,gpu_world_ms,gpu_outlines_ms,gpu_far_ms,gpu_effects_ms,gpu_ui_ms,gpu_post_ms"
+    "gpu_frame,gpu_full,gpu_world_ms,gpu_outlines_ms,gpu_far_ms,gpu_effects_ms,gpu_ui_ms,gpu_post_ms,"
+    "press_latency_ms,motion_latency_ms"
 )
 
 
-def write_frames(folder, attributed, gpu=False):
+def write_frames(folder, attributed, gpu=False, latency=False):
     """30 s of play at 60 fps with three spikes at 20 s: a 40 ms first-use
     compile in the render graph (after a knight spawn), a 34 ms Update
     overrun right after it, then a 30 ms compile; and one 19 ms frame
@@ -202,6 +226,16 @@ def write_frames(folder, attributed, gpu=False):
                 heavy = sample % 10 == 1
                 row.update(gpu_ms=13.0 if heavy else 7.0, gpu_world_ms=6.0 if heavy else 4.0,
                            gpu_effects_ms=1.5, gpu_ui_ms=0.4, gpu_post_ms=0.8)
+        if latency:
+            # A press every 30th frame (20 ms, every 10th press 40 ms) and
+            # look motion on every other frame (12 ms). Launch frames (the
+            # first 10 s) carry 99 ms and must not count.
+            if i % 30 == 0:
+                row["press_latency_ms"] = 40.0 if (i // 30) % 10 == 9 else 20.0
+            if i % 2 == 0:
+                row["motion_latency_ms"] = 12.0
+            if t < 10_000.0 and i % 30 == 0:
+                row["press_latency_ms"] = 99.0
         if i == 1199:
             row["knights_spawned"] = 1
         if i in (1200, 1203):
