@@ -147,3 +147,20 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 - 2026-09-28: **play-test 1, the rest of Jake's answers.** On smoothness: "It felt the same smoothness". On what's off: "I think AAA games just have a certain thing about them that make them feel like real studio premium games and were not quite there yet".
   - The builder was told he felt no choppiness, so it checks whether the frame "regression" is a measurement or pacing change from chunk 1's time handling (the hitstop now uses `HitstopFrozen`), not only GPU cost.
 - 2026-09-28: **D120:** chunks 2 (weapons) and 3 (music) run together after the regression check, and play-test 2 covers both. Jake: "yes do weapons and music together".
+- 2026-09-28: **chunk 0 merged** (`3ebb2aa`, from `ce97381`: 646 passed, 0 failed, 19 ignored; clippy, fmt and `test_sessions.py` clean).
+  - **Play-test 1's slow frames were pacing, not a GPU regression.** Offscreen, a full wave (wave 6, 8 knights, UI at Retina size) costs the same on `fb039a3` and on current code:
+    - CPU 11.3–11.6 against 10.5–11.6 ms;
+    - GPU 8.7–9.0 against 8.1–9.5 ms.
+  - The CPU and GPU run one after the other (pipelined rendering off, frame latency 1, both since M1), so a heavy wave with 12.7 ms of CPU and an 11.4 ms drawable wait lands at about 25 ms. It isn't a logging artifact: `vsync_dt_ms` matches `dt_ms`.
+  - **Next:** a session with `--knobs pipelined=on` (and one with `latency=2`); a default changes only on Jake's numbers.
+  - **Per-pass GPU for a full wave, offscreen (mean/p95 ms):** world 4.31/5.28, effects 0.88/1.54, UI 1.46/2.44 (over its 0.5 budget), post 1.88/3.12 (over its 1.0). Total 8.5/10.2, within 12. UI and post run over because of full-screen passes at Retina size. Outlines draw inside the world pass.
+  - **Levers:**
+    - `farres=half` works but saves nothing (world 4.00 + far 1.08 against 4.31), so it stays off.
+    - `dynres` should save about 36% of fragment work at 0.8×.
+    - `overdraw=cap` covers halos only.
+    - New defaults: outline fade 15–25 m, and far knights animated at 30 Hz.
+  - **Launch:** the "+1.3 s knight rig" is one boot frame compiling 57–59 pipelines (1,051 ms on `c3f6379`, 374 ms in the latest cold launch). No launch cut was made; the cold launch already reached the menu in 2,953 ms.
+  - **Mistake, recorded:** while checking the knob syntax, the orchestrator ran `pieced-play --help`, which launched the game (session `20260929-040612`, about 2 minutes, not a play session). It was closed as soon as it was noticed; the rule is never to run the game binary without Jake asking.
+- 2026-09-28: **chunks 2 (weapons, `m4-weapons`) and 3 (audio and music, `m4-audio-music`) dispatched in parallel** (D120), after pruning (8 → 16 GB free).
+  - Chunk 3 owns all audio, including the layered gun shots.
+  - Chunk 3 will add Bevy's `vorbis` feature (the `lewton` crate) for OGG. That needs Jake's OK before merging.
