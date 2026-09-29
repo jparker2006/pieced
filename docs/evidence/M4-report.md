@@ -137,3 +137,4 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
 
     Both are candidates for the art slice.
   - Before the release build, the chunk 1 worktree was removed and stale test binaries pruned (5.7 → 12 GB free). `pieced-play` for play-test 1 is building.
+- 2026-09-28 19:38: **`pieced-play` built for play-test 1** (release from `main` `40ef03c`, which is chunk 1 at `c227c3d` plus docs; 22 min 47 s at low priority; 126 MB). Chunk 0 was resumed on its branch, and Jake OK'd the `wgpu` dependency.
