@@ -106,7 +106,35 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
   The full suite passed (51 suites, 0 failed, pin and TTK unchanged), and `tests/kill_feedback.rs` is 16/16. Clippy and fmt are clean. Still open: the dent and wave-bonus tests and `tests/kill_offscreen.rs` (compile and run), the review render against V2 and V4, and a rerun of `build-art.sh --check` after a determinism fix.
 - 2026-09-28: **paused** (Jake losing connection). Both builders were asked to commit their work in progress and stop.
 
-## Resume here (next session)
+## Resume here (next session, updated 2026-09-29)
+
+Paused at the usage limit. Both builders were told to commit their work in progress and stop.
+
+1. **Done and on `main`:**
+   - chunks 0–3 are merged, and A1, A2 and A3 PASS (play-tests 1–3: fun 4/4/4, AAA feel 3.5/4/4);
+   - art rounds 1–2 are merged (`83ded7f`).
+2. **`m4-art`** (worktree `.claude/worktrees/agent-abacfe9e12f7760d4`): round 3 is in progress, working on the priorities in the round 2 entry of the Log:
+   - mid-grey steel, an A-line robe, greaves and warm eyes;
+   - saucer undersides and bank;
+   - kill effects that frame the knight.
+
+   Finish it, run the full test suite, clippy, fmt and `build-art --check`, merge, then run `pieced-art-reviewer` on `round3/`. Keep iterating until every view is predicted ≥ 4. Then publish the board page for Jake to score (A6).
+3. **`m4-perf2`** (worktree `.claude/worktrees/agent-ae2f9c1d477f37f63`): in progress:
+   - input-to-present latency in the log;
+   - pipelined rendering as the default;
+   - cutting the UI and post passes.
+
+   Finish it, verify, merge, build `pieced-play` and give Jake a session (battery, LPM, Start at wave 6 once chunk 5 lands) for A7.
+4. **Not started:**
+   - chunk 4 (knight animation), after the art slice merges, since both edit `knight.py`;
+   - chunk 5 (presentation and Start at wave; the banner reads `audio::music::WaveStarted`).
+   - Then play-tests 4 and 5 (A4, A5, A9), A8 (3 warm launches in a row), A10, and A0.
+5. **Rules learned** (also in the builder agent and in memory):
+   - builders check the `.quiet` flag before heavy non-cargo work;
+   - never run the game binary to read its flags;
+   - watch disk: prune, and ask Jake before deleting `release/`.
+
+## Earlier resume notes (2026-09-28, superseded)
 
 1. `git worktree list`. Chunk 1 is on `m4-hit-feedback` (`.claude/worktrees/agent-a1a8ca69e7eb45ea8`); chunk 0 is on the `.claude/worktrees/agent-ab9440989154b3d5b` worktree's branch. Read each branch's last commit message for what's left.
 2. `df -h ~`: need more than 4 GB free. Run `scripts/prune-target.sh` first.
