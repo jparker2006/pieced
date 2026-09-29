@@ -5,28 +5,34 @@
 //! squash-and-stretch kick, and the gloves landing on each gun's grips.
 
 use bevy::{
-    ecs::system::RunSystemOnce, gltf::GltfPlugin, mesh::MeshPlugin, prelude::*,
+    ecs::{message::Messages, system::RunSystemOnce},
+    gltf::GltfPlugin,
+    mesh::MeshPlugin,
+    prelude::*,
     world_serialization::WorldSerializationPlugin,
 };
 use pieced::{
-    combat::{GunTuning, Loadout},
+    combat::{CombatTuning, GunTuning, Loadout},
     models::{ModelLibrary, ModelParts, ModelSpawned, ModelsPlugin, spawn_model},
     shared::{ActiveTool, WeaponKind},
     sim::Sim,
     viewmodel::{
-        CrystalGlow, CrystalGlowPlugin,
+        ADS_SECONDS, CrystalGlow, CrystalGlowPlugin, WeaponBeat, WeaponCue, WeaponFeelTuning,
         anim::{
-            CHAMBER_OPEN_LENGTH, GLOVE_L_FOREARM, GLOW_MIN, GLOW_RAMP, HAND_HOLD_OFFSET,
-            PUMP_SQUASH, PUMP_SQUASH_PEAK, RACK_BACK, RACK_DONE, RACK_START, RIFLE_SQUASH,
-            RIFLE_SQUASH_PEAK, RING_IDLE_SPEED, RING_RACK_KICK, RingSpin, SHARD_MERGED,
-            SHARD_START, Squash, ads_translation, ammo_glow, chamber_transform, euler, hand_hold,
-            pump_crystal_glow, pump_grip_offset, pump_rack, pump_shard, rifle_crystal_glow,
-            rifle_reload, squash_scale, squash_transform,
+            CHAMBER_OPEN_LENGTH, DRAW_SPLIT, FRESH_GLOW, GLOVE_L_FOREARM, GLOW_MIN, GLOW_RAMP,
+            HAND_HOLD_OFFSET, PUMP_SQUASH, PUMP_SQUASH_PEAK, RACK_BACK, RACK_DONE, RACK_JOLT,
+            RACK_START, RIFLE_GRAB, RIFLE_POP, RIFLE_SLOT, RIFLE_SQUASH, RIFLE_SQUASH_PEAK,
+            RING_IDLE_SPEED, RING_RACK_KICK, RingSpin, SEATED_GLOW, SHARD_FETCH, SHARD_MERGED,
+            SHARD_PUSH, SHARD_START, Squash, ads_translation, ammo_glow, chamber_transform,
+            draw_twist, euler, hand_hold, pump_crystal_glow, pump_grip_offset, pump_rack,
+            pump_shard, rack_pose, rifle_crystal_glow, rifle_reload, shard_push_dip, squash_scale,
+            squash_transform, switch_phase,
         },
+        feel::{AdsBlend, CameraKick, KICK_MAX_DEG, KICK_MAX_SECONDS, RIFLE_RELOAD_BEATS},
         model_to_node,
         models::{
             GLOVES_MODEL, GunSpec, PUMP, PUMP_RACK_TRAVEL, RIFLE, RIFLE_INSPECT, gun_model,
-            gun_spec,
+            gun_spec, sidecar,
         },
         node_to_model,
     },
@@ -149,11 +155,15 @@ fn crystal_glow_follows_the_magazine_fraction() {
     assert!((ammo_glow(2, 5) - 0.55).abs() < 1e-6);
     // The rifle: the dim crystal keeps its glow as it pops out...
     assert_eq!(rifle_crystal_glow(6, 30, Some(0.2), 99.0), ammo_glow(6, 30));
-    // ...the fresh one slides in dark...
-    assert_eq!(rifle_crystal_glow(6, 30, Some(0.6), 99.0), GLOW_MIN);
-    assert_eq!(rifle_crystal_glow(6, 30, Some(1.0), 99.0), GLOW_MIN);
-    // ...and charges up the moment the reload completes, with a flash.
-    assert_eq!(rifle_crystal_glow(30, 30, None, 0.0), GLOW_MIN);
+    // ...goes dark once the glove flicks it out, so spent and fresh read
+    // apart...
+    assert!(rifle_crystal_glow(6, 30, Some(RIFLE_POP + 0.15), 99.0) < GLOW_MIN * 0.5);
+    // ...the fresh one comes up glowing, starts charging as it clicks in...
+    assert_eq!(rifle_crystal_glow(6, 30, Some(0.6), 99.0), FRESH_GLOW);
+    assert!(rifle_crystal_glow(6, 30, Some(0.9), 99.0) > FRESH_GLOW);
+    assert_eq!(rifle_crystal_glow(6, 30, Some(1.0), 99.0), SEATED_GLOW);
+    // ...and flashes up to full the moment the reload completes.
+    assert_eq!(rifle_crystal_glow(30, 30, None, 0.0), SEATED_GLOW);
     let ramp: Vec<f32> = (0..=30)
         .map(|i| rifle_crystal_glow(30, 30, None, GLOW_RAMP * i as f32 / 30.0))
         .collect();
@@ -204,9 +214,9 @@ fn rifle_crystal_dims_as_you_fire_and_recharges_after_a_reload() {
     assert!(loadout(&mut sim).rifle.is_reloading());
     sim.run_seconds(0.4); // the old crystal is popping out
     assert!((glow(&sim).rifle - ammo_glow(ammo, 30)).abs() < 1e-5);
-    sim.run_seconds(0.9); // the fresh one is in, not yet charged
+    sim.run_seconds(0.9); // the fresh one is in the glove, not yet charged
     assert!(loadout(&mut sim).rifle.is_reloading());
-    assert_eq!(glow(&sim).rifle, GLOW_MIN);
+    assert_eq!(glow(&sim).rifle, FRESH_GLOW);
 
     let mut peak: f32 = 0.0;
     let mut charged_after = None;
@@ -277,7 +287,7 @@ fn rifle_reload_pops_the_crystal_out_and_slides_a_fresh_one_in() {
         rifle_reload(0.17).chamber_open > 0.9,
         "the glass slides open"
     );
-    let popping = rifle_reload(0.28);
+    let popping = rifle_reload(0.3);
     assert!(!popping.fresh && popping.crystal.visible());
     assert!(
         popping.crystal.offset.y > 0.08,
@@ -285,24 +295,35 @@ fn rifle_reload_pops_the_crystal_out_and_slides_a_fresh_one_in() {
         popping.crystal.offset
     );
     assert!(popping.crystal.spin > PI, "spinning away");
-    assert!(popping.gun.euler.z > 0.2, "the chamber rolls toward you");
+    assert!(popping.stance > 0.99, "the chamber is turned toward you");
     assert!(
-        !rifle_reload(0.44).crystal.visible(),
+        !rifle_reload(0.47).crystal.visible(),
         "the old crystal is gone"
     );
 
     let sliding = rifle_reload(0.58);
     assert!(sliding.fresh && sliding.crystal.visible());
-    assert!(sliding.crystal.offset.y > 0.01, "coming in from above");
+    assert!(
+        sliding.crystal.offset.y < -0.02,
+        "coming up from below ({})",
+        sliding.crystal.offset
+    );
     assert!(
         rifle_reload(0.58).chamber_open > 0.9,
-        "still open while it slides in"
+        "still open while it comes in"
     );
+    let slotting = rifle_reload(RIFLE_SLOT - 0.03);
+    assert!(
+        slotting.crystal.offset.length() < sliding.crystal.offset.length(),
+        "pushed in toward the socket"
+    );
+    assert!(slotting.chamber_open > 0.9);
 
-    let seated = rifle_reload(0.74);
+    let seated = rifle_reload(0.9);
     assert!(seated.crystal.offset.length() < 1e-4 && (seated.crystal.scale - 1.0).abs() < 1e-3);
     let end = rifle_reload(1.0);
     assert!(end.fresh && end.chamber_open < 1e-4, "the glass is shut");
+    assert!(end.stance < 1e-4, "back at the hip");
     assert!(end.gun.pos.length() < 1e-3 && end.gun.euler.length() < 1e-3);
 
     // The glass slides into the front collar: its front end stays put.
@@ -341,11 +362,22 @@ fn the_left_glove_carries_the_fresh_crystal_in() {
             "{mid}"
         );
     }
-    // The rifle's glove carries the fresh crystal as it slides in.
-    assert_eq!(rifle_reload(0.2).hand, 0.0);
+    // The rifle's glove gets under the crystal and flicks it out, then
+    // carries the fresh one in, and is back on the forend at the end.
+    assert_eq!(rifle_reload(0.0).hand, 0.0);
+    let flick = rifle_reload(0.2);
+    assert!(
+        flick.hand > 0.99 && flick.hand_at.length() < 0.05,
+        "under the crystal"
+    );
+    let fetching = rifle_reload(RIFLE_GRAB);
+    assert!(
+        fetching.hand > 0.99 && fetching.hand_at.y < -0.15,
+        "down out of view"
+    );
     let sliding = rifle_reload(0.6);
     assert!(sliding.hand > 0.99 && sliding.hand_at == sliding.crystal.offset);
-    assert_eq!(rifle_reload(0.95).hand, 0.0);
+    assert_eq!(rifle_reload(0.98).hand, 0.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -390,27 +422,33 @@ fn pump_racks_and_its_rings_whirr_before_the_next_shot() {
 #[test]
 fn each_shell_is_a_shard_pushed_into_the_rings() {
     assert!(
-        !pump_shard(0.05).crystal.visible(),
-        "the hand fetches it first"
+        !pump_shard(0.02).crystal.visible(),
+        "the hand picks it up first"
     );
-    let rising = pump_shard(0.3);
-    assert!(rising.crystal.visible());
+    let lifted = pump_shard(0.3);
+    assert!(lifted.crystal.visible() && lifted.hand_at == SHARD_START);
     assert_eq!(
-        rising.hand_at, rising.crystal.offset,
-        "the glove carries it in"
+        lifted.hand_at, lifted.crystal.offset,
+        "the glove carries it over the rings"
     );
-    let d = rising.crystal.offset.length();
-    assert!(d > 0.0 && d < SHARD_START.length(), "on its way in");
+    let pushing = pump_shard(0.38);
+    let d = pushing.crystal.offset.length();
+    assert!(d > 0.0 && d < SHARD_START.length(), "pushed in");
+    assert_eq!(pushing.hand_at, pushing.crystal.offset);
+    assert!(
+        pump_shard(SHARD_PUSH).crystal.offset.length() < 1e-5,
+        "home"
+    );
     let inside = pump_shard(0.55);
     assert!(inside.crystal.visible() && inside.crystal.offset.length() < 1e-4);
     assert!(pump_shard(SHARD_MERGED).crystal.scale < 0.5, "melting in");
     assert!(!pump_shard(0.9).crystal.visible());
     assert_eq!(
         pump_shard(0.95).hand_at,
-        SHARD_START,
-        "back up for the next"
+        SHARD_FETCH,
+        "back down for the next"
     );
-    assert_eq!(pump_shard(0.0).hand_at, SHARD_START);
+    assert_eq!(pump_shard(0.0).hand_at, SHARD_FETCH);
 }
 
 // ---------------------------------------------------------------------------
@@ -698,4 +736,539 @@ fn only_the_gallery_inspect_resource_swaps_the_rifle_into_its_inspect_pose() {
         rig(&mut app).0.translation.distance(RIFLE.hip) < 0.02,
         "back at the hip"
     );
+}
+
+// ---------------------------------------------------------------------------
+// M4 weapon feel (D106): every animation inside its gameplay time
+// ---------------------------------------------------------------------------
+
+#[test]
+fn every_animation_finishes_inside_its_gameplay_time() {
+    // The rifle reload (2.0 s): every beat before the end, in order, and
+    // everything back at rest at the end.
+    let beats: Vec<f32> = RIFLE_RELOAD_BEATS.iter().map(|b| b.0).collect();
+    assert!(beats.windows(2).all(|w| w[0] < w[1]), "in order: {beats:?}");
+    assert!(beats.iter().all(|&b| b > 0.0 && b < 1.0));
+    let end = rifle_reload(1.0);
+    assert_eq!(end.hand, 0.0, "the glove is back on the forend");
+    assert!(end.stance < 1e-6 && end.chamber_open < 1e-6);
+    assert!(end.gun.pos.length() < 1e-4 && end.gun.euler.length() < 1e-4);
+    assert_eq!(end.crystal.offset, Vec3::ZERO);
+    assert!((end.crystal.scale - 1.0).abs() < 1e-4);
+    // No jumps anywhere along it: the pose moves smoothly frame to frame.
+    let frames = (2.0 * 60.0) as usize;
+    let at = |i: usize| rifle_reload(i as f32 / frames as f32);
+    for i in 1..=frames {
+        let (a, b) = (at(i - 1), at(i));
+        assert!(
+            (a.hand - b.hand).abs() < 0.15 && (a.stance - b.stance).abs() < 0.15,
+            "frame {i}"
+        );
+        assert!(
+            a.hand_at.distance(b.hand_at) < 0.04,
+            "hand jumps at frame {i}"
+        );
+    }
+
+    // Each pump shell (0.5 s): the glove's loop ends where it starts, the
+    // push lands before the shard counts, and the dip is over by the end.
+    let shell = GunTuning::pump().reload_time;
+    assert!((shell - 0.5).abs() < 1e-6);
+    assert_eq!(pump_shard(0.0).hand_at, pump_shard(1.0).hand_at);
+    const { assert!(SHARD_PUSH < SHARD_MERGED && SHARD_MERGED < 1.0) };
+    assert!(!pump_shard(1.0).crystal.visible());
+    for p in [0.0, 1.0] {
+        let dip = shard_push_dip(p);
+        assert!(dip.pos.length() < 1e-5 && dip.euler.length() < 1e-5);
+    }
+    assert!(
+        shard_push_dip(SHARD_PUSH).pos.y < -0.005,
+        "the push dips the gun"
+    );
+
+    // The rack (before the next pump shot, 0.9 s): pulled, held, slammed,
+    // and the clack's jolt settled.
+    let interval = GunTuning::pump().fire_interval;
+    assert!(RACK_DONE + RACK_JOLT < interval);
+    for age in [0.0, RACK_DONE + RACK_JOLT, interval] {
+        let pose = rack_pose(age);
+        assert!(
+            pose.pos.length() < 1e-5 && pose.euler.length() < 1e-5,
+            "{age}"
+        );
+    }
+    assert!(pump_rack(RACK_START + 0.5 * (RACK_BACK - RACK_START)) > 0.3);
+    assert!(rack_pose(RACK_BACK).euler.x > 0.1, "a big, heavy pull");
+    assert!(
+        rack_pose(RACK_DONE + 0.5 * RACK_JOLT).pos.z < -0.01,
+        "the clack jolts the gun forward"
+    );
+
+    // The switch (0.2 s): the old item drops away, the new one rises from
+    // below, overshoots a touch and lands exactly at the end.
+    assert!(switch_phase(0.1).0 && !switch_phase(DRAW_SPLIT + 0.01).0);
+    assert!(switch_phase(DRAW_SPLIT).1 > 0.99, "starts from below");
+    let (shown_prev, lowered) = switch_phase(1.0);
+    assert!(!shown_prev && lowered.abs() < 1e-6);
+    let twist = draw_twist(1.0);
+    assert!(twist.euler.length() < 1e-6);
+    let overshoot = (0..=100)
+        .map(|i| switch_phase(DRAW_SPLIT + (1.0 - DRAW_SPLIT) * i as f32 / 100.0).1)
+        .fold(f32::MAX, f32::min);
+    assert!(
+        (-0.12..-0.02).contains(&overshoot),
+        "settles from a small overshoot ({overshoot})"
+    );
+
+    // ADS (0.12 s): lands exactly on the sights at the end of the blend,
+    // overshooting a little on the way; the swing is back to zero.
+    let feel = WeaponFeelTuning::default();
+    let mut ads = AdsBlend::default();
+    let mut peak: f32 = 0.0;
+    let ads_frames = (ADS_SECONDS * 60.0).ceil() as usize;
+    for i in 0..ads_frames {
+        ads.step(1.0, 1.0 / 60.0, ADS_SECONDS, feel.ads_overshoot);
+        peak = peak.max(ads.pose(feel.ads_overshoot));
+        if i + 1 < ads_frames {
+            assert!(!ads.settled());
+        }
+    }
+    assert!(ads.settled() && ads.pose(feel.ads_overshoot) == 1.0);
+    assert_eq!(ads.swing(), 0.0);
+    assert!((1.01..1.08).contains(&peak), "a slight overshoot ({peak})");
+}
+
+#[test]
+fn the_camera_kick_is_small_and_gone_within_120_ms() {
+    let feel = WeaponFeelTuning::default();
+    assert!(feel.kick_rifle_deg <= KICK_MAX_DEG && feel.kick_pump_deg <= KICK_MAX_DEG);
+    assert!(feel.kick_seconds <= KICK_MAX_SECONDS);
+    // A full-auto burst at the rifle's rate, then a pump shot: the kick never
+    // exceeds one shot's peak (overlaps don't add up) and it's gone the kick
+    // time after the last shot.
+    let mut kick = CameraKick::default();
+    let dt = 1.0 / 240.0;
+    let max = KICK_MAX_DEG.to_radians();
+    let mut t = 0.0;
+    let mut next_shot = 0.0;
+    let mut shots = 0;
+    let mut biggest: f32 = 0.0;
+    while t < 2.0 {
+        if t >= next_shot && shots < 12 {
+            // Even a tuning past the cap is clamped to it.
+            kick.add(1.0f32.to_radians(), Vec2::new(1.0, 0.2));
+            shots += 1;
+            next_shot += 1.0 / 60.0;
+        }
+        kick.step(dt);
+        biggest = biggest.max(kick.angles(1.0).length());
+        t += dt;
+    }
+    assert!(biggest <= max + 1e-6, "{} deg", biggest.to_degrees());
+    assert_eq!(kick.angles(feel.kick_seconds), Vec2::ZERO);
+    // One pump shot: snaps up within a frame, then recovers.
+    let mut kick = CameraKick::default();
+    kick.add(feel.kick_pump_deg.to_radians(), Vec2::X);
+    kick.step(1.0 / 60.0);
+    let up = kick.angles(feel.kick_seconds);
+    assert!(up.x > 0.8 * feel.kick_pump_deg.to_radians() && up.x <= max);
+    kick.step(KICK_MAX_SECONDS);
+    assert_eq!(kick.angles(feel.kick_seconds), Vec2::ZERO);
+}
+
+#[test]
+fn weapon_feel_numbers_are_never_saved() {
+    // Designer numbers (D117's feel numbers): a saved copy would freeze them.
+    let json = serde_json::to_string(&pieced::tuning::Tuning::default()).unwrap();
+    assert!(
+        !json.contains("kick_rifle_deg"),
+        "Tuning::weapons is skipped"
+    );
+}
+
+#[test]
+fn the_guns_stay_within_their_triangle_budget() {
+    for kind in GUNS {
+        let side = sidecar(gun_model(kind));
+        assert!(side.triangles <= 8000, "{kind:?}: {}", side.triangles);
+    }
+    assert!(sidecar(GLOVES_MODEL).triangles <= 2000);
+}
+
+// ---------------------------------------------------------------------------
+// M4 weapon feel through the rig: scripted intents in, rig pose and cues out
+// ---------------------------------------------------------------------------
+
+#[derive(Resource, Default)]
+struct Cues(Vec<(u32, WeaponCue)>);
+
+#[derive(Resource, Default)]
+struct Frame(u32);
+
+fn record_cues(mut reader: MessageReader<WeaponCue>, frame: Res<Frame>, mut cues: ResMut<Cues>) {
+    for cue in reader.read() {
+        cues.0.push((frame.0, *cue));
+    }
+}
+
+fn count_frame(mut frame: ResMut<Frame>) {
+    frame.0 += 1;
+}
+
+/// Puts the main camera at the player's eye every frame, as the client does
+/// (`render::follow_player_eye`), so render-only effects start from it.
+fn follow_eye(
+    player: Single<(&Transform, &pieced::shared::LookAngles), With<pieced::shared::Player>>,
+    mut camera: Single<
+        &mut Transform,
+        (
+            With<pieced::render::MainCamera>,
+            Without<pieced::shared::Player>,
+        ),
+    >,
+) {
+    let (feet, look) = player.into_inner();
+    camera.translation = feet.translation + Vec3::Y * 1.6;
+    camera.rotation = look.rotation();
+}
+
+/// The rig app in play, with its cues recorded, the camera following the eye,
+/// and the gun settled at the hip.
+fn playing_rig() -> App {
+    use pieced::{render::CameraFollowSet, shared::AppState};
+    let mut app = rig_app();
+    app.init_resource::<Cues>()
+        .init_resource::<Frame>()
+        .add_systems(First, count_frame)
+        .add_systems(Last, record_cues)
+        .add_systems(PostUpdate, follow_eye.in_set(CameraFollowSet));
+    set_state(&mut app, AppState::Playing);
+    for _ in 0..30 {
+        app.update();
+    }
+    app
+}
+
+fn with_player<T: Component<Mutability = bevy::ecs::component::Mutable>, R>(
+    app: &mut App,
+    f: impl FnOnce(&mut T) -> R,
+) -> R {
+    let world = app.world_mut();
+    let mut q = world.query_filtered::<&mut T, With<pieced::shared::Player>>();
+    let mut c = q.single_mut(world).unwrap();
+    f(&mut c)
+}
+
+fn frame(app: &App) -> u32 {
+    app.world().resource::<Frame>().0
+}
+
+fn cues(app: &App) -> Vec<(u32, WeaponCue)> {
+    app.world().resource::<Cues>().0.clone()
+}
+
+fn beats(app: &App, since: u32) -> Vec<(u32, WeaponBeat)> {
+    cues(app)
+        .into_iter()
+        .filter(|(f, _)| *f > since)
+        .map(|(f, c)| (f, c.beat))
+        .collect()
+}
+
+fn press(app: &mut App, f: impl Fn(&mut pieced::shared::PlayerIntent)) {
+    with_player::<pieced::shared::PlayerIntent, _>(app, f);
+}
+
+#[test]
+fn drawing_a_gun_rises_from_below_and_lands_inside_the_switch_time() {
+    let mut app = playing_rig();
+    assert!(rig(&mut app).0.translation.distance(RIFLE.hip) < 0.02);
+    let start = frame(&app);
+    press(&mut app, |i| {
+        i.select = Some(ActiveTool::Weapon(WeaponKind::Pump))
+    });
+    let switch_frames = (CombatTuning::default().switch_time * 60.0).round() as usize;
+    let mut path = Vec::new();
+    for _ in 0..switch_frames {
+        app.update();
+        path.push(rig(&mut app).0);
+    }
+    let landed = path.last().unwrap();
+    assert!(
+        landed.translation.distance(PUMP.hip) < 0.01,
+        "on the hip pose when the switch ends: {landed:?}"
+    );
+    assert!(landed.rotation.angle_between(euler(PUMP.hip_euler)) < 0.02);
+    let lowest = path
+        .iter()
+        .map(|t| t.translation.y)
+        .fold(f32::MAX, f32::min);
+    assert!(lowest < PUMP.hip.y - 0.15, "rose in from below ({lowest})");
+    let highest = path[switch_frames / 2..]
+        .iter()
+        .map(|t| t.translation.y)
+        .fold(f32::MIN, f32::max);
+    assert!(
+        highest > PUMP.hip.y + 0.01,
+        "overshot a touch before settling ({highest} vs {})",
+        PUMP.hip.y
+    );
+    assert_eq!(
+        cues(&app)
+            .iter()
+            .filter(|(f, _)| *f > start)
+            .map(|(_, c)| *c)
+            .collect::<Vec<_>>(),
+        vec![WeaponCue {
+            weapon: WeaponKind::Pump,
+            beat: WeaponBeat::Draw
+        }]
+    );
+}
+
+#[test]
+fn ads_swings_up_with_weight_and_lands_on_the_sights_in_time() {
+    let mut app = playing_rig();
+    let hip = rig(&mut app).0.translation;
+    let sights = ads_translation(&RIFLE);
+    let start = frame(&app);
+    press(&mut app, |i| i.ads_held = true);
+    let ads_frames = (ADS_SECONDS * 60.0).ceil() as usize;
+    let mut along: f32 = 0.0;
+    for _ in 0..ads_frames {
+        app.update();
+        let p = rig(&mut app).0.translation;
+        along = along.max((p - hip).dot(sights - hip) / (sights - hip).length_squared());
+    }
+    let (tf, _) = rig(&mut app);
+    assert!(
+        tf.translation.distance(sights) < 0.002,
+        "on the sights by the end of the blend: {tf:?}"
+    );
+    assert!(tf.rotation.angle_between(Quat::IDENTITY) < 0.01);
+    assert!(along > 1.01, "swung a touch past the sights ({along})");
+    press(&mut app, |i| i.ads_held = false);
+    for _ in 0..ads_frames {
+        app.update();
+    }
+    assert!(rig(&mut app).0.translation.distance(RIFLE.hip) < 0.02);
+    assert_eq!(
+        beats(&app, start)
+            .into_iter()
+            .map(|(_, b)| b)
+            .collect::<Vec<_>>(),
+        vec![WeaponBeat::AdsIn, WeaponBeat::AdsOut]
+    );
+}
+
+#[test]
+fn the_rifle_reload_plays_its_beats_in_order_inside_two_seconds() {
+    let mut app = playing_rig();
+    with_player::<Loadout, _>(&mut app, |l| l.rifle.ammo = 9);
+    let start = frame(&app);
+    press(&mut app, |i| i.reload_pressed = true);
+    let mut done_at = None;
+    let mut rig_at_done = None;
+    for _ in 0..(2.0 * 60.0) as u32 + 10 {
+        app.update();
+        let full = with_player::<Loadout, _>(&mut app, |l| l.rifle.ammo == 30);
+        if full && done_at.is_none() {
+            done_at = Some(frame(&app));
+            rig_at_done = Some(rig(&mut app).0);
+        }
+    }
+    let done_at = done_at.expect("the reload completed");
+    assert!(done_at - start <= 122, "{} frames", done_at - start);
+    let seen = beats(&app, start);
+    assert_eq!(
+        seen.iter().map(|(_, b)| *b).collect::<Vec<_>>(),
+        vec![
+            WeaponBeat::ChamberOpen,
+            WeaponBeat::CrystalPop,
+            WeaponBeat::CrystalGrab,
+            WeaponBeat::CrystalSlot,
+            WeaponBeat::ChamberShut,
+            WeaponBeat::CrystalCharged,
+        ]
+    );
+    assert!(seen.windows(2).all(|w| w[0].0 < w[1].0), "{seen:?}");
+    let slot = seen[3].0 - start;
+    assert!(
+        (slot as f32 / 120.0 - RIFLE_SLOT).abs() < 0.02,
+        "the click lands at {slot} frames"
+    );
+    assert_eq!(seen[5].0, done_at, "charges up as the reload completes");
+    let pose = rig_at_done.unwrap();
+    assert!(
+        pose.translation.distance(RIFLE.hip) < 0.01,
+        "back at the hip as the reload completes: {pose:?}"
+    );
+    let _ = (RIFLE_POP, RIFLE_GRAB);
+}
+
+#[test]
+fn the_pump_racks_and_clacks_before_its_next_shot_and_pushes_one_shard_per_shell() {
+    let mut app = playing_rig();
+    press(&mut app, |i| {
+        i.select = Some(ActiveTool::Weapon(WeaponKind::Pump))
+    });
+    for _ in 0..40 {
+        app.update();
+    }
+    let start = frame(&app);
+    press(&mut app, |i| {
+        i.fire = true;
+        i.fire_pressed = true;
+    });
+    app.update();
+    press(&mut app, |i| i.fire = false);
+    let interval = (GunTuning::pump().fire_interval * 60.0) as u32;
+    for _ in 0..interval {
+        app.update();
+    }
+    let rack = beats(&app, start);
+    assert_eq!(
+        rack.iter().map(|(_, b)| *b).collect::<Vec<_>>(),
+        vec![WeaponBeat::RackPull, WeaponBeat::RackClack]
+    );
+    assert!(
+        rack[1].0 - start < interval,
+        "the clack before the next shot"
+    );
+
+    // Reload three shells: one shard pushed per shell, half a second apart.
+    with_player::<Loadout, _>(&mut app, |l| l.pump.ammo = 2);
+    let start = frame(&app);
+    press(&mut app, |i| i.reload_pressed = true);
+    for _ in 0..(3 * 30 + 10) {
+        app.update();
+    }
+    assert_eq!(with_player::<Loadout, _>(&mut app, |l| l.pump.ammo), 5);
+    let pushes: Vec<u32> = beats(&app, start)
+        .into_iter()
+        .filter(|(_, b)| *b == WeaponBeat::ShardPush)
+        .map(|(f, _)| f - start)
+        .collect();
+    assert_eq!(pushes.len(), 3, "{pushes:?}");
+    assert!(
+        pushes.windows(2).all(|w| (w[1] - w[0]).abs_diff(30) <= 1),
+        "one per 0.5 s shell: {pushes:?}"
+    );
+    assert!(
+        pushes
+            .iter()
+            .enumerate()
+            .all(|(i, &f)| f < 30 * (i as u32 + 1) + 1),
+        "each inside its own shell: {pushes:?}"
+    );
+}
+
+/// Every shot the player fires over a scripted fight (origin and every
+/// trace's end, as bits), the look each tick, and the biggest angle between
+/// the rendered camera and the look.
+fn fight(kick: bool) -> (Vec<u32>, Vec<u32>, f32, f32) {
+    let mut app = playing_rig();
+    if !kick {
+        let mut tuning = app.world_mut().resource_mut::<pieced::tuning::Tuning>();
+        tuning.weapons.kick_rifle_deg = 0.0;
+        tuning.weapons.kick_pump_deg = 0.0;
+    }
+    app.world_mut()
+        .resource_mut::<Messages<pieced::shared::ShotFired>>()
+        .clear();
+    let mut shots = Vec::new();
+    let mut looks = Vec::new();
+    let mut biggest: f32 = 0.0;
+    let mut settled: f32 = 0.0;
+    let mut reader = app
+        .world()
+        .resource::<Messages<pieced::shared::ShotFired>>()
+        .get_cursor();
+    for tick in 0..150u32 {
+        press(&mut app, |i| {
+            // Hold the rifle's trigger with a turning aim, then swap to the
+            // pump and fire it.
+            i.fire = tick < 50 || tick == 100;
+            i.fire_pressed = tick == 0 || tick == 100;
+            i.look_delta = Vec2::new(0.8, -0.3);
+            if tick == 60 {
+                i.select = Some(ActiveTool::Weapon(WeaponKind::Pump));
+            }
+        });
+        app.update();
+        let messages = app
+            .world()
+            .resource::<Messages<pieced::shared::ShotFired>>();
+        for shot in reader.read(messages) {
+            shots.extend(shot.origin.to_array().map(f32::to_bits));
+            for trace in &shot.traces {
+                shots.extend(trace.end.to_array().map(f32::to_bits));
+            }
+        }
+        let look = with_player::<pieced::shared::LookAngles, _>(&mut app, |l| *l);
+        looks.extend([look.yaw.to_bits(), look.pitch.to_bits()]);
+        let camera = {
+            let world = app.world_mut();
+            let mut q = world.query_filtered::<&Transform, With<pieced::render::MainCamera>>();
+            *q.single(world).unwrap()
+        };
+        // 2·asin of the relative rotation's vector part: exact for tiny
+        // angles, where `angle_between`'s acos rounds to ~1e-4.
+        let rel = look.rotation().inverse() * camera.rotation;
+        let angle = 2.0 * rel.xyz().length().min(1.0).asin();
+        biggest = biggest.max(angle);
+        if tick >= 110 {
+            settled = settled.max(angle);
+        }
+    }
+    (shots, looks, biggest, settled)
+}
+
+#[test]
+fn the_camera_kick_never_changes_where_a_shot_goes() {
+    let (shots, looks, kicked, settled) = fight(true);
+    let (shots_still, looks_still, still, _) = fight(false);
+    assert!(shots.len() > 40, "the rifle and the pump both fired");
+    assert_eq!(shots, shots_still, "every shot's ray is bit-identical");
+    assert_eq!(looks, looks_still, "the aim is bit-identical");
+    assert!(still < 1e-6, "no kick when it's tuned off");
+    assert!(
+        kicked > 0.05f32.to_radians() && kicked <= (KICK_MAX_DEG + 0.01).to_radians(),
+        "the rendered camera kicks, a fraction of a degree ({}°)",
+        kicked.to_degrees()
+    );
+    assert!(
+        settled < 1e-5,
+        "and recovers within 120 ms of the last shot"
+    );
+}
+
+#[test]
+fn breathing_sways_the_idle_gun_and_the_sway_switch_stops_it() {
+    let mut app = playing_rig();
+    let spread = |app: &mut App| {
+        let mut lo = Vec3::splat(f32::MAX);
+        let mut hi = Vec3::splat(f32::MIN);
+        for _ in 0..(4.5 * 60.0) as usize {
+            app.update();
+            let p = rig(app).0.translation;
+            lo = lo.min(p);
+            hi = hi.max(p);
+        }
+        (hi - lo).length()
+    };
+    let alive = spread(&mut app);
+    assert!(
+        (0.001..0.01).contains(&alive),
+        "the idle gun breathes, millimetres ({alive})"
+    );
+    app.world_mut()
+        .resource_mut::<pieced::tuning::Tuning>()
+        .feedback
+        .viewmodel_sway = false;
+    for _ in 0..60 {
+        app.update();
+    }
+    let still = spread(&mut app);
+    assert!(still < 1e-5, "sway off: the gun holds still ({still})");
 }
