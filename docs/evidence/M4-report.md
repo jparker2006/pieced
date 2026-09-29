@@ -34,14 +34,14 @@ Every number here names its source (session folder or test), the commit, and the
 
 | View | Target | Round 1 | Round 2 | Jake's score |
 |---|---|---|---|---|
-| V1 Spawn vista mid-wave | `M4-V1` | 3 | | |
-| V2 Rifle ADS | `M4-V2` | 2 | | |
-| V3 Pump blast | `M4-V3` | 2 | | |
-| V4 Headshot kill | `M4-V4` | 1.5 | | |
-| V5 Knight wind-up | `M4-V5` | 2 | | |
-| V6 Box-up fight | `M4-V6` | 3 | | |
-| V7 Wave banner | `M4-V7` | 3 (world only) | | |
-| V8 Main menu | `M4-V8` | 3 | | |
+| V1 Spawn vista mid-wave | `M4-V1` | 3 | 3 | |
+| V2 Rifle ADS | `M4-V2` | 2 | 2 | |
+| V3 Pump blast | `M4-V3` | 2 | 2.5 | |
+| V4 Headshot kill | `M4-V4` | 1.5 | 1.5 | |
+| V5 Knight wind-up | `M4-V5` | 2 | 2.5 | |
+| V6 Box-up fight | `M4-V6` | 3 | 3 | |
+| V7 Wave banner | `M4-V7` | 3 (world only) | 3 (world only) | |
+| V8 Main menu | `M4-V8` | 3 | 3 | |
 
 ## Play-tests
 
@@ -238,3 +238,23 @@ Feel numbers only (D117), ±50% without asking, with the reason for each.
     - a clean ADS sight;
     - the V6 and V8 compositions.
   - The spec's knight budget now reads ≤ 12k, the orchestrator's art-slice decision.
+- 2026-09-29: **art round 2 merged** (`83ded7f`, from `271f883`: 683 passed, 0 failed; clippy, fmt and `build-art --check` clean).
+  - What changed:
+    - a chibi knight within the head sphere;
+    - gilded saucer drop ships with rune circles;
+    - halo near-fade 0.42–0.8;
+    - hollow pump starbursts and a smaller poof;
+    - wind-up swirl sparks;
+    - a subtler grid, denser flowers and a warmer grade.
+  - World pass 4.06/5.19 ms.
+  - **Reviewer on round 2:** V1 3, V2 2, V3 2.5, V4 1.5, V5 2.5, V6 3, V7 3, V8 3. The biggest remaining problem is the knight's steel rendering nearly white (a white egg on a narrow purple column).
+  - Round 3 priorities:
+    - mid-grey steel with a narrow highlight, an A-line robe, a belt and greaves, and warm eyes;
+    - saucer undersides and a bank toward the player;
+    - kill effects that frame the knight (a delayed low poof and a big helmet pop);
+    - then the V5 flare, the V8 framing, the V2 sight and the V6 window.
+- 2026-09-29: **the perf follow-up was dispatched** (`m4-perf2`), with disk back at 14 GB. It covers:
+  - input-to-present latency in the session log;
+  - pipelined rendering as the default;
+  - cutting the UI (2.17 ms) and post (2.35 ms) full-screen passes toward their 0.5 and 1.0 budgets;
+  - a pin on the number of full-screen passes.
