@@ -127,6 +127,8 @@ pub struct RunResults {
     pub seed: u64,
     /// The wave reached (the wave being fought, or just cleared, at the end).
     pub wave: u32,
+    /// The wave the run started on (D115: 1, 6 or 10).
+    pub start_wave: u32,
     pub score: u32,
     pub eliminations: u32,
     /// The player's hits per shot, 0..=1 (`CombatStats::accuracy`).
@@ -172,6 +174,9 @@ pub struct RunLogLine {
     /// uncommitted changes.
     pub commit: String,
     pub wave: u32,
+    /// The wave the run started on (D115: 1, 6 or 10; 0 in lines written
+    /// before start at wave). Runs above 1 never touch the best.
+    pub start_wave: u32,
     pub score: u32,
     pub run_seconds: f32,
     pub eliminations: u32,
@@ -190,6 +195,7 @@ impl RunLogLine {
             seed: results.seed,
             commit: build_commit(),
             wave: results.wave,
+            start_wave: results.start_wave.max(1),
             score: results.score,
             run_seconds: results.run_seconds,
             eliminations: results.eliminations,

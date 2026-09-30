@@ -1099,3 +1099,123 @@ fn five_minutes_of_waves_leak_nothing_and_add_up() {
     assert_eq!(pool(&mut sim).len(), 8);
     assert_eq!(count::<PotionSlot>(&mut sim), pieced::waves::POTION_POOL);
 }
+
+// ---------------------------------------------------------------------------
+// Start at wave (M4 chunk 5, D115)
+// ---------------------------------------------------------------------------
+
+/// A frozen Waves sim whose first run starts at `wave` (the menu's choice,
+/// set before `Startup`), with `store` for the best and the run log.
+fn started_at(seed: u64, wave: u32, store: RunStore) -> Sim {
+    let mut sim = start(seed, |app| {
+        app.insert_resource(store)
+            .insert_resource(pieced::waves::modes::StartWave::new(wave));
+    });
+    sim.world_mut().insert_resource(GalleryFreeze);
+    toughen(&mut sim);
+    sim
+}
+
+#[test]
+fn starting_at_wave_6_or_10_plays_that_waves_size_stats_and_scaling() {
+    for wave in [6, 10] {
+        let mut sim = started_at(20 + wave as u64, wave, RunStore::default());
+        let t = tuning(&sim);
+        let r = run(&sim);
+        assert_eq!((r.wave, r.start_wave), (wave, wave));
+        assert!(!r.ranked());
+        assert_eq!(summary(&sim).start_wave, wave);
+        assert_eq!(summary(&sim).knights_left, t.waves.wave_size(wave));
+        assert_eq!(t.waves.wave_size(6), 13);
+        assert_eq!(t.waves.wave_size(10), 21);
+        // Its knights come with that wave's stats, as if the run got there.
+        let arrivals = run_until_wave_in(&mut sim);
+        assert_eq!(arrivals.len(), t.waves.max_alive as usize, "eight at once");
+        let stats = GruntStats::for_wave(wave, &t.grunt);
+        for g in in_play(&mut sim) {
+            let s = *sim.get::<GruntStats>(g);
+            assert_eq!(s.hp, stats.hp);
+            assert_eq!(s.fire_interval, stats.fire_interval);
+            assert_eq!(s.reaction, stats.reaction);
+            assert_eq!(sim.get::<PoolGrunt>(g).wave, wave);
+        }
+        // Clearing it scores that wave's bonus, and the next wave follows.
+        let downed = clear_wave(&mut sim);
+        assert_eq!(downed.len() as u32, t.waves.wave_size(wave));
+        assert_eq!(
+            run(&sim).score,
+            t.waves.wave_size(wave) * t.waves.score_kill + t.waves.score_wave * wave
+        );
+        skip_break(&mut sim);
+        assert_eq!(run(&sim).wave, wave + 1);
+        assert_eq!(summary(&sim).knights_left, t.waves.wave_size(wave + 1));
+    }
+}
+
+#[test]
+fn a_start_at_wave_run_never_touches_the_best_and_is_logged() {
+    let dir = temp_dir("start-wave");
+    let store = RunStore::at(&dir);
+    // A ranked run first: dying in wave 1 sets the best.
+    let mut sim = started_at(31, 1, store.clone());
+    eliminate_player(&mut sim);
+    let best = summary(&sim).best.clone().expect("a best");
+    assert_eq!(best.wave, 1);
+    let saved = std::fs::read_to_string(store.best_path().unwrap()).unwrap();
+
+    // The menu picks wave 6 and starts Waves.
+    sim.world_mut()
+        .insert_resource(pieced::waves::modes::StartWave::new(6));
+    sim.world_mut()
+        .write_message(pieced::waves::modes::StartMode(GameMode::Waves));
+    sim.tick();
+    sim.tick();
+    assert_eq!((run(&sim).wave, run(&sim).start_wave), (6, 6));
+    toughen(&mut sim);
+    clear_wave(&mut sim);
+    skip_break(&mut sim);
+    let p = sim.player();
+    *sim.world_mut().get_mut::<Health>(p).unwrap() = Health::full(100.0, 0.0);
+    eliminate_player(&mut sim);
+    let s = summary(&sim);
+    assert_eq!(s.results.wave, 7, "wave 7 beats the best's wave 1...");
+    assert!(!s.new_best, "...but a start-at-wave run never counts");
+    assert_eq!(s.best.as_ref(), Some(&best));
+    assert_eq!(
+        sim.world().resource::<PersonalBest>().0.as_ref(),
+        Some(&best)
+    );
+    assert_eq!(
+        std::fs::read_to_string(store.best_path().unwrap()).unwrap(),
+        saved,
+        "best.json untouched"
+    );
+    // "Go again" starts at wave 6 again.
+    sim.world_mut().write_message(RestartRun);
+    sim.tick();
+    assert_eq!((run(&sim).wave, run(&sim).start_wave), (6, 6));
+
+    let lines = read_lines(&store.runs_path().unwrap());
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0]["start_wave"], 1);
+    assert_eq!(lines[1]["start_wave"], 6);
+    assert_eq!(lines[1]["wave"], 7);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_session_log_counts_a_start_at_6_run_as_wave_6() {
+    let mut log = pieced::session::WaveLog::default();
+    log.observe_run(7, Some(6), 6);
+    assert_eq!(
+        log.max_wave(),
+        6,
+        "A7's wave check passes on the first frame"
+    );
+    log.observe_run(7, Some(6), 7);
+    log.observe(8, 1);
+    assert_eq!(log.runs[0].start_wave, 6);
+    assert_eq!(log.runs[0].max_wave, 7);
+    assert_eq!(log.runs[1].start_wave, 1);
+    assert_eq!(log.max_wave(), 7);
+}
