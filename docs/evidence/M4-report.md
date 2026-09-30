@@ -389,3 +389,7 @@ Paused at the usage limit. Both builders were told to commit their work in progr
 - 2026-09-29: **disk at 3.2 GB, so the orchestrator stopped and asked Jake** (the brief's stop-and-ask line is below 4 GB).
   - The space is mostly `~/.codex/worktrees/ecf9/glox-brain-lab/data/cloud-migration` (51 GB): another project's Codex worktree data, not Pieced's.
   - Waiting on Jake to say whether it can be removed. Chunks 5 and 6A resume their checks when there's room.
+- 2026-09-29: **disk freed.** Jake: "dont delete stuff from glox brain … doesnt have to belong to pieced... legit j not glox brain".
+  - Nothing in glox-brain or glox-brain-lab was touched: every Codex worktree turned out to be glox, so all were left alone.
+  - Only regenerable caches were cleared: pip, pnpm, Homebrew, node-gyp, the Claude desktop ShipIt, the opencode updater, the Codex app, CodexBar, Antigravity, Spotify, Google. Free disk went from 3.2 to 14 GB.
+  - The rule is saved in memory. Chunk 5's builder resumed its final checks at full speed; chunk 6A follows.
