@@ -11,7 +11,7 @@
     mesh_view_bindings::{globals, view},
     view_transformations::position_world_to_clip,
 }
-#import pieced::wind::sway
+#import pieced::wind::wind_sway
 
 #ifdef TONEMAP_IN_SHADER
 #import bevy_core_pipeline::tonemapping::tone_mapping
@@ -68,7 +68,7 @@ fn vertex(v: Vertex) -> VertexOutput {
 #ifdef INK_NORMALS
     normal_length = length(v.normal);
 #endif
-    let offset = sway(ink.sway, globals.time, v.position, normal_length, world.xyz, world_from_local[3].xyz);
+    let offset = wind_sway(ink.sway, globals.time, v.position, normal_length, world.xyz, world_from_local[3].xyz);
     world = vec4<f32>(world.xyz + offset, world.w);
     // The outline normal's length is its miter (see smooth_outline_normals):
     // width × miter pushes every face meeting at this corner out by `width`.

@@ -35,7 +35,7 @@ fn sway_offset(t: f32, anchor: vec3<f32>, weight: f32, amplitude: f32) -> vec3<f
 // A material's sway (x amplitude, y from, z to, w weighting: 0 off,
 // 1 by model height, 2 baked in the normal's length) for a vertex at local
 // `local` / world `world` of a mesh whose origin is `origin`.
-fn sway(
+fn wind_sway(
     params: vec4<f32>,
     t: f32,
     local: vec3<f32>,
