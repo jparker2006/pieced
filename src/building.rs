@@ -15,9 +15,11 @@
 //!
 //! Presentation lives in [`visuals`] (client only).
 
+pub mod debris;
 pub mod edit;
 pub mod edit_grid;
 mod grid;
+pub mod juice;
 mod mesh;
 mod targeting;
 pub mod visuals;

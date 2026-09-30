@@ -167,6 +167,9 @@ pub struct Run {
     /// draws the next run's seed from this run's stream.
     pub seed: u64,
     pub wave: u32,
+    /// The wave the run started on (D115: 1, 6 or 10). A run that didn't
+    /// start at wave 1 never counts toward the personal best.
+    pub start_wave: u32,
     pub phase: RunPhase,
     /// Grunts in play: landed and not downed.
     pub alive: u32,
@@ -202,11 +205,20 @@ pub struct Run {
 
 impl Run {
     pub fn new(seed: u64, tick: u64, tuning: &WavesTuning) -> Self {
+        Self::starting_at(seed, tick, 1, tuning)
+    }
+
+    /// A run that starts at wave `start_wave` (D115, "start at wave"): its
+    /// size, stats and scaling exactly as if it had got there, the score
+    /// from 0. Only a run started at wave 1 can set a personal best.
+    pub fn starting_at(seed: u64, tick: u64, start_wave: u32, tuning: &WavesTuning) -> Self {
+        let start_wave = start_wave.max(1);
         let rng = Rng::new(seed);
         let potion_rng = rng.clone().fork(POTION_SALT);
         let mut run = Self {
             seed,
-            wave: 1,
+            wave: start_wave,
+            start_wave,
             phase: RunPhase::Fighting,
             alive: 0,
             remaining: 0,
@@ -226,11 +238,17 @@ impl Run {
             rng,
             potion_rng,
         };
-        run.start_wave(1, tick, tuning);
+        run.begin_wave(start_wave, tick, tuning);
         run
     }
 
-    fn start_wave(&mut self, wave: u32, tick: u64, tuning: &WavesTuning) {
+    /// Whether the run counts toward the personal best (D115: only runs
+    /// started at wave 1).
+    pub fn ranked(&self) -> bool {
+        self.start_wave <= 1
+    }
+
+    fn begin_wave(&mut self, wave: u32, tick: u64, tuning: &WavesTuning) {
         self.wave = wave;
         self.remaining = tuning.wave_size(wave);
         self.phase = RunPhase::Fighting;
@@ -242,7 +260,8 @@ impl Run {
     /// run that has just started, before its first ship launches (the
     /// fairness suite starts seeded runs at waves 1–10).
     pub fn start_at_wave(&mut self, wave: u32, tick: u64, tuning: &WavesTuning) {
-        self.start_wave(wave.max(1), tick, tuning);
+        self.start_wave = wave.max(1);
+        self.begin_wave(wave.max(1), tick, tuning);
     }
 
     /// The results screen is up: the run has ended and the death beat is over.
@@ -283,6 +302,7 @@ impl Run {
         RunResults {
             seed: self.seed,
             wave: self.wave,
+            start_wave: self.start_wave,
             score: self.score,
             eliminations: self.eliminations,
             accuracy: stats.accuracy(),
@@ -419,6 +439,8 @@ pub struct RunSummary {
     pub best: Option<BestRun>,
     /// This run is a new personal best (known once the run ends).
     pub new_best: bool,
+    /// The wave the run started on (D115); above 1 the run is unranked.
+    pub start_wave: u32,
     /// The results-screen numbers (live during the run, final once ended).
     pub results: RunResults,
 }
@@ -497,9 +519,11 @@ fn start_run(
     fixed: Option<Res<RunSeed>>,
     best: Res<PersonalBest>,
     tick: Res<SimTick>,
+    start: Option<Res<modes::StartWave>>,
 ) {
     let seed = fixed.map_or_else(|| sim_rng.0.clone().fork(WAVES_SALT).next_u64(), |s| s.0);
-    let run = Run::new(seed, tick.0, &tuning.waves);
+    let start = start.map_or(1, |s| s.get());
+    let run = Run::starting_at(seed, tick.0, start, &tuning.waves);
     commands.insert_resource(summarize(&run, tick.0, &CombatStats::default(), &best));
     commands.insert_resource(run);
     let stats = GruntStats::for_wave(1, &tuning.grunt);
@@ -846,7 +870,7 @@ fn run_director(
         RunPhase::Break { ends_tick } => {
             if skip || now >= ends_tick {
                 let next = run.wave + 1;
-                run.start_wave(next, now, t);
+                run.begin_wave(next, now, t);
             }
         }
         RunPhase::Fighting => {
@@ -951,7 +975,8 @@ fn record_run_end(
     run.record_pending = false;
     let results = run.results(tick.0, &stats);
     let this = BestRun::from(&results);
-    run.new_best = best.0.as_ref().is_none_or(|b| this.beats(b));
+    // D115: a run started above wave 1 never touches the best.
+    run.new_best = run.ranked() && best.0.as_ref().is_none_or(|b| this.beats(b));
     if run.new_best {
         if let Err(e) = store.save_best(&this) {
             warn!("waves: couldn't save the best run: {e}");
@@ -977,6 +1002,7 @@ fn summarize(run: &Run, now: u64, stats: &CombatStats, best: &PersonalBest) -> R
         break_seconds_left: run.break_seconds_left(now),
         best: best.0.clone(),
         new_best: run.new_best,
+        start_wave: run.start_wave,
         results: run.results(now, stats),
     }
 }
@@ -1098,7 +1124,9 @@ fn reset_characters(
     tokens.clear();
     ships.reset();
     let seed = run.rng.next_u64();
-    *run = Run::new(seed, now, &tuning.waves);
+    // "Go again" starts at the same wave as the run it replaces (D115).
+    let start = run.start_wave;
+    *run = Run::starting_at(seed, now, start, &tuning.waves);
 }
 
 #[cfg(test)]

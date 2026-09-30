@@ -1,6 +1,7 @@
 //! The run HUD (D65): wave, knights left and score along the top, in M2's
 //! cartoon frames (ink line, slate rim, dark panel, the cartoon font); the
-//! break's banner (D79) and a new wave's title in the middle; the potion's
+//! break's banner (D79) in the middle (a new wave's title is
+//! [`super::banner`]'s); the potion's
 //! cyan "+25" under the crosshair.
 //!
 //! The top strip sits in the top centre, which the M1/M2 layout leaves empty
@@ -27,8 +28,6 @@ use std::fmt::Write;
 pub const STRIP_TOP: f32 = 14.0;
 /// The banner's top, as a percentage of the screen height.
 pub const BANNER_TOP: f32 = 21.0;
-/// How long a new wave's title stays up (s).
-pub const WAVE_TITLE_SECONDS: f32 = 1.6;
 /// How long the score's pop lasts (s).
 pub const SCORE_POP_SECONDS: f32 = 0.28;
 /// The "+25": its life (s), rise (px) and gap below the crosshair (px).
@@ -52,9 +51,6 @@ pub(super) fn build(app: &mut App) {
 struct HudClock {
     score: Option<u32>,
     score_pop: f32,
-    /// (wave, fighting) last frame.
-    wave_seen: Option<(u32, bool)>,
-    wave_title: f32,
     count: Option<u32>,
     count_pop: f32,
     banner_pop: f32,
@@ -70,8 +66,6 @@ impl Default for HudClock {
         Self {
             score: None,
             score_pop: f32::MAX,
-            wave_seen: None,
-            wave_title: f32::MAX,
             count: None,
             count_pop: f32::MAX,
             banner_pop: f32::MAX,
@@ -138,7 +132,8 @@ fn spawn_run_hud(mut commands: Commands) {
         ))
         .with_children(|strip| {
             stat_frame(strip, "KNIGHTS", RunUi::Knights, RIM, 28.0, 96.0, None);
-            stat_frame(strip, "WAVE", RunUi::Wave, GOLD_FRAME, 34.0, 104.0, None);
+            let wave = Some(RunUi::WaveFrame);
+            stat_frame(strip, "WAVE", RunUi::Wave, GOLD_FRAME, 34.0, 104.0, wave);
             let score = Some(RunUi::ScoreFrame);
             let frame = stat_frame(strip, "SCORE", RunUi::Score, RIM, 28.0, 124.0, score);
             // The wave-clear bonus pops just under the score (M4).
@@ -322,20 +317,10 @@ fn update_run_hud(
     clock.score = Some(summary.score);
     clock.score_pop += dt;
 
-    // A new wave's title: at a run's start and when a break ends.
-    let fighting = summary.phase == RunPhase::Fighting;
-    let seen = (summary.wave, fighting);
-    if fighting && clock.wave_seen != Some(seen) {
-        clock.wave_title = 0.0;
-    }
-    clock.wave_seen = Some(seen);
-    clock.wave_title += dt;
-
+    // A new wave's title is the wave banner's ([`super::banner`]); this
+    // banner is the break's.
     let over = matches!(summary.phase, RunPhase::Over { .. });
-    let banner = break_banner(&summary).or_else(|| {
-        (fighting && clock.wave_title < WAVE_TITLE_SECONDS)
-            .then_some(BannerKind::Wave(summary.wave))
-    });
+    let banner = break_banner(&summary);
     // The title pops in when it changes (not on every tick of the countdown).
     let key = |b: Option<BannerKind>| {
         b.map(|k| match k {

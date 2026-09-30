@@ -32,6 +32,32 @@ use bevy::{ecs::message::Messages, prelude::*};
 #[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StartMode(pub GameMode);
 
+/// The wave a Waves run starts at (D115): the main menu's 1 / 6 / 10 choice.
+/// A run started above wave 1 plays that wave's size, stats and scaling
+/// exactly as if it had got there, and never counts toward the personal best.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StartWave(u32);
+
+/// The starting waves the menu offers.
+pub const START_WAVES: [u32; 3] = [1, 6, 10];
+
+impl Default for StartWave {
+    fn default() -> Self {
+        Self(1)
+    }
+}
+
+impl StartWave {
+    /// A starting wave (at least 1).
+    pub fn new(wave: u32) -> Self {
+        Self(wave.max(1))
+    }
+
+    pub fn get(self) -> u32 {
+        self.0
+    }
+}
+
 /// Salt for the seeds of runs started from the menu.
 const MENU_SALT: u64 = 0x3E_7015;
 
@@ -58,6 +84,7 @@ impl ModeSwitch {
 pub(super) fn build(app: &mut App) {
     app.add_message::<StartMode>()
         .init_resource::<ModeSwitch>()
+        .init_resource::<StartWave>()
         .add_systems(Startup, register_mode_systems)
         .add_systems(OnEnter(AppState::Menu), go_idle)
         .add_systems(OnEnter(AppState::Playing), mark_dirty)
@@ -220,7 +247,8 @@ fn begin_run(world: &mut World) {
         }
     };
     let now = world.resource::<SimTick>().0;
-    let run = Run::new(seed, now, &world.resource::<Tuning>().waves);
+    let start = world.get_resource::<StartWave>().copied().unwrap_or_default();
+    let run = Run::starting_at(seed, now, start.get(), &world.resource::<Tuning>().waves);
     let summary = summarize(
         &run,
         now,

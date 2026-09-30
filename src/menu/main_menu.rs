@@ -12,6 +12,9 @@
 //!   collider: the arena's pieces and fights never see them). No player
 //!   input (the adapter only drives the player in `Playing`), the HUD and
 //!   the gun hidden, the cursor free.
+//! - **Start at wave** (M4 chunk 5, D115, M4-V8): the Waves button carries a
+//!   "1 / 6 / 10" choice ([`StartWaveChoice`]) on its right; the run starts
+//!   at the chosen wave ([`StartWave`]).
 //! - Waves and Practice start that mode in place (`waves::modes`); the time
 //!   from the click to the first controllable frame prints as
 //!   `PIECED_PLAY_MS <ms> <mode>` and goes into `session.json`.
@@ -38,7 +41,11 @@ use crate::{
     scenario::ScenarioRun,
     session::{PlayRecord, SessionLog},
     shared::{AppState, GameMode},
-    waves::{PersonalBest, modes::StartMode, ui::write_thousands},
+    waves::{
+        PersonalBest,
+        modes::{START_WAVES, StartMode, StartWave},
+        ui::write_thousands,
+    },
 };
 use bevy::{
     prelude::*,
@@ -57,7 +64,9 @@ pub(super) fn build(app: &mut App) {
             Update,
             (
                 title_visibility,
+                start_wave_buttons,
                 title_buttons,
+                start_wave_looks,
                 refresh_best,
                 spawn_hero,
                 dress_hero,
@@ -82,6 +91,10 @@ pub enum MainMenuButton {
     Settings,
     Quit,
 }
+
+/// One of the Waves button's starting waves (D115): 1, 6 or 10.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StartWaveChoice(pub u32);
 
 /// The title screen's root.
 #[derive(Component, Debug)]
@@ -412,7 +425,7 @@ fn spawn_title(mut commands: Commands, art: Option<Res<UiArt>>) {
                         ..default()
                     })
                     .with_children(|column| {
-                        column.spawn((
+                        let mut b = column.spawn((
                             button,
                             cartoon_button(
                                 label,
@@ -422,6 +435,23 @@ fn spawn_title(mut commands: Commands, art: Option<Res<UiArt>>) {
                                 Some(art.crystal_blue.clone()),
                             ),
                         ));
+                        if button == MainMenuButton::Waves {
+                            // The label moves left to make room for the
+                            // starting-wave choice on the right (M4-V8).
+                            b.insert(Node {
+                                height: px(72),
+                                width: percent(100),
+                                justify_content: JustifyContent::FlexStart,
+                                align_items: AlignItems::Center,
+                                padding: UiRect::left(px(72)),
+                                border: UiRect::all(px(4)),
+                                border_radius: BorderRadius::all(px(72.0 * 0.27)),
+                                ..default()
+                            });
+                            b.with_children(|waves| {
+                                spawn_start_choice(waves);
+                            });
+                        }
                         if button == MainMenuButton::Waves {
                             // The best run, on a small dark pill so it reads
                             // over any sky.
@@ -442,6 +472,91 @@ fn spawn_title(mut commands: Commands, art: Option<Res<UiArt>>) {
                 }
             });
         });
+}
+
+/// The "1 / 6 / 10" choice inside the Waves button: a dark inset pill with
+/// the chosen wave on a crystal-blue chip.
+fn spawn_start_choice(waves: &mut ChildSpawnerCommands) {
+    waves
+        .spawn((
+            Node {
+                position_type: PositionType::Absolute,
+                right: px(12),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                column_gap: px(2),
+                padding: UiRect::all(px(3)),
+                border: UiRect::all(px(2)),
+                border_radius: BorderRadius::all(px(12)),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.02, 0.04, 0.08, 0.72)),
+            BorderColor::all(RIM),
+        ))
+        .with_children(|pill| {
+            for (i, wave) in START_WAVES.into_iter().enumerate() {
+                if i > 0 {
+                    pill.spawn(caps("/", 18.0, TEXT));
+                }
+                pill.spawn((
+                    StartWaveChoice(wave),
+                    Button,
+                    Node {
+                        min_width: px(38),
+                        height: px(38),
+                        justify_content: JustifyContent::Center,
+                        align_items: AlignItems::Center,
+                        border: UiRect::all(px(2)),
+                        border_radius: BorderRadius::all(px(9)),
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                    BorderColor::all(Color::NONE),
+                    UiTransform::default(),
+                    children![caps(format!("{wave}"), 22.0, TEXT)],
+                ));
+            }
+        });
+}
+
+/// Picks the starting wave (never starts the run: the Waves button does).
+fn start_wave_buttons(
+    choices: Query<(&Interaction, &StartWaveChoice), Changed<Interaction>>,
+    menu: Res<MenuState>,
+    mut start: ResMut<StartWave>,
+) {
+    if !menu.title_visible() {
+        return;
+    }
+    for (interaction, choice) in &choices {
+        if *interaction == Interaction::Pressed && start.get() != choice.0 {
+            *start = StartWave::new(choice.0);
+        }
+    }
+}
+
+/// The chosen wave's chip is crystal blue with a gold rim; the others clear
+/// (lit on hover).
+fn start_wave_looks(
+    start: Res<StartWave>,
+    mut choices: Query<(
+        &Interaction,
+        &StartWaveChoice,
+        &mut BackgroundColor,
+        &mut BorderColor,
+    )>,
+) {
+    for (interaction, choice, mut bg, mut border) in &mut choices {
+        let chosen = start.get() == choice.0;
+        let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
+        let (fill, edge) = match (chosen, hovered) {
+            (true, _) => (Color::srgb(0.17, 0.43, 0.77), super::pause::GOLD_HOVER),
+            (false, true) => (Color::srgba(1.0, 1.0, 1.0, 0.14), Color::NONE),
+            (false, false) => (Color::NONE, Color::NONE),
+        };
+        bg.set_if_neq(BackgroundColor(fill));
+        border.set_if_neq(BorderColor::all(edge));
+    }
 }
 
 fn reset_orbit(mut orbit: ResMut<HeroCamera>) {

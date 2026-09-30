@@ -11,6 +11,7 @@ pub mod app;
 pub mod arena;
 pub mod audio;
 pub mod building;
+pub mod camera_feel;
 pub mod combat;
 pub mod dummy;
 pub mod far;

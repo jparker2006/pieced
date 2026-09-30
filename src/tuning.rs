@@ -45,6 +45,11 @@ pub struct Tuning {
     /// `audio`.
     #[serde(skip)]
     pub music: crate::audio::music::MusicTuning,
+    /// The camera's feel (M4 chunk 5, D108): FOV kicks, the landing dip, the
+    /// slide tilt, the damage nudge. Designer numbers, never persisted; the
+    /// Camera effects slider is `feedback.camera_effects`.
+    #[serde(skip)]
+    pub camera: crate::camera_feel::CameraFeelTuning,
 }
 
 impl Tuning {

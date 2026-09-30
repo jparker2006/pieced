@@ -6,6 +6,12 @@
 //! new run in place; **Quit to menu** goes back to the main menu (chunk 5).
 //! The cursor is free while it shows (`input::cursor_lock`), so the trackpad
 //! clicks the buttons.
+//!
+//! M4 chunk 5 (D110): after a death the card waits for the death cam (it
+//! comes up once the knights' victory hop is over); the card slides up, its
+//! numbers count up from 0 with ticks ([`count_up`], [`COUNT_SECONDS`]), and
+//! "NEW BEST!" bursts only after the count. A run started above wave 1
+//! (D115) says so under its wave and never shows "NEW BEST!".
 
 use super::{
     BACKDROP, BLUE, BLUE_HOVER, GOLD_FRAME, GOLD_HOVER, RIVET, ResultsButton, RunUi, SLATE,
@@ -33,6 +39,14 @@ pub const BURST_SIZE: f32 = 150.0;
 const BURST_POINTS: usize = 14;
 /// The burst image's resolution (px).
 const BURST_PIXELS: u32 = 256;
+/// Seconds the numbers take to count up, and the "NEW BEST!" burst's
+/// delay after the card appears (just after the count).
+pub const COUNT_SECONDS: f32 = 1.1;
+pub const BURST_DELAY: f32 = COUNT_SECONDS + 0.12;
+/// Seconds the card takes to slide up into place.
+pub const CARD_SLIDE_SECONDS: f32 = 0.25;
+/// A count tick sounds at most this often (s).
+const TICK_EVERY: f32 = 0.07;
 
 pub(super) fn build(app: &mut App) {
     app.init_resource::<ResultsClock>()
@@ -47,6 +61,8 @@ pub(super) fn build(app: &mut App) {
 struct ResultsClock {
     /// Seconds the card has been up (real time).
     shown: Option<f32>,
+    /// Seconds since the last count tick sounded.
+    tick: f32,
     scratch: String,
 }
 
@@ -54,9 +70,32 @@ impl Default for ResultsClock {
     fn default() -> Self {
         Self {
             shown: None,
+            tick: 0.0,
             scratch: String::with_capacity(64),
         }
     }
+}
+
+/// How far the count-up is `age` seconds after the card appears (0..=1):
+/// fast at first, easing into the final numbers.
+pub fn count_up(age: f32) -> f32 {
+    let x = (age / COUNT_SECONDS).clamp(0.0, 1.0);
+    1.0 - (1.0 - x).powi(3)
+}
+
+/// `value` counted up to fraction `k` (whole numbers, exact at 1).
+pub fn counted(value: u32, k: f32) -> u32 {
+    if k >= 1.0 {
+        value
+    } else {
+        (value as f32 * k.max(0.0)).floor() as u32
+    }
+}
+
+/// Whether the results card is up: the run is over and, after a death, the
+/// death cam has held through the knights' victory hop.
+pub fn results_ready(run: Option<&crate::waves::Run>, now: u64) -> bool {
+    run.is_some_and(|r| r.is_over() && !r.hopping(now))
 }
 
 /// The "NEW BEST!" starburst: a gold star with a lighter heart and an ink
@@ -277,6 +316,8 @@ fn spawn_results(
         .with_children(|root| {
             root.spawn((
                 Name::new("Results card"),
+                RunUi::ResultsCard,
+                UiTransform::default(),
                 Node {
                     width: px(CARD_WIDTH),
                     flex_direction: FlexDirection::Column,
@@ -308,6 +349,12 @@ fn spawn_results(
                 .with_children(|h| {
                     h.spawn(caps("RUN OVER", 18.0, dim(0.8)));
                     h.spawn((RunUi::ResultsWave, title("WAVE 1", 68.0, ACCENT)));
+                    // D115: a run started above wave 1 is marked, unranked.
+                    h.spawn((
+                        RunUi::StartedAt,
+                        caps("STARTED AT WAVE 10 \u{b7} NOT RANKED", 15.0, dim(0.8)),
+                        Visibility::Hidden,
+                    ));
                 });
                 // This run beside the best run.
                 card.spawn(Node {
@@ -408,24 +455,50 @@ fn update_results(
     time: Res<Time<Real>>,
     tuning: Res<crate::tuning::Tuning>,
     summary: Option<Res<RunSummary>>,
+    run: Option<Res<crate::waves::Run>>,
+    tick: Option<Res<crate::shared::SimTick>>,
+    mut queue: Option<ResMut<crate::audio::PlayQueue>>,
     mut clock: ResMut<ResultsClock>,
     mut texts: Query<(&RunUi, &mut Text)>,
     mut shown: Query<(&RunUi, &mut Visibility, Option<&mut UiTransform>), Without<Text>>,
+    mut labels: Query<(&RunUi, &mut Visibility), With<Text>>,
 ) {
     let clock = &mut *clock;
-    let over = summary
-        .as_ref()
-        .is_some_and(|s| matches!(s.phase, RunPhase::Over { .. }));
+    let now = tick.map_or(0, |t| t.0);
+    let over = results_ready(run.as_deref(), now)
+        && summary
+            .as_ref()
+            .is_some_and(|s| matches!(s.phase, RunPhase::Over { .. }));
+    let dt = time.delta_secs();
+    let before = clock.shown;
     clock.shown = if over {
-        Some(clock.shown.map_or(0.0, |t| t + time.delta_secs()))
+        Some(clock.shown.map_or(0.0, |t| t + dt))
     } else {
         None
     };
-    let new_best = over && summary.as_ref().is_some_and(|s| s.new_best);
+    let age = clock.shown.unwrap_or(0.0);
+    let k = count_up(age);
+    let new_best = over && summary.as_ref().is_some_and(|s| s.new_best) && age >= BURST_DELAY;
+    let unranked = over && summary.as_ref().is_some_and(|s| s.start_wave > 1);
     for (part, mut v, tf) in &mut shown {
         let on = match part {
             RunUi::Results => over,
             RunUi::NewBest => new_best,
+            RunUi::ResultsCard => {
+                if let Some(mut tf) = tf {
+                    let x = (age / CARD_SLIDE_SECONDS).clamp(0.0, 1.0);
+                    let rise = 1.0 - (1.0 - x).powi(3);
+                    let want = UiTransform {
+                        translation: Val2::px(0.0, 90.0 * (1.0 - rise)),
+                        scale: Vec2::splat(0.92 + 0.08 * rise),
+                        ..UiTransform::IDENTITY
+                    };
+                    if *tf != want {
+                        *tf = want;
+                    }
+                }
+                continue;
+            }
             _ => continue,
         };
         v.set_if_neq(if on {
@@ -434,19 +507,37 @@ fn update_results(
             Visibility::Hidden
         });
         if *part == RunUi::NewBest
-            && let (Some(mut tf), Some(age)) = (tf, clock.shown)
+            && let Some(mut tf) = tf
             && on
         {
-            let (scale, turn) = burst_motion(age);
+            let (scale, turn) = burst_motion(age - BURST_DELAY);
             tf.scale = Vec2::splat(scale);
             tf.rotation = Rot2::radians(turn);
+        }
+    }
+    for (part, mut v) in &mut labels {
+        if *part == RunUi::StartedAt {
+            v.set_if_neq(if unranked {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            });
         }
     }
     let (Some(summary), true) = (summary, over) else {
         return;
     };
-    if !summary.is_changed() && clock.shown != Some(0.0) {
+    let counting = before.is_none_or(|b| count_up(b) < 1.0);
+    if !summary.is_changed() && !counting {
         return;
+    }
+    // A tick while the numbers roll (capped to one every TICK_EVERY).
+    clock.tick += dt;
+    if k < 1.0 && clock.tick >= TICK_EVERY && summary.results.score > 0 {
+        clock.tick = 0.0;
+        if let Some(queue) = queue.as_mut() {
+            queue.push(crate::audio::Sfx::HitTick, None, time.elapsed_secs_f64());
+        }
     }
     let r = &summary.results;
     let best = summary.best.as_ref();
@@ -456,15 +547,28 @@ fn update_results(
             RunUi::ResultsWave => set_text(&mut t, scratch, |s| {
                 let _ = write!(s, "WAVE {}", r.wave);
             }),
-            RunUi::ResultsScore => set_text(&mut t, scratch, |s| write_thousands(s, r.score)),
+            RunUi::StartedAt => set_text(&mut t, scratch, |s| {
+                let _ = write!(
+                    s,
+                    "STARTED AT WAVE {} \u{b7} NOT RANKED",
+                    summary.start_wave
+                );
+            }),
+            RunUi::ResultsScore => {
+                set_text(&mut t, scratch, |s| write_thousands(s, counted(r.score, k)))
+            }
             RunUi::ResultsEliminations => set_text(&mut t, scratch, |s| {
-                let _ = write!(s, "{}", r.eliminations);
+                let _ = write!(s, "{}", counted(r.eliminations, k));
             }),
-            RunUi::ResultsAccuracy => set_text(&mut t, scratch, |s| write_accuracy(s, r.accuracy)),
+            RunUi::ResultsAccuracy => {
+                set_text(&mut t, scratch, |s| write_accuracy(s, r.accuracy * k))
+            }
             RunUi::ResultsHeadshots => set_text(&mut t, scratch, |s| {
-                let _ = write!(s, "{}", r.headshots);
+                let _ = write!(s, "{}", counted(r.headshots, k));
             }),
-            RunUi::ResultsTime => set_text(&mut t, scratch, |s| write_run_time(s, r.run_seconds)),
+            RunUi::ResultsTime => {
+                set_text(&mut t, scratch, |s| write_run_time(s, r.run_seconds * k))
+            }
             RunUi::BestWave => set_text(&mut t, scratch, |s| match best {
                 Some(b) => {
                     let _ = write!(s, "{}", b.wave);
@@ -586,6 +690,22 @@ mod tests {
             }
         }
         assert!(saw_ink, "an ink rim");
+    }
+
+    #[test]
+    fn the_numbers_count_up_then_land_exactly() {
+        assert_eq!(counted(650, count_up(0.0)), 0);
+        let mid = counted(650, count_up(COUNT_SECONDS * 0.3));
+        assert!((100..650).contains(&mid), "{mid}");
+        assert_eq!(counted(650, count_up(COUNT_SECONDS)), 650);
+        assert_eq!(counted(650, count_up(30.0)), 650);
+        let mut last = 0;
+        for i in 0..=110 {
+            let v = counted(9_999, count_up(i as f32 * 0.01));
+            assert!(v >= last, "never counts down");
+            last = v;
+        }
+        assert!(BURST_DELAY > COUNT_SECONDS, "NEW BEST! after the count");
     }
 
     #[test]

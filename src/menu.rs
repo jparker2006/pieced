@@ -22,13 +22,17 @@
 //!   Reset to defaults. The input adapter does the capture (`input.rs` stays
 //!   the only device reader).
 
+pub mod blur;
 mod controls;
+pub mod loading;
 pub mod main_menu;
+pub mod motion;
 mod panel;
 mod pause;
+pub mod preview;
 
 pub use controls::{ControlsButton, ControlsStatus, KeyChip};
-pub use main_menu::{HeroCamera, LastPlay, MainMenuButton, hero_eye};
+pub use main_menu::{HeroCamera, LastPlay, MainMenuButton, StartWaveChoice, hero_eye};
 pub use pause::PauseButton;
 
 use crate::{render::QualityPreset, scenario::ScenarioRun, shared::AppState, tuning::Tuning};
@@ -115,6 +119,8 @@ pub enum Setting {
     Bloom,
     DamageNumbers,
     CameraShake,
+    /// The camera's feel (M4, D108): FOV kicks, dip, tilt, nudge.
+    CameraEffects,
     Volume,
     /// The score's level (M4).
     Music,
@@ -141,7 +147,7 @@ pub enum SettingKind {
 const SENSITIVITY_DISPLAY: f32 = 1000.0;
 
 impl Setting {
-    pub const ALL: [Setting; 15] = [
+    pub const ALL: [Setting; 16] = [
         Setting::Sensitivity,
         Setting::AdsMultiplier,
         Setting::BuildMultiplier,
@@ -151,6 +157,7 @@ impl Setting {
         Setting::Bloom,
         Setting::DamageNumbers,
         Setting::CameraShake,
+        Setting::CameraEffects,
         Setting::Volume,
         Setting::Music,
         Setting::Effects,
@@ -170,6 +177,7 @@ impl Setting {
             Setting::Bloom => "Crosshair bloom",
             Setting::DamageNumbers => "Damage numbers",
             Setting::CameraShake => "Camera shake",
+            Setting::CameraEffects => "Camera effects",
             Setting::Volume => "Master volume",
             Setting::Music => "Music",
             Setting::Effects => "Effects",
@@ -201,7 +209,11 @@ impl Setting {
                 max: 90.0,
                 step: 1.0,
             },
-            Setting::CameraShake | Setting::Volume | Setting::Music | Setting::Effects => {
+            Setting::CameraShake
+            | Setting::CameraEffects
+            | Setting::Volume
+            | Setting::Music
+            | Setting::Effects => {
                 SettingKind::Slider {
                     min: 0.0,
                     max: 1.0,
@@ -231,6 +243,7 @@ impl Setting {
             Setting::Bloom => flag(t.hud.show_bloom),
             Setting::DamageNumbers => flag(t.hud.damage_numbers),
             Setting::CameraShake => t.feedback.camera_shake,
+            Setting::CameraEffects => t.feedback.camera_effects,
             Setting::Volume => t.audio.master_volume,
             Setting::Music => t.audio.music_volume,
             Setting::Effects => t.audio.effects_volume,
@@ -274,6 +287,7 @@ impl Setting {
             Setting::Bloom => t.hud.show_bloom = on,
             Setting::DamageNumbers => t.hud.damage_numbers = on,
             Setting::CameraShake => t.feedback.camera_shake = value,
+            Setting::CameraEffects => t.feedback.camera_effects = value,
             Setting::Volume => t.audio.master_volume = value,
             Setting::Music => t.audio.music_volume = value,
             Setting::Effects => t.audio.effects_volume = value,
@@ -313,7 +327,11 @@ impl Setting {
             Setting::Sensitivity => format!("{v:.2}"),
             Setting::AdsMultiplier | Setting::BuildMultiplier => format!("{v:.2}x"),
             Setting::Fov => format!("{v:.0}"),
-            Setting::CameraShake | Setting::Volume | Setting::Music | Setting::Effects => {
+            Setting::CameraShake
+            | Setting::CameraEffects
+            | Setting::Volume
+            | Setting::Music
+            | Setting::Effects => {
                 format!("{:.0}%", v * 100.0)
             }
             _ => match self.kind() {
@@ -530,5 +548,11 @@ impl Plugin for MenuUiPlugin {
         pause::build(app);
         controls::build(app);
         main_menu::build(app);
+        // M4 chunk 5: menu motion, the pause blur, the loading screen's bar
+        // and tips, and the settings' live previews.
+        motion::build(app);
+        blur::build(app);
+        loading::build(app);
+        preview::build(app);
     }
 }

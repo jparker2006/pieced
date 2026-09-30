@@ -1191,8 +1191,8 @@ pub fn prune_sessions(
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct WaveRecord {
     pub seed: u64,
-    /// The wave the run was first seen on: 1 until "start at wave" lands
-    /// (M4 chunk 5, D115), which starts runs at 6 or 10.
+    /// The wave the run started on (D115: 1, 6 or 10), as the game reports
+    /// it (the first wave seen, from writers that don't say).
     pub start_wave: u32,
     /// The highest wave the run reached.
     pub max_wave: u32,
@@ -1207,13 +1207,28 @@ pub struct WaveLog {
 impl WaveLog {
     /// Takes the current run's seed and wave: a new seed starts a record.
     pub fn observe(&mut self, seed: u64, wave: u32) {
+        self.observe_run(seed, None, wave);
+    }
+
+    /// [`observe`](WaveLog::observe) with the run's starting wave when the
+    /// game knows it (D115): a run started at wave 6 is recorded as
+    /// starting there and counts as reaching wave 6 (A7).
+    pub fn observe_run(&mut self, seed: u64, start_wave: Option<u32>, wave: u32) {
         match self.runs.last_mut() {
-            Some(run) if run.seed == seed => run.max_wave = run.max_wave.max(wave),
-            _ => self.runs.push(WaveRecord {
-                seed,
-                start_wave: wave,
-                max_wave: wave,
-            }),
+            Some(run) if run.seed == seed => {
+                run.max_wave = run.max_wave.max(wave);
+                if let Some(start) = start_wave {
+                    run.start_wave = start;
+                }
+            }
+            _ => {
+                let start = start_wave.unwrap_or(wave);
+                self.runs.push(WaveRecord {
+                    seed,
+                    start_wave: start,
+                    max_wave: wave.max(start),
+                });
+            }
         }
     }
 
@@ -1226,7 +1241,7 @@ impl WaveLog {
         json!({
             "max_wave": self.max_wave(),
             "runs": self.runs,
-            "note": "start_wave is the wave each Waves run was first seen on (1 until start-at-wave, M4 chunk 5); A7 needs max_wave >= 6",
+            "note": "start_wave is the wave each Waves run started on (D115: 1, 6 or 10); A7 needs max_wave >= 6 (a start-at-wave run counts)",
         })
     }
 }
@@ -1292,9 +1307,11 @@ enum Msg {
     Finish(SyncSender<SessionOutcome>),
     /// A mode started from the main menu: Play → controllable (chunk 5).
     Play(PlayRecord),
-    /// The current Waves run's seed and wave (sent when either changes).
+    /// The current Waves run's seed, starting wave (when known) and wave
+    /// (sent when either changes).
     Wave {
         seed: u64,
+        start: Option<u32>,
         wave: u32,
     },
 }
@@ -1360,13 +1377,45 @@ impl SessionWriter {
     /// Records the current Waves run's seed and wave. Never blocks: returns
     /// false when the channel was full (the caller sends it again later).
     pub fn record_wave(&self, seed: u64, wave: u32) -> bool {
-        self.tx.try_send(Msg::Wave { seed, wave }).is_ok()
+        self.tx
+            .try_send(Msg::Wave {
+                seed,
+                start: None,
+                wave,
+            })
+            .is_ok()
+    }
+
+    /// Records the current Waves run's seed, starting wave (D115) and wave.
+    /// Never blocks, like [`record_wave`](SessionWriter::record_wave).
+    pub fn record_run_wave(&self, seed: u64, start_wave: u32, wave: u32) -> bool {
+        self.tx
+            .try_send(Msg::Wave {
+                seed,
+                start: Some(start_wave),
+                wave,
+            })
+            .is_ok()
+    }
+
+    /// [`record_run_wave`](SessionWriter::record_run_wave), waiting for room
+    /// (tools and tests).
+    pub fn record_run_wave_wait(&self, seed: u64, start_wave: u32, wave: u32) {
+        let _ = self.tx.send(Msg::Wave {
+            seed,
+            start: Some(start_wave),
+            wave,
+        });
     }
 
     /// [`record_wave`](SessionWriter::record_wave), waiting for room (tools
     /// and tests).
     pub fn record_wave_wait(&self, seed: u64, wave: u32) {
-        let _ = self.tx.send(Msg::Wave { seed, wave });
+        let _ = self.tx.send(Msg::Wave {
+            seed,
+            start: None,
+            wave,
+        });
     }
 
     pub fn set_preset(&self, preset: String, graphics: String, battery: bool) {
@@ -1422,7 +1471,7 @@ fn run_writer(config: WriterConfig, rx: Receiver<Msg>, dropped: Arc<AtomicU64>) 
                 state.plays.push(record);
                 state.write_json(false);
             }
-            Ok(Msg::Wave { seed, wave }) => state.waves.observe(seed, wave),
+            Ok(Msg::Wave { seed, start, wave }) => state.waves.observe_run(seed, start, wave),
             Ok(Msg::Preset {
                 preset,
                 graphics,
@@ -1941,7 +1990,7 @@ fn track_wave(
         return;
     }
     let now = (run.seed, run.wave);
-    if log.wave != Some(now) && log.writer.record_wave(now.0, now.1) {
+    if log.wave != Some(now) && log.writer.record_run_wave(now.0, run.start_wave, now.1) {
         log.wave = Some(now);
     }
 }
