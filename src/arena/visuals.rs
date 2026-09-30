@@ -17,14 +17,15 @@
 mod barrier;
 mod geo;
 pub mod island;
+pub mod living;
 mod scenery;
 mod target;
 pub mod wand;
 
 pub use barrier::{BarrierMaterial, BarrierSide, REVEAL_END, barrier_reveal};
 pub use scenery::{
-    CLOSE_EDGE_Z, EDGE_CLEARANCE, EdgeSample, FLOOR_CLUTTER_MAX_HEIGHT, Island, MIN_MARGIN,
-    edge_distance, inside_rim, outline, sun_direction,
+    CLOSE_EDGE_Z, CLOUD_SECTORS, EDGE_CLEARANCE, EdgeSample, FLOOR_CLUTTER_MAX_HEIGHT, Island,
+    MIN_MARGIN, bake_sway, edge_distance, inside_rim, outline, sun_direction, sway_weight,
 };
 pub use target::{
     FIGURE_SHADOW_RADIUS, KNIGHT_GATE, TargetFigure, TargetFigurePlugin, animate_knights,

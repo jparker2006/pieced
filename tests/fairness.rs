@@ -947,6 +947,9 @@ fn fairness_run(seed: u64, wave: u32, max_seconds: f32) -> Counts {
     *sim.world_mut().get_mut::<Health>(p).unwrap() = health;
     DamageArrowTracking::install(&mut sim.app);
     WandWarningTracking::install(&mut sim.app);
+    // The knights' barks (M4 chunk 6) run too: no bark may sound over an
+    // off-screen warning.
+    pieced::audio::barks::KnightVoiceTracking::install(&mut sim.app);
     let max_hp = sim.world().resource::<Tuning>().combat.max_hp;
     let max_shield = sim.world().resource::<Tuning>().combat.max_shield;
     sim.app
@@ -974,6 +977,33 @@ fn fairness_run(seed: u64, wave: u32, max_seconds: f32) -> Counts {
         sim.tick();
     }
     let run = sim.world().resource::<Run>().clone();
+    let barks = sim
+        .world()
+        .resource::<pieced::audio::barks::BarkLog>()
+        .clone();
+    let guard = pieced::audio::barks::WARNING_GUARD;
+    for w in &barks.warnings {
+        for b in barks.barks.iter().chain(&barks.cut) {
+            let cut = barks
+                .cut
+                .iter()
+                .find(|c| c.knight == b.knight && c.start == b.start)
+                .map_or(b.end, |c| c.end);
+            assert!(
+                cut <= *w || b.start >= w + guard,
+                "seed {seed}: a {:?} bark ({:.2}..{cut:.2}) sounds over the warning at {w:.2}",
+                b.bark,
+                b.start
+            );
+        }
+    }
+    println!(
+        "  seed {seed:>2} wave {wave:>2}: {} barks ({} cut by warnings), {} warnings, {} knight steps",
+        barks.barks.len(),
+        barks.cut.len(),
+        barks.warnings.len(),
+        barks.steps.len()
+    );
     let mut c = sim.world_mut().resource_mut::<Audit>().c.clone();
     c.runs = 1;
     c.waves_cleared = u32::from(cleared);

@@ -289,6 +289,7 @@ impl Plugin for FarMotionPlugin {
                         super::magic::drift_motes,
                         super::magic::shimmer_galaxy,
                         super::magic::fly_shooting_stars,
+                        super::birds::fly_birds,
                     ),
                 )
                     .chain()

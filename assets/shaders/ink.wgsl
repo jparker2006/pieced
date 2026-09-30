@@ -8,9 +8,10 @@
 
 #import bevy_pbr::{
     mesh_functions::{get_world_from_local, mesh_normal_local_to_world, mesh_position_local_to_world},
-    mesh_view_bindings::view,
+    mesh_view_bindings::{globals, view},
     view_transformations::position_world_to_clip,
 }
+#import pieced::wind::wind_sway
 
 #ifdef TONEMAP_IN_SHADER
 #import bevy_core_pipeline::tonemapping::tone_mapping
@@ -26,6 +27,8 @@ struct Ink {
     derive: vec4<f32>,
     // x: taper start m, y: width kept at the fade start.
     taper: vec4<f32>,
+    // The surface's wind sway (wind.wgsl), so the ink moves with it.
+    sway: vec4<f32>,
 }
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0) var<uniform> ink: Ink;
@@ -34,6 +37,9 @@ struct Vertex {
     @builtin(instance_index) instance_index: u32,
     @location(0) position: vec3<f32>,
     @location(1) outline_normal: vec3<f32>,
+#ifdef INK_NORMALS
+    @location(2) normal: vec3<f32>,
+#endif
 #ifdef INK_VERTEX_COLORS
     @location(5) color: vec4<f32>,
 #endif
@@ -57,7 +63,13 @@ fn derived_ink(c: vec3<f32>) -> vec3<f32> {
 @vertex
 fn vertex(v: Vertex) -> VertexOutput {
     let world_from_local = get_world_from_local(v.instance_index);
-    let world = mesh_position_local_to_world(world_from_local, vec4<f32>(v.position, 1.0));
+    var world = mesh_position_local_to_world(world_from_local, vec4<f32>(v.position, 1.0));
+    var normal_length = 1.0;
+#ifdef INK_NORMALS
+    normal_length = length(v.normal);
+#endif
+    let offset = wind_sway(ink.sway, globals.time, v.position, normal_length, world.xyz, world_from_local[3].xyz);
+    world = vec4<f32>(world.xyz + offset, world.w);
     // The outline normal's length is its miter (see smooth_outline_normals):
     // width × miter pushes every face meeting at this corner out by `width`.
     let miter = clamp(length(v.outline_normal), 1.0, 2.0);

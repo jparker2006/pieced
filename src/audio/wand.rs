@@ -117,7 +117,7 @@ struct View {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn queue_wand_sounds(
+pub(crate) fn queue_wand_sounds(
     time: Res<Time<Real>>,
     fov: Option<Res<CurrentFov>>,
     camera: Option<Single<&GlobalTransform, With<MainCamera>>>,

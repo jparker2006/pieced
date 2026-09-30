@@ -223,7 +223,10 @@ pub struct Island {
     /// (outlined; no collision; see [`EDGE_COVER`]).
     pub edge_bushes: Geo,
     /// Soft cartoon clouds below the rim and around the far islands (the far
-    /// layer's unlit material), per sector of the sky.
+    /// layer's unlit material): the first [`CLOUD_SECTORS`] are the drifting
+    /// sea (the banks under the rim and the horizon band), per sector of the
+    /// sky; the last holds the clouds anchored under the station and the far
+    /// islands, which only bob (M4 chunk 6).
     pub clouds: Vec<Geo>,
     /// Trees, big rocks and stumps on the margin.
     pub decor: Vec<Decor>,
@@ -838,9 +841,10 @@ fn tuft(geo: &mut Geo, at: Vec3, height: f32, rng: &mut Rng) {
         let lean = out * h * rng.range(0.3, 0.6);
         let base = at + out * w * 0.25;
         let top = base + lean + Vec3::Y * h;
+        // The tip carries a sway weight of 1, the root 0 ([`bake_sway`]).
         geo.tri_raw(
             [base - side * w * 0.5, base + side * w * 0.5, top],
-            [up; 3],
+            [up, up, up * 2.0],
             [root, root, shade(tip, rng.range(0.96, 1.12))],
         );
     }
@@ -936,6 +940,32 @@ fn bush(geo: &mut Geo, at: Vec3, size: f32, rng: &mut Rng) {
 }
 
 fn bush_of(geo: &mut Geo, at: Vec3, size: f32, ring: usize, rng: &mut Rng) {
+    let first = geo.positions.len();
+    bush_puffs(geo, at, size, ring, rng);
+    // Sway weights (M4 chunk 6): rooted at the ground, the crown swaying.
+    bake_sway(geo, first, |p| {
+        (((p.y - at.y) / (size * 1.35)).clamp(0.0, 1.0)).powf(1.5)
+    });
+}
+
+/// Bakes wind-sway weights (`look::wind::SwayWeight::Baked`) into the
+/// normals of the vertices from `first` on: each normal's length becomes
+/// 1 + its weight (0 rooted, 1 swaying fully). Shading normalizes normals,
+/// so only the sway reads the length.
+pub fn bake_sway(geo: &mut Geo, first: usize, weight: impl Fn(Vec3) -> f32) {
+    for i in first..geo.positions.len() {
+        let w = weight(Vec3::from_array(geo.positions[i])).clamp(0.0, 1.0);
+        let n = Vec3::from_array(geo.normals[i]).normalize_or(Vec3::Y);
+        geo.normals[i] = (n * (1.0 + w)).to_array();
+    }
+}
+
+/// The sway weight baked into a vertex normal (see [`bake_sway`]).
+pub fn sway_weight(normal: [f32; 3]) -> f32 {
+    (Vec3::from_array(normal).length() - 1.0).clamp(0.0, 1.0)
+}
+
+fn bush_puffs(geo: &mut Geo, at: Vec3, size: f32, ring: usize, rng: &mut Rng) {
     let leaf = lin(cartoon::FOLIAGE);
     let flank = lin(cartoon::FOLIAGE_LIGHT);
     let sun = lin(cartoon::GRASS_LIGHT);
@@ -1067,6 +1097,13 @@ fn bushes(outline: &[EdgeSample], decor: &[Decor], rng: &mut Rng) -> Vec<Geo> {
 /// `petal` round a raised `centre` (white daisies, yellow buttercups, pink
 /// blossoms). 13 triangles.
 fn flower(geo: &mut Geo, at: Vec3, size: f32, petal: Rgba, centre: Rgba, rng: &mut Rng) {
+    let first = geo.positions.len();
+    flower_head(geo, at, size, petal, centre, rng);
+    // The head nods on its (unseen) stem as one (M4 chunk 6).
+    bake_sway(geo, first, |_| 0.8);
+}
+
+fn flower_head(geo: &mut Geo, at: Vec3, size: f32, petal: Rgba, centre: Rgba, rng: &mut Rng) {
     let tip_dir = rng.range(0.0, TAU);
     let up = Quat::from_axis_angle(
         Vec3::new(tip_dir.cos(), 0.0, tip_dir.sin()),
@@ -1455,7 +1492,7 @@ fn cloud(geo: &mut Geo, centre: Vec3, radius: f32, puffs: usize, segments: usize
 const STATION_CLOUD_DROP: f32 = 110.0;
 
 /// Sky sectors the clouds are split into (for culling).
-const CLOUD_SECTORS: usize = 8;
+pub const CLOUD_SECTORS: usize = 8;
 
 fn sector(p: Vec3) -> usize {
     let a = p.x.atan2(-p.z).rem_euclid(TAU);
@@ -1469,15 +1506,20 @@ fn sector(p: Vec3) -> usize {
 /// Nothing rises above the island top near it, so no cloud ever sits on the
 /// grass or in front of the far view's landmarks.
 fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
-    let mut geo = vec![Geo::default(); CLOUD_SECTORS];
-    fn put(geo: &mut [Geo], c: Vec3, r: f32, puffs: usize, rng: &mut Rng) {
+    let mut geo = vec![Geo::default(); CLOUD_SECTORS + 1];
+    fn put_in(geo: &mut [Geo], slot: Option<usize>, c: Vec3, r: f32, puffs: usize, rng: &mut Rng) {
         let yaw = rng.range(0.0, TAU);
         let mut one = Geo::default();
         let segments = if c.xz().length() < 90.0 { 10 } else { 8 };
         cloud(&mut one, Vec3::ZERO, r, puffs, segments, rng);
         let t = Transform::from_translation(c).with_rotation(Quat::from_rotation_y(yaw));
-        geo[sector(c)].append(&one, &t);
+        geo[slot.unwrap_or_else(|| sector(c))].append(&one, &t);
     }
+    fn put(geo: &mut [Geo], c: Vec3, r: f32, puffs: usize, rng: &mut Rng) {
+        put_in(geo, None, c, r, puffs, rng);
+    }
+    // The station's and far islands' clouds stay under them.
+    let anchored = Some(CLOUD_SECTORS);
     // Banks under the rim, evenly round the island.
     let banks = 22;
     for k in 0..banks {
@@ -1502,7 +1544,7 @@ fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
             + side * across
             + toward * rng.range(120.0, 170.0)
             + Vec3::Y * (station.y - STATION_CLOUD_DROP + rng.range(-20.0, 15.0));
-        put(&mut geo, c, rng.range(45.0, 65.0), 5, rng);
+        put_in(&mut geo, anchored, c, rng.range(45.0, 65.0), 5, rng);
     }
     // Round the far islands' undersides.
     for island in &far.islands {
@@ -1511,7 +1553,7 @@ fn clouds(outline: &[EdgeSample], rng: &mut Rng) -> Vec<Geo> {
         let out = p.with_y(0.0).normalize_or(Vec3::Z);
         let side = out.cross(Vec3::Y);
         let c = p - Vec3::Y * 30.0 * s + side * rng.range(-8.0, 8.0) * s + out * 6.0 * s;
-        put(&mut geo, c, rng.range(17.0, 24.0) * s, 5, rng);
+        put_in(&mut geo, anchored, c, rng.range(17.0, 24.0) * s, 5, rng);
     }
     // A low band far out, at the horizon.
     for k in 0..12 {
@@ -1754,7 +1796,7 @@ mod tests {
     #[test]
     fn clouds_hang_below_the_island_and_clear_of_the_arena() {
         let island = generated();
-        assert_eq!(island.clouds.len(), CLOUD_SECTORS);
+        assert_eq!(island.clouds.len(), CLOUD_SECTORS + 1);
         let mut total = 0;
         let outline = outline();
         for v in island.clouds.iter().flat_map(|g| g.vertices()) {

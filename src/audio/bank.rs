@@ -113,6 +113,15 @@ pub const KILL_CONFIRM: CueSpec = spec(0.55, -11.0);
 pub const HELMET_DING: CueSpec = spec(0.65, -11.0);
 pub const ARMOR_CLATTER: CueSpec = spec(0.36, -12.0);
 pub const MULTI_KILL: CueSpec = spec(0.95, -11.0);
+// The knights' voices and steps (M4 chunk 6, D123).
+pub const BARK_HUP: CueSpec = spec(0.24, -11.0);
+pub const BARK_TAUNT: CueSpec = spec(0.64, -11.0);
+pub const BARK_YELP: CueSpec = spec(0.30, -11.0);
+pub const BARK_HOO_HAH: CueSpec = spec(0.72, -10.0);
+pub const BARK_WHAAA: CueSpec = spec(1.0, -10.0);
+pub const KNIGHT_STEP: CueSpec = spec(0.18, -12.0);
+// The ambience's one-shots (M4 chunk 6).
+pub const BIRDSONG: CueSpec = spec(1.2, -10.0);
 
 /// Clatter takes (round-robin) and multi-kill sting levels (double .. rampage).
 pub const CLATTER_VARIANTS: u32 = 3;
@@ -122,6 +131,9 @@ pub const MULTI_KILL_LEVELS: u32 = 4;
 /// second; footsteps never stop), so repeats never sound machine-gunned.
 pub const RIFLE_VARIANTS: u32 = 3;
 pub const FOOTSTEP_VARIANTS: u32 = 3;
+/// Takes of each knight step (per surface) and of the birdsong.
+pub const KNIGHT_STEP_VARIANTS: u32 = 3;
+pub const BIRDSONG_VARIANTS: u32 = 4;
 
 // ---------------------------------------------------------------------------
 // Building blocks
@@ -1666,4 +1678,122 @@ pub fn multi_kill(level: u32) -> Vec<f32> {
         540 + u64::from(level),
     );
     b.master(MULTI_KILL.rms_db)
+}
+
+// ---------------------------------------------------------------------------
+// The knights' steps (M4 chunk 6, D123)
+// ---------------------------------------------------------------------------
+
+/// What a knight's boot lands on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum StepSurface {
+    Grass,
+    /// Floors and ramps.
+    Wood,
+    /// Wall tops.
+    Brick,
+}
+
+/// A knight's step, take `variant`: a small armored boot landing, heavier and
+/// clinkier than the player's. On grass a soft thud and a swish of blades, on
+/// wood a hollow knock, on brick a dull gritty tap; every step carries a faint
+/// jingle of his armor, so knights are told apart from the player's own steps.
+pub fn knight_step(surface: StepSurface, variant: u32) -> Vec<f32> {
+    let v = variant % KNIGHT_STEP_VARIANTS;
+    let k = [1.0, 1.08, 0.93][v as usize];
+    let seed = 700 + 10 * u64::from(v) + 100 * surface as u64;
+    let mut b = Buffer::new(0.17);
+    match surface {
+        StepSurface::Grass => {
+            thump(&mut b, 0.0, 150.0 * k, 240.0 * k, 0.01, 0.022, 0.5);
+            noise_bp(
+                &mut b,
+                0.0,
+                0.13,
+                0.5,
+                seed,
+                0.9,
+                |t| k * (3000.0 - 9000.0 * t),
+                |t| ad(t, 0.004, 0.03),
+            );
+        }
+        StepSurface::Wood => {
+            click(&mut b, 0.0, 2400.0 * k, 1.6, 0.0008, 0.5, seed);
+            partials(
+                &mut b,
+                0.0,
+                &[
+                    (300.0 * k, 1.0, 0.03),
+                    (720.0 * k, 0.45, 0.02),
+                    (1150.0 * k, 0.2, 0.012),
+                ],
+                0.8,
+            );
+        }
+        StepSurface::Brick => {
+            thump(&mut b, 0.0, 140.0 * k, 220.0 * k, 0.008, 0.018, 0.6);
+            noise_bp(
+                &mut b,
+                0.0,
+                0.08,
+                1.2,
+                seed,
+                2.0,
+                |_| 900.0 * k,
+                |t| ad(t, 0.001, 0.012),
+            );
+            crackle(&mut b, 0.002, 0.03, 5, 0.12, 2800.0, seed + 1);
+        }
+    }
+    // The armor's jingle: two tiny metal partials a hair after the boot.
+    let f = 2200.0 * k;
+    partials(
+        &mut b,
+        0.012,
+        &[(f, 0.18, 0.02), (f * 1.53, 0.1, 0.014)],
+        1.0,
+    );
+    b.master(KNIGHT_STEP.rms_db)
+}
+
+// ---------------------------------------------------------------------------
+// Birdsong (the ambience, M4 chunk 6)
+// ---------------------------------------------------------------------------
+
+/// A little songbird near the trees, take `variant`: a short phrase of quick
+/// chirps (fast downward sweeps with a warble) on a bright pentatonic,
+/// different in each take (a two-note "tee-oo", a trill, a rising
+/// three-chirp call, a chatter).
+pub fn birdsong(variant: u32) -> Vec<f32> {
+    let v = variant % BIRDSONG_VARIANTS;
+    let mut b = Buffer::new(1.1);
+    let mut r = Noise::new(900 + u64::from(v));
+    // (start, length, from Hz, to Hz)
+    let chirps: Vec<(f32, f32, f32, f32)> = match v {
+        0 => vec![(0.0, 0.14, 4200.0, 3600.0), (0.2, 0.22, 3500.0, 2600.0)],
+        1 => (0..9)
+            .map(|i| (i as f32 * 0.055, 0.04, 5200.0, 4300.0))
+            .collect(),
+        2 => vec![
+            (0.0, 0.07, 3000.0, 3400.0),
+            (0.12, 0.07, 3400.0, 3900.0),
+            (0.24, 0.12, 3900.0, 4700.0),
+        ],
+        _ => (0..6)
+            .map(|i| (i as f32 * 0.09, 0.05, 4600.0 - 150.0 * i as f32, 3800.0))
+            .collect(),
+    };
+    for (start, len, from, to) in chirps {
+        let mut o = Osc::default();
+        let jitter = r.range(0.97, 1.03);
+        let (mut warble, mut flutter, mut o2) = (Osc::default(), Osc::default(), Osc::default());
+        b.add(start, len + 0.01, 0.6, |t| {
+            let x = (t / len).min(1.0);
+            let f = (from + (to - from) * x) * jitter * (1.0 + 0.04 * warble.sine(38.0));
+            // The syrinx's flutter: a fast, deep tremolo, and a bright overtone.
+            let am = 0.5 + 0.5 * flutter.sine(70.0);
+            (o.sine(f) + 0.3 * o2.sine(2.0 * f)) * am * attack(t, 0.006) * release(t, len, 0.015)
+        });
+    }
+    b.master(BIRDSONG.rms_db)
 }

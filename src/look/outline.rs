@@ -32,6 +32,7 @@
 use super::{
     settings::{LookSettings, OutlineBackend},
     toon::ToonMaterial,
+    wind::Sway,
 };
 use crate::render::{MainCamera, VIEWMODEL_LAYER, WorldTarget};
 use bevy::{
@@ -293,6 +294,8 @@ pub struct InkMaterial {
     /// (times the vertex color) when not `fixed`.
     pub color: Color,
     pub fixed: bool,
+    /// Its surface's wind sway (M4 chunk 6), so the ink moves with it.
+    pub sway: Sway,
 }
 
 #[derive(Clone, Copy, Default, ShaderType)]
@@ -306,6 +309,8 @@ pub struct InkUniform {
     derive: Vec4,
     /// x: taper start m, y: width kept at the fade start.
     taper: Vec4,
+    /// The surface's sway (see `wind.wgsl`).
+    sway: Vec4,
 }
 
 impl From<&InkMaterial> for InkUniform {
@@ -316,6 +321,7 @@ impl From<&InkMaterial> for InkUniform {
             params: Vec4::new(m.width_px, FADE_START, FADE_END, REFERENCE_HEIGHT_PX),
             derive: Vec4::new(INK_SATURATION, INK_DARKNESS, INK_MAX_LUMINANCE, 0.0),
             taper: Vec4::new(TAPER_START, TAPER_KEEP, 0.0, 0.0),
+            sway: m.sway.to_vec4(),
         }
     }
 }
@@ -346,8 +352,14 @@ impl Material for InkMaterial {
         let mut attributes = vec![Mesh::ATTRIBUTE_POSITION.at_shader_location(0)];
         // Meshes without outline normals fall back to their own normals (which
         // crack at hard edges; prefer `with_outline_normals`).
+        let mut normals = false;
         if layout.0.contains(ATTRIBUTE_OUTLINE_NORMAL) {
             attributes.push(ATTRIBUTE_OUTLINE_NORMAL.at_shader_location(1));
+            // The surface's own normals carry baked sway weights.
+            if layout.0.contains(Mesh::ATTRIBUTE_NORMAL) {
+                attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(2));
+                normals = true;
+            }
         } else {
             attributes.push(Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
         }
@@ -361,6 +373,9 @@ impl Material for InkMaterial {
                 .vertex
                 .shader_defs
                 .push("INK_VERTEX_COLORS".into());
+        }
+        if normals {
+            descriptor.vertex.shader_defs.push("INK_NORMALS".into());
         }
         descriptor.primitive.cull_mode = Some(Face::Front);
         Ok(())
@@ -379,7 +394,7 @@ pub struct OutlineHullLink(pub Entity);
 
 /// Shared ink materials, keyed by (width bits, color bits, fixed).
 #[derive(Resource, Debug, Default)]
-pub(crate) struct InkMaterials(HashMap<(u32, [u32; 4], bool), Handle<InkMaterial>>);
+pub(crate) struct InkMaterials(HashMap<(u32, [u32; 4], bool, [u32; 4]), Handle<InkMaterial>>);
 
 impl InkMaterials {
     fn get(
@@ -392,6 +407,7 @@ impl InkMaterials {
             material.width_px.to_bits(),
             [c.red, c.green, c.blue, c.alpha].map(f32::to_bits),
             material.fixed,
+            material.sway.to_vec4().to_array().map(f32::to_bits),
         );
         self.0
             .entry(key)
@@ -406,18 +422,20 @@ fn ink_for(
     surface: Option<&MeshMaterial3d<ToonMaterial>>,
     toon: &Assets<ToonMaterial>,
 ) -> InkMaterial {
+    let surface = surface.and_then(|m| toon.get(&m.0));
+    let sway = surface.map_or(Sway::OFF, |m| m.sway);
     match outline.color {
         Some(color) => InkMaterial {
             width_px: outline.width_px,
             color,
             fixed: true,
+            sway,
         },
         None => InkMaterial {
             width_px: outline.width_px,
-            color: surface
-                .and_then(|m| toon.get(&m.0))
-                .map_or(Color::WHITE, |m| m.base_color),
+            color: surface.map_or(Color::WHITE, |m| m.base_color),
             fixed: false,
+            sway,
         },
     }
 }
