@@ -56,7 +56,7 @@ const LINE_SIZE: f32 = 34.0;
 const OUTLINE: f32 = 5.0;
 const EXTRUDE: f32 = 8.0;
 /// Rays in the sunburst.
-const RAYS: usize = 18;
+const RAYS: usize = 22;
 /// What the banner shows during Boot (every digit, so the glyphs are cached).
 const WARM_TITLE: &str = "WAVE 0123456789";
 const WARM_LINE: &str = "0123456789 KNIGHTS INCOMING";
@@ -231,7 +231,7 @@ fn layer(color: Color, offset: Vec2, shadow: Option<Vec2>) -> impl Bundle {
 fn sunburst() -> BackgroundGradient {
     let mut stops = Vec::with_capacity(RAYS * 4);
     let seg = std::f32::consts::TAU / (RAYS * 2) as f32;
-    let ray = Color::srgba(1.0, 0.84, 0.36, 0.42);
+    let ray = Color::srgba(1.0, 0.86, 0.4, 0.22);
     for i in 0..RAYS {
         let a = (2 * i) as f32 * seg;
         stops.push(AngularColorStop::new(ray, a));
@@ -243,7 +243,7 @@ fn sunburst() -> BackgroundGradient {
         UiPosition::CENTER,
         RadialGradientShape::FarthestSide,
         vec![
-            ColorStop::percent(Color::srgba(1.0, 0.86, 0.45, 0.62), 0.0),
+            ColorStop::percent(Color::srgba(1.0, 0.88, 0.5, 0.7), 0.0),
             ColorStop::percent(Color::srgba(1.0, 0.72, 0.25, 0.28), 45.0),
             ColorStop::percent(Color::srgba(1.0, 0.7, 0.2, 0.0), 100.0),
         ],
