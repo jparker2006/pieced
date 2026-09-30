@@ -364,3 +364,9 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - The still background is now the top priority of chunk 6A, which also gains an **ambient soundscape** (a wind bed following the sway, birdsong, a distant castle choir and bells, lantern crackle, a combat drone).
   - The orchestrator's answer on CoD Zombies: the biggest gap is the in-run economy loop (wall buys, box, perks, doors, special rounds). That's next milestone, and already in the backlog.
 - 2026-09-29: Jake: "once we polish a little more we will move on to the run loop / economy / actual story of the game that will make it much more fun. as it is now i make it to wave 3-5 then die like every time". This is noted in the backlog as the next milestone's direction. No difficulty tuning in M4 (D117).
+- 2026-09-29: **chunk 6A committed on `m4-polish-a`** (`78eff5b`, not merged; the full checks and GPU timing wait for disk).
+  - **Voices and footsteps:** synthesized gibberish knight barks (hup, taunts, 4 yelps, hoo-HAH, whaaaa), with per-knight pitch; footsteps on the run clip's footfalls by surface, from the nearest 3 knights.
+  - **Ambience:** a wind bed that follows the sway gusts, a castle choir and bells, a combat drone, birdsong.
+  - **A living world:** grass, flowers, bushes and tree crowns sway in one travelling gust; the cloud sea circles every 15 min; clouds bob; 4 flocks of birds circle the castle; fuller trees in warm and cool tones.
+  - **Bug found and fixed:** rodio 0.22 gives the far ear the louder share, so every spatial sound (including M3's off-screen wind-up warning) has been playing from the wrong side since M3. The listener's ears are swapped in `src/audio/spatial.rs`, with a test.
+  - **Fairness:** a warning always wins. It cuts every bark, no bark starts within 0.55 s of it, and the fairness suite asserts it.
