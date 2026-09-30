@@ -100,12 +100,7 @@ fn animate_buttons(
     mut clock: ResMut<MenuClock>,
     parents: Query<&ChildOf>,
     children: Query<&Children>,
-    mut buttons: Query<(
-        Entity,
-        &Interaction,
-        &mut MenuMotion,
-        &mut UiTransform,
-    )>,
+    mut buttons: Query<(Entity, &Interaction, &mut MenuMotion, &mut UiTransform)>,
 ) {
     let dt = time.delta_secs();
     let now = (menu.menu_visible(), menu.page, menu.title);
