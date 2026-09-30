@@ -13,7 +13,7 @@ Every number here names its source (session folder or test), the commit, and the
 | A2 Weapons | **PASS** (`3a84e94`) | Merged `3a84e94` from `4d6ccf9`. `tests/viewmodel.rs` has 24 tests: every animation inside its gameplay time, and shots and look bit-identical with and without the kick. The full suite, clippy and fmt are clean (two hud audio tests flaked once and passed on rerun); the gameplay pin passes. Play-test 2 recorded: fun 4, AAA feel 4, "the guns looks super AAA" |
 | A3 Audio and music | **PASS** (`6ca867d`) | Merged `6ca867d` from `bbf0470`: 680 passed, 0 failed. `tests/music.rs` 16, 4 new in `tests/audio.rs`, and a new license audit in `tests/assets.rs`. Clippy, fmt and `build-music.sh --check` (byte-identical) are clean. Five CC BY 4.0 files are credited in `ASSETS.md`, and Jake picked them (D116, D119). Play-test 3 recorded: fun 4, AAA feel 4, "super fun with music" |
 | A4 Knight animation | **PASS** (`5e13cc7`) | Merged `5e13cc7` from `4a44dac`: 709 passed, 0 failed, 22 ignored; clippy, fmt and `build-art --check` clean (the clips export byte-reproducibly). Sampled hitbox fit every 50 ms: body ≤ 9.7 cm (limit 10), helmet ≤ 8.8 cm (D121 limit 9). The wind-up is exactly 0.4 s. Play-test 4 recorded: fun 4, AAA feel 4, "it is really starting to feel like a real game!" |
-| A5 Presentation, building juice and camera | PENDING | |
+| A5 Presentation, building juice and camera | **PASS** (`412b187`) | Merged from `896babc`. Full suite: gameplay_pin 1/1, fairness 1/1, unit 243; waves_ui 15, waves 22, menu 20, building 35, editing 17, camera 2 (the aim ray is bit-identical with every camera effect at 100% and at 0), pieces 5, render_passes 4, assets 5. Clippy and fmt clean. The one exception is a pre-existing flaky chunk 4 test (`knight.rs` rigged-knight test: 2 of 3 fail in-suite, 3 of 3 pass alone), being fixed in chunk 6A |
 | A6 Target board (V1–V8 each ≥ 4) | PENDING | |
 | A7 Performance (wave ≥ 6, battery, Low Power Mode, presented frames) | PENDING (close) | `20260929-215209` (`da732d7`, battery and LPM on every sample, 11 min 18 s): presented mean **16.73** ✓, **99.59% < 18** ✓, but 147 frames > 25 ms ✗, and it reached wave 5, not 6 ✗ |
 | A8 Launch (warm < 5 s ×3; Play → controllable < 1 s) | PENDING | |
@@ -393,3 +393,11 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - Nothing in glox-brain or glox-brain-lab was touched: every Codex worktree turned out to be glox, so all were left alone.
   - Only regenerable caches were cleared: pip, pnpm, Homebrew, node-gyp, the Claude desktop ShipIt, the opencode updater, the Codex app, CodexBar, Antigravity, Spotify, Google. Free disk went from 3.2 to 14 GB.
   - The rule is saved in memory. Chunk 5's builder resumed its final checks at full speed; chunk 6A follows.
+- 2026-09-29: **chunk 5 merged** (`412b187`, from `896babc`). **A5 PASS.**
+  - What's in it:
+    - the V7 banner: gold "WAVE 7" and "15 KNIGHTS INCOMING", clear of the crosshair;
+    - V8 shows the Start at wave chooser;
+    - the rest as described in chunk 5's entry.
+  - Captures are in `docs/evidence/m4/board/round5-presentation/`.
+  - The flaky `tests/knight.rs` rigged-knight test went to chunk 6A to make deterministic (A10 needs 0 failures).
+  - A play build from `main` is building now for Jake (chunk 5).
