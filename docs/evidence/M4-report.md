@@ -29,6 +29,7 @@ Every number here names its source (session folder or test), the commit, and the
 | 3 | Audio and music | `6ca867d` | **4** | **4** | About right | **None** | Nothing named: "super fun with music" | `20260929-063236` (AC power, LPM on, pipelined on; 197 s; wave 3, score 2,400). **Not a clean performance session**: load 10 rising to 43 while headless art work that had started after quiet mode came on kept running |
 | 3b | Interim: art rounds 1–3 and the perf follow-up (pipelined by default) | `da732d7` | **4** | **4** | About right | **None** | "it was super fun the guns looks great!" | `20260929-215209` (battery 25/25, LPM 25/25, builds paused; 678 s counted; wave 5, score 6,250, 32 eliminations, 35 headshots) |
 | 4 | Knight animation and chibi knight | `5e13cc7` | **4** | **4** | About right | **None** | "it is really starting to feel like a real game!" | `20260930-002542` (battery, LPM on; still open when answered; wave 4 in the first run) |
+| 5a | Presentation, start at wave, building juice, camera (chunk 5) | `2482811` | **4.5** | **4** | Not asked | Not asked | Not asked | `20260930-051503` (AC, LPM on; 299 s; wave 4 from a wave-1 start, score 3,800). **Not valid for performance**: load 121 at launch, falling to 12, from the full-speed builds just before |
 | Budget | | | 4.5 | 1.5 | 2.0 | 2.0 | 0.5 | 1.0 | ≤ 12.0 |
 | 2026-09-29 | `da732d7` | `20260929-215209` (battery, LPM, pipelined) | 4.33/5.25 | in world | in world | 0.61/1.32 | 1.58/1.81 | 0.93/1.42 | **7.53/8.68** |
 | 2026-09-29 | `3a22f97` (offscreen, load 8–13) | offscreen full wave, 3 runs, before → after | 4.58/7.79 → 3.84/5.79 | in world | in world | 0.72/1.44 → 0.79/1.69 | 1.50/3.59 → **1.16/1.46** | 1.53/3.30 → **1.02/2.16** | 8.34/13.27 → **6.81/9.36** |
@@ -401,3 +402,6 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - Captures are in `docs/evidence/m4/board/round5-presentation/`.
   - The flaky `tests/knight.rs` rigged-knight test went to chunk 6A to make deterministic (A10 needs 0 failures).
   - A play build from `main` is building now for Jake (chunk 5).
+- 2026-09-29 22:15–22:20: **play-test 5a** (release from `2482811`: chunk 5, without chunk 6). Jake, quoted: "its fun 4.5, 4 AAA feel". That's the first 4.5 on fun; the final verdict (A9) comes after chunk 6.
+  - **Frames are invalid for performance:** AC power, mean 35.65 ms, 7.31% < 18; 74% of spikes in `idle` (the OS starved the game). The load average was **121** at launch, decaying to 12 by 336 s. The GPU pass doubled at p95 (world 10.87, total 18.07), consistent with thermal throttling after full-speed builds on the fanless Air. The 11.5 s cold launch and the 82 ms press latency come from the same cause.
+  - **Lesson:** switch `.fullspeed` off a few minutes before any session meant to count for performance, not just `quiet.sh stop`. (Also in memory.)
