@@ -217,51 +217,93 @@ def puff(bm, centre, radius, squash, segments, bands, seed, lump=0.06):
     return faces
 
 
+# The painted ramp on a crown, darkest first: deep blue-green in the creases
+# and under the crown, cool green on the lower flanks, the leaf greens on the
+# middle, sunlit yellow-green on the upper flanks and a warm sun cap on top.
+CROWN_TONES = ("foliage_shadow", "foliage_cool", "foliage", "foliage_light", "grass_light",
+               "foliage_sun")
+# A face whose light score clears CROWN_CUTS[i] takes CROWN_TONES[i + 1].
+CROWN_CUTS = (-0.85, -0.42, -0.02, 0.3, 0.56)
+
+
+def puff_detail(radius, detail):
+    """(segments, bands) for a puff: bigger puffs get more facets, all scaled by `detail`."""
+    segments = max(9, min(17, round((7.0 + 9.0 * radius) * detail)))
+    return segments, max(6, min(10, round(segments * 0.62)))
+
+
 def crown(root, puffs, seed, budget=1200):
-    """The `Canopy` part: `puffs` = [(centre, radius, squash)], each a smooth ball
-    (17 × 10 facets for the big ones, 14 × 9 for the small: round, painted puffs, not faceted gems).
+    """The `Canopy` part: `puffs` = [(centre, radius, squash)], each a smooth,
+    slightly lumpy ball (up to 17 × 10 facets, fewer for small puffs) in a
+    clustered cloud of cartoon puffs.
 
     A face every corner of which lies inside another puff is hidden for good
-    and dropped. Faces are painted before they are split into triangles, so the
-    colours follow each puff's rings: sunlit `grass_light` caps on each puff's
-    upper side (the painted crowns' lighter tops, strongest high in the crown),
-    `foliage_light` on the upper flanks and `foliage` below; the toon bands and
-    baked AO darken the undersides and the creases between puffs.
+    and dropped. The facet count is stepped down evenly until the crown fits
+    `budget` triangles. Faces are painted before they are split into
+    triangles, so the colours follow each puff's rings, on a six-tone ramp
+    (`CROWN_TONES`) by a light score: up-facing (`normal.z`) and high in the
+    crown reads warm and sunlit, down-facing and low reads cool; each puff is
+    a step lighter or darker than its neighbours, faces near another puff's
+    surface (the creases where puffs meet) are pushed darker, and a small
+    seeded jitter breaks the bands into painted dabs. Warm and cool follow
+    up and down only, so the tree reads the same at any yaw. The baked AO
+    darkens the creases and the underside again on top of the paint.
     """
-    bm = palette.new_bmesh()
-    owners = []
-    for k, (c, rad, squash) in enumerate(puffs):
-        segments, bands = (17, 10) if rad >= 0.93 else (14, 9)
-        for f in puff(bm, c, rad, squash, segments, bands, seed * 97 + k):
-            owners.append((f, k))
-    # A polygonal puff lies inside its sphere; test against a slightly smaller one.
     shells = [(Vector(c), rad * 0.94, squash) for c, rad, squash in puffs]
 
-    def buried(v, own):
-        for j, (c, rad, squash) in enumerate(shells):
-            if j == own:
-                continue
-            d = v.co - c
-            if (d.x * d.x + d.y * d.y) / (rad * rad) + (d.z * d.z) / (rad * rad * squash * squash) < 1.0:
-                return True
-        return False
+    def inside(p, j, scale):
+        c, rad, squash = shells[j]
+        d = p - c
+        r = rad * scale
+        return (d.x * d.x + d.y * d.y) / (r * r) + (d.z * d.z) / (r * r * squash * squash)
 
-    dead = [f for f, k in owners if all(buried(v, k) for v in f.verts)]
-    bmesh.ops.delete(bm, geom=dead, context="FACES")
+    def build(detail):
+        bm = palette.new_bmesh()
+        owners = []
+        for k, (c, rad, squash) in enumerate(puffs):
+            segments, bands = puff_detail(rad, detail)
+            for f in puff(bm, c, rad, squash, segments, bands, seed * 97 + k, lump=0.065):
+                owners.append((f, k))
+        dead = []
+        alive = []
+        for f, k in owners:
+            if all(any(inside(v.co, j, 1.0) < 1.0 for j in range(len(puffs)) if j != k)
+                   for v in f.verts):
+                dead.append(f)
+            else:
+                alive.append((f, k))
+        bmesh.ops.delete(bm, geom=dead, context="FACES")
+        tris = sum(len(f.verts) - 2 for f, _ in alive)
+        return bm, alive, tris
+
+    for detail in (1.0, 0.97, 0.94, 0.91, 0.88, 0.85, 0.82, 0.79, 0.76, 0.73, 0.7):
+        bm, alive, tris = build(detail)
+        if tris <= budget:
+            break
+        bm.free()
+    else:
+        raise ValueError(f"canopy has {tris} triangles, over its share of {budget}")
     bm.normal_update()
     lo = min(v.co.z for v in bm.verts)
     hi = max(v.co.z for v in bm.verts)
-    palette.tag_all(bm, "foliage")
-    light, mid = [], []
-    for f in bm.faces:
-        h = (f.calc_center_median().z - lo) / max(hi - lo, 1e-6)
-        nz = f.normal.z
-        if nz + 0.3 * h > 0.8:
-            light.append(f)
-        elif nz + 0.25 * h > 0.28:
-            mid.append(f)
-    palette.tag(bm, mid, "foliage_light")
-    palette.tag(bm, light, "grass_light")
+    r = shapes.rng(seed * 31 + 5)
+    # Each puff a step lighter or darker than its neighbours, the high ones
+    # (the crown's cap) leaning sunnier.
+    tone = [r.choice((-0.14, -0.07, 0.0, 0.0, 0.06, 0.12)) for _ in puffs]
+    by_tone = {name: [] for name in CROWN_TONES}
+    for f, k in alive:
+        centre = f.calc_center_median()
+        h = (centre.z - lo) / max(hi - lo, 1e-6)
+        # How close this face sits to another puff's skin: 1 in the crease.
+        near = min((math.sqrt(inside(centre, j, 1.0 / 0.94)) for j in range(len(puffs)) if j != k),
+                   default=9.0)
+        crease = min(1.0, max(0.0, (1.22 - near) / 0.3))
+        score = (0.7 * f.normal.z + 0.55 * (h - 0.45) + tone[k] - 0.5 * crease
+                 + r.uniform(-0.035, 0.035))
+        i = sum(1 for cut in CROWN_CUTS if score > cut)
+        by_tone[CROWN_TONES[i]].append(f)
+    for name, faces in by_tone.items():
+        palette.tag(bm, faces, name)
     bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method="FIXED", ngon_method="BEAUTY")
     tris = len(bm.faces)
     if tris > budget:
@@ -339,10 +381,14 @@ def build_tree_a(root):
           ],
           roots=[0.3, 1.9, 3.4, 4.9], seed=7)
     cx, cy = 0.05, 0.05
-    puffs = [((cx, cy, 4.25), 1.35, 0.9)]
-    puffs += ring_of(7, 1.5, 3.85, 0.98, 0.86, 41, cx, cy)
-    puffs += ring_of(5, 0.9, 4.75, 0.92, 0.88, 42, cx, cy, phase=0.4)
-    puffs += [((cx + 0.1, cy - 0.05, 5.25), 0.82, 0.9)]
+    # Three tiers of cloud puffs over a hidden core: a wide skirt low down, a
+    # middle ring, a cap on top, with a few small puffs bulging out between.
+    puffs = [((cx, cy, 4.3), 1.3, 0.9)]
+    puffs += ring_of(9, 1.55, 3.6, 0.8, 0.84, 41, cx, cy)
+    puffs += ring_of(7, 1.2, 4.45, 0.82, 0.86, 42, cx, cy, phase=0.45)
+    puffs += ring_of(4, 0.6, 5.05, 0.72, 0.88, 43, cx, cy, phase=0.2)
+    puffs += [((cx + 0.08, cy - 0.04, 5.45), 0.6, 0.9)]
+    puffs += ring_of(4, 1.85, 4.2, 0.5, 0.86, 44, cx, cy, phase=0.9)
     crown(root, puffs, seed=43, budget=3000 - 330)
 
 
@@ -362,13 +408,18 @@ def build_tree_b(root):
               [((-0.34, 0.04, 2.0), 0.2), ((-0.3, 0.55, 2.95), 0.15), ((-0.25, 0.9, 3.6), 0.11)],
           ],
           roots=[0.9, 2.5, 4.0, 5.4], seed=13)
-    puffs = []
-    # The main mass over the leaning stem, and a second, lower one over the limb.
-    puffs += [((-0.75, 0.1, 4.55), 1.35, 0.88), ((1.2, -0.15, 3.95), 1.05, 0.86)]
-    puffs += ring_of(7, 1.45, 4.15, 0.95, 0.85, 61, -0.7, 0.1, stretch=(1.0, 0.95))
-    puffs += ring_of(4, 0.85, 3.8, 0.8, 0.85, 62, 1.25, -0.15, phase=0.3)
-    puffs += ring_of(4, 0.85, 5.05, 0.9, 0.88, 63, -0.7, 0.1, phase=0.6)
-    puffs += [((-0.6, 0.05, 5.55), 0.78, 0.9)]
+    # The main mass over the leaning stem and a second, lower one over the
+    # limb, each tiered: a skirt of puffs, a middle ring and a cap, over a
+    # hidden core, with small puffs bulging out of the main mass's flanks.
+    mx, my, sx, sy = -0.7, 0.1, 1.25, -0.15
+    puffs = [((mx - 0.05, my, 4.5), 1.25, 0.88), ((sx - 0.05, sy, 3.95), 0.95, 0.86)]
+    puffs += ring_of(8, 1.5, 4.0, 0.8, 0.84, 61, mx, my, stretch=(1.0, 0.95))
+    puffs += ring_of(6, 1.05, 4.75, 0.8, 0.86, 62, mx, my, phase=0.5)
+    puffs += ring_of(3, 0.5, 5.35, 0.7, 0.88, 63, mx, my, phase=0.3)
+    puffs += [((mx + 0.1, my - 0.05, 5.75), 0.58, 0.9)]
+    puffs += ring_of(5, 0.95, 3.75, 0.7, 0.84, 64, sx, sy, phase=0.2)
+    puffs += ring_of(3, 0.5, 4.35, 0.68, 0.88, 65, sx, sy, phase=0.9)
+    puffs += ring_of(3, 1.95, 4.5, 0.48, 0.86, 66, mx, my, phase=2.2)
     crown(root, puffs, seed=67, budget=3000 - 300)
 
 

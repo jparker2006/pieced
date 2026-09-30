@@ -13,6 +13,7 @@
 use super::{
     grade::{grade, smoothstep},
     surfaces::{MAX_SURFACES, Surface, SurfaceTable},
+    wind::Sway,
 };
 use bevy::{
     asset::AssetEvent,
@@ -262,6 +263,10 @@ pub struct ToonMaterial {
     /// `Some(Face::Back)` normally; `None` for thin double-sided sheets.
     pub cull_mode: Option<Face>,
     pub depth_bias: f32,
+    /// The wind sway (M4 chunk 6, [`super::wind`]): off for everything but
+    /// grass, flowers, bushes and tree crowns. It's a uniform, not a shader
+    /// variant, so it adds no pipeline.
+    pub sway: Sway,
     /// Managed copy of [`ToonLighting`]; don't set by hand.
     pub lighting: ToonLight,
 }
@@ -282,6 +287,7 @@ impl Default for ToonMaterial {
             alpha_mode: AlphaMode::Opaque,
             cull_mode: Some(Face::Back),
             depth_bias: 0.0,
+            sway: Sway::OFF,
             lighting: ToonLight::default(),
         }
     }
@@ -309,6 +315,12 @@ impl ToonMaterial {
 
     pub fn with_alpha(mut self, alpha_mode: AlphaMode) -> Self {
         self.alpha_mode = alpha_mode;
+        self
+    }
+
+    /// Sways in the wind ([`super::wind`]).
+    pub fn with_sway(mut self, sway: Sway) -> Self {
+        self.sway = sway;
         self
     }
 
@@ -413,6 +425,8 @@ pub struct ToonUniform {
     surface: Vec4,
     surface_keys: [Vec4; MAX_SURFACES],
     surface_params: [Vec4; MAX_SURFACES],
+    /// The wind sway: x amplitude, y/z height band, w weighting.
+    sway: Vec4,
 }
 
 impl Default for ToonUniform {
@@ -455,11 +469,16 @@ impl From<&ToonMaterial> for ToonUniform {
             surface: m.surface.to_vec4(),
             surface_keys: l.surfaces.keys,
             surface_params: l.surfaces.params,
+            sway: m.sway.to_vec4(),
         }
     }
 }
 
 impl Material for ToonMaterial {
+    fn vertex_shader() -> ShaderRef {
+        TOON_SHADER_PATH.into()
+    }
+
     fn fragment_shader() -> ShaderRef {
         TOON_SHADER_PATH.into()
     }

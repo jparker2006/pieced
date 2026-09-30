@@ -24,6 +24,7 @@
 //! every far model is dressed, so nothing pops in or compiles mid-game.
 //! `--knobs far=off` hides the whole far view.
 
+pub mod birds;
 pub mod galaxy;
 pub mod layout;
 pub mod magic;
@@ -114,6 +115,7 @@ impl Plugin for FarViewPlugin {
                 insert_galaxy_spin,
                 (
                     spawn_far_view,
+                    birds::spawn_birds,
                     spawn_sky_magic,
                     create_far_assets,
                     magic::create_magic_assets,

@@ -34,6 +34,8 @@
     "foliage": {"at": [["T01", 700, 380], ["T01", 195, 375]]},
     "foliage_shadow": {"at": [["T01", 130, 178], ["T01", 145, 415]]},
     "foliage_light": {"at": [["T01", 150, 580]], "patch": 5},
+    "foliage_sun": {"hex": "#A2CC45", "note": "The warm, sunlit yellow-green caps of the painted tree crowns in M4-V1 and V8 (M4 chunk 6, D124); authored as grass_light pushed warmer and brighter."},
+    "foliage_cool": {"hex": "#3E7E4C", "note": "The cool blue-green undersides and creases between the crowns' puffs in M4-V1 and V8 (M4 chunk 6, D124); authored between foliage and foliage_shadow."},
     "trunk": {"at": [["T01", 55, 305]]},
     "trunk_shadow": {"at": [["T01", 12, 420]]},
     "brick": {"at": [["R4", 848, 380], ["R4", 885, 438], ["R4", 850, 505]]},

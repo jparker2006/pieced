@@ -13,13 +13,14 @@ use super::{
     PluggedInOnly,
     barrier::{self, BarrierMaterial},
     geo::Geo,
-    scenery::{ISLAND_TRIANGLE_BUDGET, Island},
+    living::{BUSH_SWAY, CloudDrift, GRASS_SWAY, TreeSway, drift_clouds, sway_trees},
+    scenery::{CLOUD_SECTORS, ISLAND_TRIANGLE_BUDGET, Island},
 };
 use crate::{
     app::BootGate,
     arena::ARENA_PROPS,
     look::{
-        BlobShadow, FarMaterial, GroundMaterial, Outline, ToonMaterial, preset_look,
+        BlobShadow, FarMaterial, GroundMaterial, Outline, ToonMaterial, preset_look, wind::Sway,
         with_outline_normals,
     },
     models::{ModelLibrary, ModelsPlugin, spawn_model},
@@ -43,12 +44,15 @@ impl Plugin for IslandPlugin {
                 include_bytes!("../../../assets/shaders/barrier.wgsl").as_slice(),
             );
         app.add_plugins(MaterialPlugin::<BarrierMaterial>::default())
+            .init_resource::<TreeSway>()
             .add_systems(Startup, (spawn_island, barrier::spawn_barrier))
             .add_systems(
                 Update,
                 (
                     spawn_island_models.run_if(not(resource_exists::<IslandModelsPlaced>)),
                     barrier::show_barrier_near_camera,
+                    sway_trees,
+                    drift_clouds,
                 ),
             );
     }
@@ -125,10 +129,18 @@ fn spawn_island(
         warn!("island: {triangles} triangles is over its budget of {ISLAND_TRIANGLE_BUDGET}");
     }
     let ground = grounds.add(GroundMaterial::default());
-    let cliffs = toon.add(ToonMaterial::vertex_colored());
+    // The cliffs share their material with the bushes, whose normals carry
+    // baked sway weights (M4 chunk 6); rock and cliff normals are unit
+    // length, so they never move.
+    let cliffs = toon.add(ToonMaterial::vertex_colored().with_sway(Sway::baked(BUSH_SWAY)));
     // Grass tufts and flowers are single triangles seen from both sides; their
     // normals point up so they shade like the grass they grow from.
-    let grass = toon.add(ToonMaterial::vertex_colored().double_sided().with_rim(0.0));
+    let grass = toon.add(
+        ToonMaterial::vertex_colored()
+            .double_sided()
+            .with_rim(0.0)
+            .with_sway(Sway::baked(GRASS_SWAY)),
+    );
     let pebbles = toon.add(ToonMaterial::vertex_colored().with_rim(0.0));
     // Clouds are unlit and only lightly hazed: their vertex colours carry
     // their soft shading, and they stay white against the galaxy.
@@ -163,8 +175,17 @@ fn spawn_island(
     for chunk in tufts {
         spawn_part(c, m, "Grass tufts", chunk, &grass, false);
     }
-    for sector in cloud_sectors {
-        spawn_part(c, m, "Clouds", sector, &clouds, false);
+    for (i, sector) in cloud_sectors.into_iter().enumerate() {
+        // The sea drifts round the island; the anchored clouds only bob.
+        let phase = i as f32 * 0.9;
+        let drift = if i < CLOUD_SECTORS {
+            CloudDrift::Sea { phase }
+        } else {
+            CloudDrift::Anchored { phase }
+        };
+        if let Some(e) = spawn_part(c, m, "Clouds", sector, &clouds, false) {
+            c.entity(e).insert(drift);
+        }
     }
     if let Some(knoll) = knoll {
         spawn_part(c, m, "Knoll top", knoll.top, &ground, false);

@@ -53,7 +53,13 @@ fn far_app() -> App {
         .add_plugins(FarMotionPlugin)
         .add_systems(
             Startup,
-            (spawn_far_view, spawn_sky_magic, create_magic_assets).chain(),
+            (
+                spawn_far_view,
+                pieced::far::birds::spawn_birds,
+                spawn_sky_magic,
+                create_magic_assets,
+            )
+                .chain(),
         );
     let layout = app.world().resource::<FarLayout>().clone();
     app.insert_resource(GalaxySpin {
@@ -430,6 +436,10 @@ fn the_far_layer_stays_within_its_triangle_and_batch_budget() {
     let sky = SkyMagic::new(&layout);
     let magic_triangles = magic::magic_triangles(&sky);
     triangles += magic_triangles;
+    // The birds circling the castle (M4 chunk 6): every flock one instance
+    // of one small mesh.
+    let birds = pieced::far::birds::FLOCKS * pieced::far::birds::bird_triangles();
+    triangles += birds as u32;
     // Opaque batches: each distinct (mesh, material) among the far models,
     // plus the lanterns (one instanced batch).
     let opaque = |s: &Sidecar| {
@@ -445,6 +455,8 @@ fn the_far_layer_stays_within_its_triangle_and_batch_budget() {
             .iter()
             .map(|m| opaque(&side(m)))
             .sum::<usize>()
+        + 1
+        // The bird flocks: one mesh, one material.
         + 1;
     println!(
         "far layer: {triangles} triangles ({} castle, {magic_triangles} magic with {} \
@@ -456,6 +468,7 @@ fn the_far_layer_stays_within_its_triangle_and_batch_budget() {
         island_models.len()
     );
     assert!(triangles <= 90_000, "{triangles} far triangles");
+    assert!(triangles <= 120_000, "the M4 far budget");
     assert!(batches <= 18, "{batches} opaque far batches");
     assert!(halos <= 64, "{halos} far halos");
     assert!(island_models.len() <= 5);
@@ -797,4 +810,43 @@ fn review_the_galaxy() {
         let sy = (1.0 - (y as f32 + 0.5) / h as f32 * 2.0) * tan_v;
         Vec3::new(sx, sy, -1.0).normalize()
     });
+}
+
+// ---------------------------------------------------------------------------
+// Birds (M4 chunk 6)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bird_flocks_circle_the_castle_and_flap() {
+    use pieced::far::birds::{BirdFlock, FLOCKS};
+    let mut app = far_app();
+    let layout = app.world().resource::<FarLayout>().clone();
+    let castle = layout.station.position;
+    let flocks = |app: &mut App| {
+        let world = app.world_mut();
+        let mut q = world.query::<(Entity, &BirdFlock, &Transform)>();
+        let mut v: Vec<(Entity, BirdFlock, Transform)> =
+            q.iter(world).map(|(e, f, t)| (e, *f, *t)).collect();
+        v.sort_by_key(|x| x.0);
+        v
+    };
+    let start = flocks(&mut app);
+    assert_eq!(start.len(), FLOCKS);
+    let mut lowest_scale = f32::MAX;
+    let mut highest_scale = f32::MIN;
+    run_until(&mut app, 8.0, |app| {
+        for (_, flock, t) in flocks(app) {
+            let flat = (t.translation - flock.centre).xz().length();
+            assert!((flat - flock.radius).abs() < 1.0, "on its circle");
+            assert!(t.translation.distance(castle) < 700.0, "round the castle");
+            lowest_scale = lowest_scale.min(t.scale.y);
+            highest_scale = highest_scale.max(t.scale.y);
+        }
+    });
+    for ((_, _, a), (_, flock, b)) in start.iter().zip(flocks(&mut app)) {
+        let moved = a.translation.distance(b.translation);
+        let expected = std::f32::consts::TAU * flock.radius * 8.0 / flock.period.abs();
+        assert!(moved > 0.5 * expected, "flew {moved} m of ~{expected}");
+    }
+    assert!(highest_scale - lowest_scale > 0.8, "wings flap");
 }

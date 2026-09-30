@@ -115,8 +115,10 @@ pub mod cartoon {
     pub const FAR_STONE_SHADE: Color = rgb(0x38, 0x3E, 0x62);
     pub const FLOWER_PINK: Color = rgb(0xF5, 0x9A, 0xC0);
     pub const FOLIAGE: Color = rgb(0x65, 0x97, 0x40);
+    pub const FOLIAGE_COOL: Color = rgb(0x3E, 0x7E, 0x4C);
     pub const FOLIAGE_LIGHT: Color = rgb(0x69, 0x98, 0x2C);
     pub const FOLIAGE_SHADOW: Color = rgb(0x2A, 0x69, 0x5C);
+    pub const FOLIAGE_SUN: Color = rgb(0xA2, 0xCC, 0x45);
     pub const GALAXY_DEEP: Color = rgb(0x5E, 0x77, 0xDD);
     pub const GALAXY_PURPLE: Color = rgb(0x83, 0x6D, 0xE4);
     pub const GALAXY_TEAL: Color = rgb(0x5F, 0xEB, 0xF4);
@@ -224,8 +226,10 @@ pub mod cartoon {
         ("far_stone_shade", FAR_STONE_SHADE),
         ("flower_pink", FLOWER_PINK),
         ("foliage", FOLIAGE),
+        ("foliage_cool", FOLIAGE_COOL),
         ("foliage_light", FOLIAGE_LIGHT),
         ("foliage_shadow", FOLIAGE_SHADOW),
+        ("foliage_sun", FOLIAGE_SUN),
         ("galaxy_deep", GALAXY_DEEP),
         ("galaxy_purple", GALAXY_PURPLE),
         ("galaxy_teal", GALAXY_TEAL),

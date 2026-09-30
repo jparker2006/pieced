@@ -325,6 +325,10 @@ fn register_shaders(app: &mut App) {
             GRADE_SHADER,
             include_bytes!("../../assets/shaders/grade.wgsl").as_slice(),
         ),
+        (
+            WIND_SHADER,
+            include_bytes!("../../assets/shaders/wind.wgsl").as_slice(),
+        ),
     ] {
         registry.insert_asset(PathBuf::new(), Path::new(path), bytes);
     }
@@ -332,12 +336,15 @@ fn register_shaders(app: &mut App) {
 
 /// The import-only shader library (`#import pieced::grade::grade`).
 const GRADE_SHADER: &str = "pieced/shaders/grade.wgsl";
+/// The wind sway library (`#import pieced::wind::sway`, M4 chunk 6).
+const WIND_SHADER: &str = "pieced/shaders/wind.wgsl";
 
 /// Keeps the import-only shaders loaded, so `#import pieced::grade` resolves
 /// in any material (the loader only knows import paths of loaded shaders).
 #[derive(Resource)]
 pub struct LookShaderLibrary {
     pub grade: Handle<Shader>,
+    pub wind: Handle<Shader>,
 }
 
 fn load_shader_library(app: &mut App) {
@@ -349,7 +356,8 @@ fn load_shader_library(app: &mut App) {
         return;
     };
     let grade = server.load(format!("embedded://{GRADE_SHADER}"));
-    app.insert_resource(LookShaderLibrary { grade });
+    let wind = server.load(format!("embedded://{WIND_SHADER}"));
+    app.insert_resource(LookShaderLibrary { grade, wind });
 }
 
 /// `far=off` hides every far-layer mesh: all of them when the setting changes,
