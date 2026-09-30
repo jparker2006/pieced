@@ -1368,7 +1368,13 @@ mod figure {
                 .iter(world)
                 .find(|(f, _)| f.owner == owner)
                 .map(|(_, r)| r.clone());
-            if rig.is_some() {
+            // The knight can be rigged before the rest of the model library
+            // has loaded (under a parallel test run it often is); Boot's
+            // knight gate waits for both, so wait for both too.
+            let library_ready = world
+                .get_resource::<pieced::models::ModelLibrary>()
+                .is_some_and(|l| l.is_ready());
+            if rig.is_some() && library_ready {
                 break;
             }
             std::thread::sleep(Duration::from_millis(2));

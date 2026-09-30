@@ -325,8 +325,18 @@ fn sound_categories_and_priorities_protect_hit_feedback() {
         let expected = match sfx.category() {
             // Being hit, and the off-screen warning, are fairness cues (M3).
             _ if matches!(sfx, Sfx::OrbBonk | Sfx::WandWarning) => 3,
+            // A knight's steps give way first (M4 chunk 6).
+            _ if matches!(
+                sfx,
+                Sfx::KnightStepGrass | Sfx::KnightStepWood | Sfx::KnightStepBrick
+            ) =>
+            {
+                0
+            }
             SfxCategory::Hits => 3,
-            SfxCategory::Movement => 1,
+            // The knights' voices sit with movement; the ambience lowest.
+            SfxCategory::Movement | SfxCategory::Voice => 1,
+            SfxCategory::Ambience => 0,
             _ => 2,
         };
         assert_eq!(sfx.priority(), expected, "{sfx:?}");
