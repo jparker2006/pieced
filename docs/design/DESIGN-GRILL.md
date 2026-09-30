@@ -290,6 +290,12 @@ The goal, from Jake: make Pieced "play and feel like a AAA game". Story and real
 |---|---|---|
 | D122 | **Pipelined rendering stays on (Q122).** | <ul><li>It stays the default, since it bought the smoothness (41% → 99.6% of frames < 18 ms) and Jake felt no lag.</li><li>The session log also records **input-to-submit** latency, comparable with M1's G3 (≤ 33 ms median).</li><li>The next perf pass tries to trim latency, for example by reading input as late as possible in the frame.</li><li>Input-to-present (41 ms press, 35 ms look) is reported but not gated.</li></ul> |
 
+**Final polish, after play-test 4, 2026-09-29.** Jake: "it is really starting to feel like a real game! … how can we give it that final polish before we make it a real game with real objectives" → "rec, do chunk 6 with all four".
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D123 | **Chunk 6: a polish chunk before the final verdict.** | <ol><li>**Knight personality:** synthesized gibberish voice barks (a "hup!" on landing, taunts on wind-ups, yelps on hits, a victory "hoo-hah"), and spatial footsteps. All original and synthesized, with no GPU cost.</li><li>**A living world:** grass and trees sway in the wind (vertex sway in the existing materials), clouds drift, and birds circle the castle, within the GPU budget.</li><li>**UI sound and motion:** hover, click and whoosh sounds on every menu and HUD element, and bouncy number tickers.</li><li>**A feel-tuning pass:** Jake names the 3 moments that feel least premium, and they're tuned (feel numbers only, ±50%, D117).</li></ol>Play-test 5 (the final verdict: fun ≥ 4.5, AAA feel ≥ 4) comes after chunk 6. |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**

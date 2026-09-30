@@ -358,3 +358,4 @@ Paused at the usage limit. Both builders were told to commit their work in progr
 - 2026-09-29 17:25: **play-test 4** (release `pieced-play` from `5e13cc7`, chunk 4; battery, Low Power Mode on). Jake, quoted: "done playing, 4, 4, about right, no unfair deaths / it is really starting to feel like a real game! what is left on the AAA feel todo list... how can we give it that final polish before we make it a real game with real objectives". **A4 PASS.**
   - Launch: 4,326 ms cold.
   - The orchestrator ran `quiet.sh cont` too early (the game was still open); Jake said builds were fine while he plays.
+- 2026-09-29: **D123: chunk 6 (final polish)** added before the final verdict: knight voice barks and footsteps, a living world, UI sound and motion, and a feel-tuning pass on Jake's 3 least-premium moments. Jake: "rec, do chunk 6 with all four". Play-test 5 (A9) now follows chunk 6.
