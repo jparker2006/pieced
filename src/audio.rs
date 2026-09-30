@@ -21,12 +21,16 @@
 //! chime and a tail). The Music and Effects sliders sit under the master
 //! volume.
 
+pub mod ambience;
 pub mod bank;
+pub mod barks;
 pub mod celesta;
 pub mod loudness;
 pub mod music;
 pub mod reverb;
+pub mod spatial;
 pub mod synth;
+pub mod voice;
 pub mod wand;
 
 use crate::{
@@ -120,6 +124,8 @@ impl AudioTuning {
             SfxCategory::Movement => self.movement_volume,
             // The run's beats follow the master volume only.
             SfxCategory::Run => 1.0,
+            // The knights' voices and the ambience follow Effects.
+            SfxCategory::Voice | SfxCategory::Ambience => 1.0,
         }
         .max(0.0)
     }
@@ -231,6 +237,23 @@ pub enum Sfx {
     RackPull,
     /// Pump: the rack slammed home.
     RackClack,
+    /// A knight's "hup!" landing off a drop ship's beam (M4 chunk 6, D123).
+    BarkHup,
+    /// A knight's taunt on some wind-ups: "nyah-nyah!", "heh-heh-heh!",
+    /// "bla-HAH!" (takes).
+    BarkTaunt,
+    /// A knight's yelp when hit: "ow!", "eep!", "oof!", "yip!" (takes).
+    BarkYelp,
+    /// The survivors' "hoo-HAH!" in the victory hop.
+    BarkHooHah,
+    /// A knight's "whaaaa…" as he falls into the void.
+    BarkWhaaa,
+    /// A knight's armored step on grass, on wood and on brick (spatial).
+    KnightStepGrass,
+    KnightStepWood,
+    KnightStepBrick,
+    /// A songbird near the trees (the ambience; spatial, takes).
+    Birdsong,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -244,10 +267,14 @@ pub enum SfxCategory {
     /// Kill confirmation layered over the hits (M4): the kill chime and the
     /// helmet ding. They follow the hits volume.
     Confirm,
+    /// The knights' voices (M4 chunk 6): under the guns, over their steps.
+    Voice,
+    /// The world's ambience one-shots (birdsong).
+    Ambience,
 }
 
 impl Sfx {
-    pub const ALL: [Sfx; 48] = [
+    pub const ALL: [Sfx; 57] = [
         Sfx::RifleShot,
         Sfx::PumpShot,
         Sfx::PumpRack,
@@ -296,6 +323,15 @@ impl Sfx {
         Sfx::CrystalCharge,
         Sfx::RackPull,
         Sfx::RackClack,
+        Sfx::BarkHup,
+        Sfx::BarkTaunt,
+        Sfx::BarkYelp,
+        Sfx::BarkHooHah,
+        Sfx::BarkWhaaa,
+        Sfx::KnightStepGrass,
+        Sfx::KnightStepWood,
+        Sfx::KnightStepBrick,
+        Sfx::Birdsong,
     ];
 
     /// The cue for a piece event: walls are brick (clunk, crack, crumble); floors
@@ -347,6 +383,11 @@ impl Sfx {
             OrbCast | OrbWhoosh | OrbBonk | WandWarning | ShipHum | ShipBeam | VoidYelp
             | ArmorClatter => reverb::Room::WORLD,
             PotionGulp | WaveCleared | WaveStart | NewBest | MultiKill => reverb::Room::HALL,
+            BarkHup | BarkTaunt | BarkYelp | BarkHooHah | BarkWhaaa | KnightStepGrass | Birdsong => {
+                reverb::Room::WORLD
+            }
+            KnightStepWood => reverb::Room::WOOD,
+            KnightStepBrick => reverb::Room::STONE,
         }
     }
 
@@ -414,6 +455,15 @@ impl Sfx {
             Sfx::CrystalCharge => bank::crystal_charge(),
             Sfx::RackPull => bank::rack_pull(),
             Sfx::RackClack => bank::rack_clack(),
+            Sfx::BarkHup => voice::hup(bank::BARK_HUP.rms_db),
+            Sfx::BarkTaunt => voice::taunt(take, bank::BARK_TAUNT.rms_db),
+            Sfx::BarkYelp => voice::yelp(take, bank::BARK_YELP.rms_db),
+            Sfx::BarkHooHah => voice::hoo_hah(bank::BARK_HOO_HAH.rms_db),
+            Sfx::BarkWhaaa => voice::whaaa(bank::BARK_WHAAA.rms_db),
+            Sfx::KnightStepGrass => bank::knight_step(bank::StepSurface::Grass, take),
+            Sfx::KnightStepWood => bank::knight_step(bank::StepSurface::Wood, take),
+            Sfx::KnightStepBrick => bank::knight_step(bank::StepSurface::Brick, take),
+            Sfx::Birdsong => bank::birdsong(take),
         }
     }
 
@@ -425,6 +475,12 @@ impl Sfx {
             Sfx::Footstep => bank::FOOTSTEP_VARIANTS,
             Sfx::ArmorClatter => bank::CLATTER_VARIANTS,
             Sfx::MultiKill => bank::MULTI_KILL_LEVELS,
+            Sfx::BarkTaunt => voice::TAUNT_TAKES,
+            Sfx::BarkYelp => voice::YELP_TAKES,
+            Sfx::KnightStepGrass | Sfx::KnightStepWood | Sfx::KnightStepBrick => {
+                bank::KNIGHT_STEP_VARIANTS
+            }
+            Sfx::Birdsong => bank::BIRDSONG_VARIANTS,
             _ => 1,
         }
     }
@@ -486,6 +542,13 @@ impl Sfx {
             CrystalCharge => bank::CRYSTAL_CHARGE,
             RackPull => bank::RACK_PULL,
             RackClack => bank::RACK_CLACK,
+            BarkHup => bank::BARK_HUP,
+            BarkTaunt => bank::BARK_TAUNT,
+            BarkYelp => bank::BARK_YELP,
+            BarkHooHah => bank::BARK_HOO_HAH,
+            BarkWhaaa => bank::BARK_WHAAA,
+            KnightStepGrass | KnightStepWood | KnightStepBrick => bank::KNIGHT_STEP,
+            Birdsong => bank::BIRDSONG,
         }
     }
 
@@ -511,6 +574,9 @@ impl Sfx {
             // with the run's beats.
             ArmorClatter => SfxCategory::Weapons,
             MultiKill => SfxCategory::Run,
+            BarkHup | BarkTaunt | BarkYelp | BarkHooHah | BarkWhaaa => SfxCategory::Voice,
+            KnightStepGrass | KnightStepWood | KnightStepBrick => SfxCategory::Movement,
+            Birdsong => SfxCategory::Ambience,
         }
     }
 
@@ -538,6 +604,11 @@ impl Sfx {
     /// | land, slide | −22 |
     /// | jump | −26 |
     /// | footstep | −27 |
+    /// | a knight's whaaa (M4 chunk 6) | −21 |
+    /// | a knight's yelp, hup, hoo-hah | −22 |
+    /// | a knight's taunt | −23 |
+    /// | a knight's step | −26 |
+    /// | birdsong | −30 |
     pub fn mix_db(self) -> f32 {
         use Sfx::*;
         match self {
@@ -555,6 +626,11 @@ impl Sfx {
             WeaponSwitch | AdsIn | AdsOut | CrystalGrab | Land | Slide => -22.0,
             Jump => -26.0,
             Footstep => -27.0,
+            BarkWhaaa => -21.0,
+            BarkYelp | BarkHup | BarkHooHah => -22.0,
+            BarkTaunt => -23.0,
+            KnightStepGrass | KnightStepWood | KnightStepBrick => -26.0,
+            Birdsong => -30.0,
         }
     }
 
@@ -570,6 +646,13 @@ impl Sfx {
         if matches!(self, Sfx::OrbBonk | Sfx::WandWarning) {
             return 3;
         }
+        // A knight's steps give way first.
+        if matches!(
+            self,
+            Sfx::KnightStepGrass | Sfx::KnightStepWood | Sfx::KnightStepBrick
+        ) {
+            return 0;
+        }
         match self.category() {
             SfxCategory::Hits => 3,
             // The kill layers ride on their hit (which is protected).
@@ -577,7 +660,8 @@ impl Sfx {
             | SfxCategory::Building
             | SfxCategory::Run
             | SfxCategory::Confirm => 2,
-            SfxCategory::Movement => 1,
+            SfxCategory::Movement | SfxCategory::Voice => 1,
+            SfxCategory::Ambience => 0,
         }
     }
 }
@@ -709,6 +793,8 @@ impl Plugin for GameAudioPlugin {
                 .before(bevy::transform::TransformSystems::Propagate),
         );
         wand::build(app);
+        barks::build(app);
+        ambience::build(app);
     }
 }
 
@@ -738,6 +824,9 @@ pub(crate) struct PlayRequest {
 #[derive(Resource)]
 pub(crate) struct PlayQueue {
     pending: Vec<PlayRequest>,
+    /// An off-screen warning started: stop the knights' barks sounding now
+    /// (M4 chunk 6, [`barks`]).
+    cut_voices: bool,
     /// Counter for deterministic pitch variation.
     variation: u32,
     /// Next round-robin take per [`Sfx`].
@@ -749,6 +838,7 @@ impl Default for PlayQueue {
     fn default() -> Self {
         Self {
             pending: Vec::new(),
+            cut_voices: false,
             variation: 0,
             takes: [0; Sfx::ALL.len()],
         }
@@ -790,6 +880,26 @@ impl PlayQueue {
         });
     }
 
+    /// Plays take `take` of `sfx` at playback `speed` (a knight's own pitch).
+    pub(crate) fn push_voice(
+        &mut self,
+        sfx: Sfx,
+        at: Option<Vec3>,
+        speed: f32,
+        take: u32,
+        delay: f64,
+        now: f64,
+    ) {
+        self.pending.push(PlayRequest {
+            sfx,
+            at,
+            gain: 1.0,
+            speed,
+            take: take % sfx.takes().max(1),
+            when: now + delay,
+        });
+    }
+
     /// Plays a chosen take of `sfx` (the multi-kill sting's level).
     pub(crate) fn push_take(&mut self, sfx: Sfx, at: Option<Vec3>, take: u32, now: f64) {
         self.push(sfx, at, now);
@@ -811,6 +921,9 @@ pub fn pitch_spread(sfx: Sfx) -> f32 {
             SfxCategory::Building => 0.05,
             SfxCategory::Weapons => 0.03,
             SfxCategory::Hits | SfxCategory::Run | SfxCategory::Confirm => 0.0,
+            // A knight's own pitch and a yelp's jitter are set by `barks`.
+            SfxCategory::Voice => 0.0,
+            SfxCategory::Ambience => 0.05,
         },
     }
 }
@@ -966,7 +1079,7 @@ fn file_sound_bank(
 fn attach_listener(add: On<Add, MainCamera>, mut commands: Commands) {
     commands
         .entity(add.entity)
-        .insert(SpatialListener::new(0.25));
+        .insert(spatial::listener());
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1096,12 +1209,19 @@ fn queue_cue_sounds(
     beats: Option<Res<WeaponBeatSounds>>,
     player: Option<Single<Entity, With<Player>>>,
     transforms: Query<&Transform>,
+    grunts: Query<(), With<crate::grunt::Grunt>>,
     mut cues: MessageReader<GameCue>,
     mut queue: ResMut<PlayQueue>,
 ) {
     let now = time.elapsed_secs_f64();
     let player = player.map(|p| *p);
     for cue in cues.read() {
+        // The knights' own steps follow their run clip ([`barks`]).
+        if let GameCue::Footstep { who } = *cue
+            && grunts.contains(who)
+        {
+            continue;
+        }
         let (who, sfx) = match *cue {
             GameCue::Jump { who } => (who, Sfx::Jump),
             GameCue::Land { who, speed } => {
@@ -1241,6 +1361,14 @@ pub(crate) fn play_queued(
     mut scratch: Local<PlayScratch>,
     voices: Query<(Entity, &Voice)>,
 ) {
+    // A warning cuts the knights' barks off (D76: it stays clearly audible).
+    if std::mem::take(&mut queue.cut_voices) {
+        for (entity, voice) in &voices {
+            if voice.sfx.category() == SfxCategory::Voice {
+                commands.entity(entity).despawn();
+            }
+        }
+    }
     let Some(bank) = bank else {
         queue.pending.clear();
         return;

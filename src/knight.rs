@@ -694,6 +694,13 @@ impl KnightAnim {
         self.last
     }
 
+    /// The run cycle's phase (radians): a boot lands at every multiple of π
+    /// (the run clip and the procedural run agree). The knights' footsteps
+    /// sync to it (M4 chunk 6).
+    pub fn run_phase(&self) -> f32 {
+        self.phase
+    }
+
     /// A headshot has dented his helmet (until elimination or respawn).
     pub fn is_dented(&self) -> bool {
         self.dented

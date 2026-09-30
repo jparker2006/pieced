@@ -135,6 +135,7 @@ mod settings;
 pub mod surfaces;
 mod toon;
 pub mod warmup;
+pub mod wind;
 
 pub use blob::{
     BlobAssets, BlobDecal, BlobDecalLink, BlobGround, BlobMaterial, BlobShadow, blob_footprint,
