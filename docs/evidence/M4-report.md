@@ -359,3 +359,4 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - Launch: 4,326 ms cold.
   - The orchestrator ran `quiet.sh cont` too early (the game was still open); Jake said builds were fine while he plays.
 - 2026-09-29: **D123: chunk 6 (final polish)** added before the final verdict: knight voice barks and footsteps, a living world, UI sound and motion, and a feel-tuning pass on Jake's 3 least-premium moments. Jake: "rec, do chunk 6 with all four". Play-test 5 (A9) now follows chunk 6.
+- 2026-09-29: **D124:** Jake's 3 least-premium moments: "the background / trees, the gun feel (not looks just feel it looks great), and the knights movement and smartness (though that might be a pass for later)". The trees go to chunk 6A (in progress); gun feel and knight movement feel go to chunk 6B; knight smartness goes to the backlog for the next milestone.

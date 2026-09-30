@@ -296,6 +296,12 @@ The goal, from Jake: make Pieced "play and feel like a AAA game". Story and real
 |---|---|---|
 | D123 | **Chunk 6: a polish chunk before the final verdict.** | <ol><li>**Knight personality:** synthesized gibberish voice barks (a "hup!" on landing, taunts on wind-ups, yelps on hits, a victory "hoo-hah"), and spatial footsteps. All original and synthesized, with no GPU cost.</li><li>**A living world:** grass and trees sway in the wind (vertex sway in the existing materials), clouds drift, and birds circle the castle, within the GPU budget.</li><li>**UI sound and motion:** hover, click and whoosh sounds on every menu and HUD element, and bouncy number tickers.</li><li>**A feel-tuning pass:** Jake names the 3 moments that feel least premium, and they're tuned (feel numbers only, ±50%, D117).</li></ol>Play-test 5 (the final verdict: fun ≥ 4.5, AAA feel ≥ 4) comes after chunk 6. |
 
+**The 3 least-premium moments (for D123's feel pass), 2026-09-29.** Jake: "id say the background / trees, the gun feel (not looks just feel it looks great), and the knights movement and smartness (though that might be a pass for later)".
+
+| # | Decision | What it commits us to |
+|---|---|---|
+| D124 | **The feel pass targets Jake's three moments.** | <ol><li>**Background and trees** (chunk 6A): richer, painterly trees (layered puffs, warm and cool colour variation, baked AO, varied species), a livelier background ring, plus the sway, clouds and birds. No new draws.</li><li>**Gun feel, not looks** (chunk 6B): a punchier recoil spring and recovery, heavier shot sounds, a muzzle flash and light pop, crosshair bloom animation, hitmarker timing, a small FOV punch on the pump. Damage, fire rate and spread stay locked (D117).</li><li>**Knight movement** (chunk 6B, presentation only): turning into strafes, leaning within the hitbox fit, anticipation before a run, footfalls in sync.</li></ol>**Knight smartness** changes behaviour, which is a gameplay change, so it moves to the backlog for the next milestone ("a real game with real objectives"), as Jake suggested. |
+
 ## Handoff: where to pick up
 
 - **State (2026-09-27):**
