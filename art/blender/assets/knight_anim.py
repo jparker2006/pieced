@@ -381,7 +381,7 @@ def hero(t):
         Torso=yaw(0.04 * math.sin(ph / 2)),
         PivotArmR=HERO_ARM_R @ pitch(-0.05 * breath),
         PivotArmL=roll(0.5) @ pitch(0.25),
-        PivotHead=pitch(-0.12) @ yaw(0.05 * math.sin(ph / 2)),
+        PivotHead=pitch(-0.05) @ yaw(0.05 * math.sin(ph / 2)),
         PivotLegL=out(1, 0.07),
         PivotLegR=out(-1, 0.1),
         PivotCape=pitch(0.12 + 0.05 * breath) @ roll(0.05),

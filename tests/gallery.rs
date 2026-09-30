@@ -394,6 +394,7 @@ fn freeze_stops_the_knights_clock_springs_and_eyes() {
         velocity: Vec3::new(0.0, 0.0, -5.5),
         grounded: true,
         downed: false,
+        ..Default::default()
     };
     for _ in 0..40 {
         anim.step(1.0 / 60.0, &run);

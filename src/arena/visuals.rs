@@ -28,7 +28,7 @@ pub use scenery::{
 };
 pub use target::{
     FIGURE_SHADOW_RADIUS, KNIGHT_GATE, TargetFigure, TargetFigurePlugin, animate_knights,
-    figure_hidden, pose_target_figures,
+    figure_hidden, pose_target_figures, write_knight_poses,
 };
 
 use crate::{

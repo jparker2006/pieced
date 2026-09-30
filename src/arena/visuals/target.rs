@@ -12,24 +12,30 @@
 //! figure; the figure itself always stands on its owner's feet. When the
 //! owner is eliminated the knight shows X eyes for `knight::KO_TIME`, then the
 //! figure hides until respawn, when it pops back in.
+//!
+//! With the knight's authored clips loaded (M4 chunk 4), [`animate_knights`]
+//! also drives each figure's `AnimationPlayer` from the knight's clip mix
+//! (before Bevy's animation systems), and [`write_knight_poses`] layers the
+//! procedural pose on top of the clips (after them).
 
 use crate::{
     app::BootGate,
     combat::Downed,
     knight::{
-        self, HitRegion, KNIGHT_MODEL, KnightAnim, KnightArmorRig, KnightEvent, KnightInput,
-        KnightModel, KnightRig, RespawnSparkle, SPARKLE_TIME,
+        self, HitRegion, KNIGHT_MODEL, KnightAnim, KnightArmorRig, KnightEvent, KnightGraph,
+        KnightInput, KnightModel, KnightRig, RespawnSparkle, SPARKLE_TIME,
     },
     look::{BlobShadow, ModelDressed, Outline},
     models::{ModelLibrary, spawn_model},
     movement::{Motor, VoidFall},
+    orb::Wand,
     shared::{
         AppState, Character, DamageDealt, DamageTarget, EyeHeight, GameCue, Health, HitstopFrozen,
         LookAngles, Player, PreviousFeet, SimTick, TICK_SECONDS,
     },
-    waves::ships::Beaming,
+    waves::{Run, ships::Beaming},
 };
-use bevy::prelude::*;
+use bevy::{app::AnimationSystems, prelude::*};
 
 /// Blob shadow under a standing figure (a little wider than the body capsule).
 pub const FIGURE_SHADOW_RADIUS: f32 = 0.45;
@@ -58,14 +64,28 @@ impl Plugin for TargetFigurePlugin {
             .add_message::<DamageDealt>()
             .add_message::<GameCue>()
             .add_systems(Startup, knight::create_knight_assets)
-            .add_systems(Update, (attach_knight_models, release_knight_gate))
+            .add_systems(
+                Update,
+                (
+                    attach_knight_models,
+                    release_knight_gate,
+                    knight::build_knight_graph,
+                ),
+            )
             .add_systems(
                 PostUpdate,
                 (
-                    knight::rig_knights,
-                    pose_target_figures,
-                    animate_knights,
-                    knight::fade_sparkles,
+                    (
+                        knight::rig_knights,
+                        knight::start_knight_players,
+                        pose_target_figures,
+                        animate_knights,
+                    )
+                        .chain()
+                        .before(AnimationSystems),
+                    (write_knight_poses, knight::fade_sparkles)
+                        .chain()
+                        .after(AnimationSystems),
                 )
                     .chain()
                     .before(TransformSystems::Propagate),
@@ -217,8 +237,9 @@ pub fn pose_target_figures(
     }
 }
 
-/// Feeds each knight its owner's motion and moments, steps its animation and
-/// writes the pose (and the figure's visibility).
+/// Feeds each knight its owner's motion and moments, steps its animation,
+/// drives its clips (if loaded) and shows or hides the figure. The pose is
+/// written by [`write_knight_poses`], after the clips.
 #[allow(clippy::type_complexity)]
 pub fn animate_knights(
     time: Res<Time>,
@@ -232,6 +253,8 @@ pub fn animate_knights(
             Has<Downed>,
             Option<&LookAngles>,
             Has<Beaming>,
+            Option<&Wand>,
+            Has<VoidFall>,
         ),
         With<Character>,
     >,
@@ -241,19 +264,26 @@ pub fn animate_knights(
         &TargetFigure,
         &mut KnightAnim,
         Option<&KnightRig>,
-        Option<&KnightArmorRig>,
         &mut Visibility,
     )>,
     mut transforms: Query<&mut Transform, Without<TargetFigure>>,
-    mut visibility: Query<&mut Visibility, Without<TargetFigure>>,
     mut commands: Commands,
     lod: (
         Option<Res<crate::tuning::Tuning>>,
         Query<&GlobalTransform, With<crate::render::MainCamera>>,
         Local<crate::perf::AnimLod>,
     ),
+    clips: (
+        Option<Res<KnightGraph>>,
+        Query<&mut AnimationPlayer, With<AnimationGraphHandle>>,
+        Option<Res<Run>>,
+        Option<Res<SimTick>>,
+    ),
 ) {
     let (tuning, camera, mut lod) = lod;
+    let (graph, mut players, run, tick) = clips;
+    let windup_total = tuning.as_ref().map_or(0.4, |t| t.grunt.windup);
+    let celebrating = run.zip(tick).is_some_and(|(run, tick)| run.hopping(tick.0));
     let camera = camera.iter().next().map(GlobalTransform::translation);
     let perf = tuning.map(|t| t.perf.clone()).unwrap_or_default();
     // World directions into an owner's model space (its figure faces its yaw).
@@ -318,7 +348,17 @@ pub fn animate_knights(
     }
     // A kill's hitstop holds the knights too (M4).
     let dt = HitstopFrozen::delta(hitstop.as_deref(), time.delta_secs());
-    for (entity, figure, mut anim, rig, armor, mut shown) in &mut figures {
+    for (entity, figure, mut anim, rig, mut shown) in &mut figures {
+        // The clips drive him once his player has the knights' graph.
+        let player = rig
+            .and_then(|r| r.player)
+            .filter(|p| graph.is_some() && players.contains(*p));
+        if anim.clips_enabled() != player.is_some() {
+            anim.set_clips(player.is_some());
+        }
+        if let (Some(rig), Some(_)) = (rig, player) {
+            knight::reset_clip_joints(rig, &mut transforms);
+        }
         let mut hit_now = false;
         for (_, event) in events.iter().filter(|(who, _)| *who == figure.owner) {
             anim.event(*event);
@@ -334,10 +374,14 @@ pub fn animate_knights(
         let input = match owners.get(figure.owner) {
             // A knight coming down a ship's beam is out of play (downed) but
             // shows, legs dangling (D82).
-            Ok((motor, health, downed, _, beaming)) => KnightInput {
+            Ok((motor, health, downed, _, beaming, wand, falling)) => KnightInput {
                 velocity: local(figure.owner, motor.map_or(Vec3::ZERO, |m| m.velocity)),
                 grounded: !beaming && motor.is_none_or(|m| m.grounded),
                 downed: figure_hidden(health, downed && !beaming),
+                windup: wand.and_then(|w| w.windup_progress(windup_total)),
+                beaming,
+                falling,
+                celebrating: celebrating && !downed,
             },
             Err(_) => KnightInput::default(),
         };
@@ -357,8 +401,32 @@ pub fn animate_knights(
         } else {
             Visibility::Hidden
         });
+        if let (Some(graph), Some(player)) = (&graph, player)
+            && let Ok(mut player) = players.get_mut(player)
+        {
+            graph.drive(&mut player, anim.clip_mix());
+        }
+    }
+}
+
+/// Writes each knight's last pose onto its model, on top of its clips (after
+/// Bevy's animation systems), and shows its armor as the pose says. Far
+/// knights that skip a step get the same pose again.
+pub fn write_knight_poses(
+    figures: Query<(&KnightAnim, Option<&KnightRig>, Option<&KnightArmorRig>)>,
+    mut transforms: Query<&mut Transform, Without<TargetFigure>>,
+    mut visibility: Query<&mut Visibility, Without<TargetFigure>>,
+) {
+    for (anim, rig, armor) in &figures {
+        let pose = anim.last_pose();
         if let Some(rig) = rig {
-            knight::write_pose(&pose, rig, &mut transforms, &mut visibility);
+            knight::write_pose(
+                &pose,
+                rig,
+                anim.clips_enabled(),
+                &mut transforms,
+                &mut visibility,
+            );
         }
         if let Some(armor) = armor {
             knight::write_armor(&pose, armor, &mut visibility);

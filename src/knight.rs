@@ -58,14 +58,31 @@
 //! Directions in [`KnightInput`] and [`KnightPose`] are in the knight's model
 //! space: +Y up, -Z forward, +X to his right. [`write_pose`] converts to
 //! the glTF nodes' space under the model's forward fix.
+//!
+//! **Authored clips (M4 chunk 4, D104).** When the model's clips are loaded
+//! (the game), the knight's body moves by the Blender-authored clips of
+//! [`clips`] instead of the procedural idle and run above: [`KnightAnim`]
+//! also computes a [`ClipMix`] (blend weights from his velocity and state:
+//! idle, run, strafes, the wand wind-up on the gameplay wind-up's clock, the
+//! beam landing, the victory hop, the void fall, one of three deaths, and
+//! additive flinches where a shot lands), the clips pose the joints, and the
+//! pose here (squash, wobble, the take, the hop, the hat, the air pose, a
+//! leg's flinch) is layered on top. Without them (headless tests without
+//! `AnimationPlugin`) the procedural body motion plays as before.
+
+pub mod clips;
+
+pub use clips::{CLIP_COUNT, CLIP_JOINTS, ClipMix, KnightClip, KnightGraph, build_knight_graph};
 
 use crate::{
+    arena::visuals::wand::{HOLD_TIME, LOWER_TIME},
     look::{Halo, ModelDressed, Outline, ToonMaterial, warmup::Warmup},
     models::{MODEL_FORWARD_FIX, ModelParts},
     rng::Rng,
     shared::{FreezableTime, GalleryFreeze},
 };
 use bevy::{ecs::query::QueryFilter, prelude::*};
+use clips::{CLIP_FADE_IN, FLINCH_SECONDS, LAND_FADE, LAND_SECONDS, RUN_CYCLE, WINDUP_SECONDS};
 use std::f32::consts::{PI, TAU};
 
 /// The model's name in `assets/models/manifest.json`.
@@ -253,6 +270,15 @@ pub struct KnightInput {
     pub grounded: bool,
     /// Eliminated (or dead) and not yet respawned.
     pub downed: bool,
+    /// How far into his wand's wind-up he is (0..=1), while winding up: the
+    /// wind-up clip plays on the gameplay wind-up's clock.
+    pub windup: Option<f32>,
+    /// Coming down a drop ship's beam (he lands when it ends).
+    pub beaming: bool,
+    /// Flung off the island, falling into the void.
+    pub falling: bool,
+    /// The player is down: the survivors' victory hop (D84).
+    pub celebrating: bool,
 }
 
 impl Default for KnightInput {
@@ -261,6 +287,10 @@ impl Default for KnightInput {
             velocity: Vec3::ZERO,
             grounded: true,
             downed: false,
+            windup: None,
+            beaming: false,
+            falling: false,
+            celebrating: false,
         }
     }
 }
@@ -556,7 +586,38 @@ pub struct KnightAnim {
     /// Held by the gallery ([`GalleryFreeze`]): steps advance no time.
     frozen: bool,
     rng: Rng,
+    /// The authored clips drive his body (M4 chunk 4): see the module docs.
+    clips: bool,
+    /// The clips' state: the wind-up's progress and the time since it ended,
+    /// the beam (and the time since he landed), the void fall's and the
+    /// hop's time, the death he dies, each flinch's time.
+    windup: Option<f32>,
+    since_windup: f32,
+    beaming: bool,
+    landed: Option<f32>,
+    falling: f32,
+    hopping: Option<f32>,
+    death: KnightClip,
+    flinches: [f32; 4],
+    mix: ClipMix,
+    last: KnightPose,
 }
+
+/// The flinch clips, by region: the head, the chest, his left, his right.
+const FLINCH_CLIPS: [KnightClip; 4] = [
+    KnightClip::FlinchHead,
+    KnightClip::FlinchChest,
+    KnightClip::FlinchL,
+    KnightClip::FlinchR,
+];
+/// The deaths, one picked per elimination.
+const DEATHS: [KnightClip; 3] = [
+    KnightClip::DeathBack,
+    KnightClip::DeathSpin,
+    KnightClip::DeathCrumple,
+];
+/// A killing blow this heavy (a close pump blast) spins him round.
+pub const DEATH_SPIN_DAMAGE: f32 = 60.0;
 
 impl KnightAnim {
     pub fn new(seed: u64) -> Self {
@@ -598,7 +659,39 @@ impl KnightAnim {
             armor_off: false,
             frozen: false,
             rng,
+            clips: false,
+            windup: None,
+            since_windup: f32::MAX,
+            beaming: false,
+            landed: None,
+            falling: 0.0,
+            hopping: None,
+            death: KnightClip::DeathBack,
+            flinches: [f32::MAX; 4],
+            mix: ClipMix::default(),
+            last: KnightPose::REST,
         }
+    }
+
+    /// Lets the authored clips drive his body (the procedural idle, run and
+    /// upper-body flinch step aside for them), or not.
+    pub fn set_clips(&mut self, on: bool) {
+        self.clips = on;
+    }
+
+    pub fn clips_enabled(&self) -> bool {
+        self.clips
+    }
+
+    /// The clips' weights and times as of the last [`KnightAnim::step`].
+    pub fn clip_mix(&self) -> &ClipMix {
+        &self.mix
+    }
+
+    /// The pose the last [`KnightAnim::step`] returned (written again on
+    /// frames a far knight skips).
+    pub fn last_pose(&self) -> KnightPose {
+        self.last
     }
 
     /// A headshot has dented his helmet (until elimination or respawn).
@@ -655,6 +748,16 @@ impl KnightAnim {
             }
             KnightEvent::ShieldBreak => self.pending.get_or_insert_default().shield_break = true,
             KnightEvent::Flinch { region, push } => {
+                let clip = match region {
+                    HitRegion::Head => Some(0),
+                    HitRegion::Chest => Some(1),
+                    HitRegion::Left => Some(2),
+                    HitRegion::Right => Some(3),
+                    HitRegion::Legs { .. } => None,
+                };
+                if let Some(k) = clip {
+                    self.flinches[k] = 0.0;
+                }
                 self.flinch.hit(region, Vec2::new(push.x, push.z));
                 if matches!(region, HitRegion::Legs { .. }) {
                     self.squash.v -= FLINCH_DIP;
@@ -734,11 +837,19 @@ impl KnightAnim {
         if input.downed && !self.downed {
             self.downed = true;
             self.ko_time = 0.0;
-            if let Some(hit) = self.pending.take() {
+            let hit = self.pending.take();
+            if let Some(hit) = hit {
                 self.take_push = hit.push.normalize_or(Vec2::Y);
                 // The killing headshot dents the helmet that flies off.
                 self.dented |= hit.headshot;
             }
+            // Which death: knocked flat by a headshot, spun round by a
+            // heavy blast, otherwise any of the three.
+            self.death = match hit {
+                Some(h) if h.headshot => KnightClip::DeathBack,
+                Some(h) if h.damage >= DEATH_SPIN_DAMAGE => KnightClip::DeathSpin,
+                _ => DEATHS[(self.rng.range(0.0, 3.0) as usize).min(2)],
+            };
             // His armor comes apart (`fx::armor` flings it off).
             self.armor_off = true;
             self.squash.v -= LAND_SQUASH * 0.8;
@@ -847,7 +958,125 @@ impl KnightAnim {
         {
             self.pop = None;
         }
-        self.pose()
+        self.step_clips(dt, input);
+        self.mix = self.clip_mix_now();
+        self.last = self.pose();
+        self.last
+    }
+
+    /// Advances the clips' clocks (no time while frozen: `dt` is 0 then).
+    fn step_clips(&mut self, dt: f32, input: &KnightInput) {
+        match (input.windup.filter(|_| !self.downed), self.windup) {
+            (Some(p), _) => {
+                self.windup = Some(p.clamp(0.0, 1.0));
+                self.since_windup = 0.0;
+            }
+            (None, Some(_)) => {
+                self.windup = None;
+                self.since_windup = 0.0;
+            }
+            (None, None) => {
+                if self.since_windup < 1e6 {
+                    self.since_windup += dt;
+                }
+            }
+        }
+        if input.beaming {
+            self.beaming = true;
+            self.landed = None;
+        } else if self.beaming {
+            // Touchdown: the landing clip, and a squash on the spring.
+            self.beaming = false;
+            self.landed = Some(0.0);
+            self.squash.v -= LAND_SQUASH;
+        } else if let Some(t) = &mut self.landed {
+            *t += dt;
+            if *t >= LAND_SECONDS {
+                self.landed = None;
+            }
+        }
+        self.falling = if input.falling && !self.downed {
+            self.falling + dt
+        } else {
+            0.0
+        };
+        self.hopping = if input.celebrating && !self.downed {
+            Some(self.hopping.map_or(0.0, |t| t + dt))
+        } else {
+            None
+        };
+        for t in &mut self.flinches {
+            if *t < FLINCH_SECONDS {
+                *t += dt;
+            }
+        }
+    }
+
+    /// The clips' weights and times now (see the module docs): the
+    /// locomotion blend from his velocity, then, over it, the wind-up, the
+    /// victory hop, the beam landing, the void fall and a death; the
+    /// flinches added on top.
+    fn clip_mix_now(&self) -> ClipMix {
+        let mut mix = ClipMix {
+            weight: [0.0; CLIP_COUNT],
+            time: [0.0; CLIP_COUNT],
+        };
+        let run = smoothstep(0.4, 2.5, self.speed);
+        // Forward (-Z) and sideways (+X is his right) parts of the move.
+        let (fwd, lat) = (-self.dir.z, self.dir.x);
+        let sum = (fwd.abs() + lat.abs()).max(1e-4);
+        let cycle = self.phase / TAU;
+        mix.set(KnightClip::Idle, 1.0 - run, self.time.rem_euclid(2.0));
+        // Backing off, he runs the cycle backwards.
+        let run_time = if fwd >= 0.0 { cycle } else { 1.0 - cycle } * RUN_CYCLE;
+        mix.set(KnightClip::Run, run * fwd.abs() / sum, run_time);
+        let strafe = if lat > 0.0 {
+            KnightClip::StrafeR
+        } else {
+            KnightClip::StrafeL
+        };
+        mix.set(strafe, run * lat.abs() / sum, cycle * RUN_CYCLE);
+
+        // The wand wind-up on the gameplay wind-up's clock, held at its end
+        // after the release, then let go (the wand's own timing).
+        if let Some(p) = self.windup {
+            let fade = CLIP_FADE_IN / WINDUP_SECONDS;
+            mix.over(
+                KnightClip::WindUp,
+                smoothstep(0.0, fade, p),
+                p * WINDUP_SECONDS,
+            );
+        } else if self.since_windup < HOLD_TIME + LOWER_TIME {
+            let k = 1.0 - smoothstep(HOLD_TIME, HOLD_TIME + LOWER_TIME, self.since_windup);
+            mix.over(KnightClip::WindUp, k, WINDUP_SECONDS);
+        }
+        if let Some(t) = self.hopping {
+            let len = KnightClip::VictoryHop.duration();
+            mix.over(
+                KnightClip::VictoryHop,
+                smoothstep(0.0, CLIP_FADE_IN, t).max(0.01),
+                t.rem_euclid(len),
+            );
+        }
+        if self.beaming {
+            mix.over(KnightClip::BeamLand, 1.0, 0.0);
+        } else if let Some(t) = self.landed {
+            let k = 1.0 - smoothstep(LAND_SECONDS - LAND_FADE, LAND_SECONDS, t);
+            mix.over(KnightClip::BeamLand, k, t.min(LAND_SECONDS));
+        }
+        if self.falling > 0.0 {
+            let len = KnightClip::VoidFall.duration();
+            mix.over(KnightClip::VoidFall, 1.0, self.falling.rem_euclid(len));
+        }
+        if self.downed {
+            mix.over(self.death, 1.0, self.ko_time.min(KO_TIME));
+        }
+        for (clip, t) in FLINCH_CLIPS.iter().zip(self.flinches) {
+            if t < FLINCH_SECONDS && !self.downed {
+                mix.set(*clip, 1.0, t);
+            }
+        }
+        mix
     }
 
     fn respawn(&mut self) {
@@ -875,12 +1104,21 @@ impl KnightAnim {
         self.dented = false;
         self.armor_off = false;
         self.pop = Some(Spring { x: 0.0, v: 0.0 });
+        self.windup = None;
+        self.since_windup = f32::MAX;
+        self.landed = None;
+        self.falling = 0.0;
+        self.hopping = None;
+        self.flinches = [f32::MAX; 4];
     }
 
     fn pose(&self) -> KnightPose {
         let t = self.time;
-        let run = smoothstep(0.4, 2.5, self.speed);
-        let idle = 1.0 - run;
+        // With the clips driving his body, the procedural idle and run step
+        // aside (the clips play them); the rest is layered on top.
+        let loco = if self.clips { 0.0 } else { 1.0 };
+        let run = smoothstep(0.4, 2.5, self.speed) * loco;
+        let idle = (1.0 - smoothstep(0.4, 2.5, self.speed)) * loco;
         let stride = run * (self.speed / RUN_SPEED).min(1.0);
         let air = self.air;
         let d = self.dir;
@@ -1005,12 +1243,15 @@ impl KnightAnim {
         // The directional flinch, on top: the parts nearest the hit knocked
         // back along the shot (a hand or boot hanging below its pivot swings
         // its far end along the push; the torso and head lean their tops).
+        // With the clips, the flinch clips do the head, chest and arms; the
+        // legs keep their spring.
         let f = &self.flinch;
         let fp = Vec3::new(f.push.x, 0.0, f.push.y);
-        let torso = swing(fp, f.lean.x) * Quat::from_rotation_y(f.twist.x) * torso;
-        let head = swing(fp, f.head.x) * head;
+        let upper = loco;
+        let torso = swing(fp, f.lean.x * upper) * Quat::from_rotation_y(f.twist.x * upper) * torso;
+        let head = swing(fp, f.head.x * upper) * head;
         for i in 0..2 {
-            arms[i] = swing(fp, -f.arms[i].x) * arms[i];
+            arms[i] = swing(fp, -f.arms[i].x * upper) * arms[i];
             legs[i] = swing(fp, -f.legs[i].x) * legs[i];
         }
 
@@ -1068,6 +1309,9 @@ pub struct KnightRig {
     pub joints: [(Entity, Transform); JOINTS.len()],
     /// Eye nodes by [`EyeState::ALL`] order, `[left, right]`.
     pub eyes: [[Entity; 2]; 4],
+    /// The model's `AnimationPlayer` node (its `knight` node), when the
+    /// model was loaded with its clips.
+    pub player: Option<Entity>,
 }
 
 /// On a knight figure: its model root (a child), before and after rigging.
@@ -1111,6 +1355,7 @@ pub fn rig_knights(
     mut warmup: Warmup,
     mut warmed: Local<bool>,
     mut commands: Commands,
+    players: Query<(), With<AnimationPlayer>>,
 ) {
     for event in dressed.read() {
         if event.name != KNIGHT_MODEL {
@@ -1166,18 +1411,67 @@ pub fn rig_knights(
                 *warmed = true;
             }
         }
+        let player = find(KNIGHT_MODEL).filter(|e| players.contains(*e));
         commands.entity(figure).insert(KnightRig {
             model: event.root,
             joints: joints.try_into().expect("JOINTS"),
             eyes: eyes.try_into().expect("four eye states"),
+            player,
         });
     }
 }
 
+/// Joints of [`JOINTS`] the clips pose (by index): all but the hat's.
+const CLIP_JOINT_INDICES: [usize; 8] = [0, 1, 2, 3, 4, 5, 6, 7];
+
+/// Puts the joints the clips pose back to rest, before the clips run: the
+/// clips then overwrite them, and should they not run (their graph not ready
+/// yet) the pose is still written onto rest, never onto last frame's.
+pub fn reset_clip_joints<F: QueryFilter>(
+    rig: &KnightRig,
+    transforms: &mut Query<&mut Transform, F>,
+) {
+    for i in CLIP_JOINT_INDICES {
+        let (entity, rest) = rig.joints[i];
+        if let Ok(mut t) = transforms.get_mut(entity) {
+            t.translation = rest.translation;
+            t.rotation = rest.rotation;
+        }
+    }
+}
+
+/// Gives every rigged knight's player the knights' shared graph, all its
+/// clips started paused at weight 0 (the clip mix drives them from then
+/// on), once the graph exists.
+pub fn start_knight_players(
+    graph: Option<Res<KnightGraph>>,
+    rigs: Query<&KnightRig>,
+    mut players: Query<&mut AnimationPlayer, Without<AnimationGraphHandle>>,
+    mut commands: Commands,
+) {
+    let Some(graph) = graph else {
+        return;
+    };
+    for rig in &rigs {
+        let Some(entity) = rig.player else {
+            continue;
+        };
+        if let Ok(mut player) = players.get_mut(entity) {
+            graph.start(&mut player);
+            commands
+                .entity(entity)
+                .insert(AnimationGraphHandle(graph.graph.clone()));
+        }
+    }
+}
+
 /// Writes a pose onto a rigged knight: the model root, its pivots and eyes.
+/// With `on_clips` the body's joints take the pose on top of the clips'
+/// (their transforms as the clips left them); otherwise on their rest.
 pub fn write_pose<F1: QueryFilter, F2: QueryFilter>(
     pose: &KnightPose,
     rig: &KnightRig,
+    on_clips: bool,
     transforms: &mut Query<&mut Transform, F1>,
     visibility: &mut Query<&mut Visibility, F2>,
 ) {
@@ -1200,22 +1494,24 @@ pub fn write_pose<F1: QueryFilter, F2: QueryFilter>(
         hat_pivot,
         hat,
     ] = rig.joints;
-    let mut set = |(entity, rest): (Entity, Transform), offset: Vec3, rotation: Quat| {
-        if let Ok(mut t) = transforms.get_mut(entity) {
-            t.translation = rest.translation + to_node_offset(offset);
-            t.rotation = to_node_rotation(rotation) * rest.rotation;
-        }
-    };
-    set(torso, pose.torso_offset, pose.torso);
-    set(leg_l, Vec3::ZERO, pose.legs[0]);
-    set(leg_r, Vec3::ZERO, pose.legs[1]);
-    set(arm_l, Vec3::ZERO, pose.arms[0]);
-    set(arm_r, Vec3::ZERO, pose.arms[1]);
-    set(head, Vec3::ZERO, pose.head);
-    set(cape, Vec3::ZERO, pose.cape);
-    set(robe, Vec3::ZERO, pose.robe);
-    set(hat_tip, Vec3::ZERO, pose.hat_tip);
-    set(hat_pivot, pose.hat_offset, pose.hat);
+    let mut set =
+        |(entity, rest): (Entity, Transform), offset: Vec3, rotation: Quat, clip: bool| {
+            if let Ok(mut t) = transforms.get_mut(entity) {
+                let base = if clip && on_clips { *t } else { rest };
+                t.translation = base.translation + to_node_offset(offset);
+                t.rotation = to_node_rotation(rotation) * base.rotation;
+            }
+        };
+    set(torso, pose.torso_offset, pose.torso, true);
+    set(leg_l, Vec3::ZERO, pose.legs[0], true);
+    set(leg_r, Vec3::ZERO, pose.legs[1], true);
+    set(arm_l, Vec3::ZERO, pose.arms[0], true);
+    set(arm_r, Vec3::ZERO, pose.arms[1], true);
+    set(head, Vec3::ZERO, pose.head, true);
+    set(cape, Vec3::ZERO, pose.cape, true);
+    set(robe, Vec3::ZERO, pose.robe, true);
+    set(hat_tip, Vec3::ZERO, pose.hat_tip, false);
+    set(hat_pivot, pose.hat_offset, pose.hat, false);
     if let Ok(mut t) = transforms.get_mut(hat_pivot.0) {
         t.scale = hat_pivot.1.scale * pose.hat_scale;
     }

@@ -1290,6 +1290,11 @@ mod figure {
     }
 
     fn app() -> App {
+        app_with(|_| {})
+    }
+
+    /// The figure's app, with `extra` plugins added before it is finished.
+    fn app_with(extra: impl FnOnce(&mut App)) -> App {
         let mut app = App::new();
         app.add_plugins((
             MinimalPlugins,
@@ -1310,6 +1315,7 @@ mod figure {
             DT,
         )))
         .add_systems(Update, dress);
+        extra(&mut app);
         app.finish();
         app.cleanup();
         app
@@ -1513,5 +1519,765 @@ mod figure {
         assert_eq!(sparkles(&mut app), 0, "the sparkle fades out");
         let scale = app.world().get::<Transform>(model).unwrap().scale;
         assert!((scale - Vec3::ONE).abs().max_element() < 0.03, "{scale}");
+    }
+
+    /// The game's path (M4 chunk 4): with `AnimationPlugin` the knight model
+    /// loads its clips, every figure's player takes the one shared graph,
+    /// the clips move his joints, and only the model's nodes are animation
+    /// targets: the character (and so its hitboxes) never moves.
+    #[test]
+    fn the_clips_drive_the_figure_and_its_hitboxes_never_move() {
+        use bevy::animation::{AnimatedBy, AnimationPlugin};
+        use pieced::{
+            knight::{KnightAnim, KnightGraph},
+            models::ModelRoot,
+        };
+        let mut app = app_with(|app| {
+            app.add_plugins(AnimationPlugin);
+        });
+        let owners: Vec<Entity> = (0..3)
+            .map(|k| {
+                let mut motor = Motor::default();
+                motor.grounded = true;
+                app.world_mut()
+                    .spawn((
+                        Character,
+                        Transform::from_xyz(3.0 * k as f32, 0.0, -5.0),
+                        motor,
+                        LookAngles::default(),
+                        Health::default(),
+                    ))
+                    .id()
+            })
+            .collect();
+        let driven = |app: &mut App| {
+            let world = app.world_mut();
+            world
+                .query::<&KnightAnim>()
+                .iter(world)
+                .filter(|a| a.clips_enabled())
+                .count()
+        };
+        for _ in 0..3000 {
+            app.update();
+            if driven(&mut app) == owners.len() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert_eq!(
+            driven(&mut app),
+            owners.len(),
+            "every knight is driven by the clips"
+        );
+        let graph = app.world().resource::<KnightGraph>().graph.clone();
+        {
+            let world = app.world_mut();
+            let handles: Vec<_> = world
+                .query::<&AnimationGraphHandle>()
+                .iter(world)
+                .map(|h| h.0.clone())
+                .collect();
+            assert_eq!(handles.len(), owners.len());
+            assert!(handles.iter().all(|h| *h == graph), "one shared graph");
+        }
+
+        // Running forward, the run clip swings his boots; the character
+        // stays exactly where the simulation put it.
+        let rig = {
+            let world = app.world_mut();
+            world
+                .query::<(&TargetFigure, &KnightRig)>()
+                .iter(world)
+                .find(|(f, _)| f.owner == owners[0])
+                .map(|(_, r)| r.clone())
+                .unwrap()
+        };
+        let leg_l = part(&mut app, rig.model, "PivotLegL");
+        let leg_r = part(&mut app, rig.model, "PivotLegR");
+        let torso = part(&mut app, rig.model, "Torso");
+        let rest_torso = app.world().get::<Transform>(torso).unwrap().translation;
+        app.world_mut()
+            .get_mut::<Motor>(owners[0])
+            .unwrap()
+            .velocity = Vec3::new(0.0, 0.0, -5.5);
+        let before: Vec<Transform> = owners
+            .iter()
+            .map(|o| *app.world().get::<Transform>(*o).unwrap())
+            .collect();
+        let (mut apart, mut dip) = (0.0f32, 0.0f32);
+        for _ in 0..super::frames(0.8) {
+            app.update();
+            let l = app.world().get::<Transform>(leg_l).unwrap().rotation;
+            let r = app.world().get::<Transform>(leg_r).unwrap().rotation;
+            apart = apart.max(l.angle_between(r));
+            let t = app.world().get::<Transform>(torso).unwrap().translation;
+            dip = dip.max((rest_torso - t).length());
+            for (o, b) in owners.iter().zip(&before) {
+                assert_eq!(app.world().get::<Transform>(*o).unwrap(), b);
+            }
+        }
+        assert!(
+            apart > 0.25,
+            "the run clip swings the boots: {apart:.2} rad apart"
+        );
+        assert!(dip > 0.005, "and bobs him at each footfall: {dip:.3} m");
+
+        // Only the models' nodes are animated.
+        let world = app.world_mut();
+        let targets: Vec<Entity> = world
+            .query_filtered::<Entity, With<AnimatedBy>>()
+            .iter(world)
+            .collect();
+        assert!(targets.len() >= 8 * owners.len());
+        let mut roots = world.query_filtered::<Entity, With<ModelRoot>>();
+        let roots: Vec<Entity> = roots.iter(world).collect();
+        for target in targets {
+            assert!(world.get::<Character>(target).is_none());
+            let mut e = target;
+            while let Some(parent) = world.get::<ChildOf>(e).map(ChildOf::parent) {
+                e = parent;
+                if roots.contains(&e) {
+                    break;
+                }
+            }
+            assert!(roots.contains(&e), "an animation target outside a model");
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The authored clips (M4 chunk 4, D104): in the glb, their fit, their mix
+// ---------------------------------------------------------------------------
+
+mod clips {
+    use super::*;
+    use pieced::{
+        arena::visuals::wand::{GRIP_R, SHOULDER_R, WAND_LENGTH, WAND_SCALE, rest_rotation},
+        knight::{
+            CLIP_JOINTS, KO_TIME, KnightAnim, KnightClip, KnightEvent, KnightInput,
+            clips::{FLINCH_SECONDS, LAND_SECONDS, RUN_CYCLE, WINDUP_SECONDS},
+        },
+        models::MODEL_FORWARD_FIX,
+        orb::WAND_TIP,
+    };
+    use std::collections::HashMap;
+
+    /// Seconds between the fit's samples.
+    const FIT_STEP: f32 = 0.05;
+    /// How far a body part may leave the capsule in a clip (the helmet keeps
+    /// D121's [`HEAD_TOLERANCE`]).
+    const CLIP_TOLERANCE: f32 = 0.10;
+
+    /// One glTF animation channel.
+    struct Channel {
+        node: usize,
+        path: String,
+        times: Vec<f32>,
+        values: Vec<Vec4>,
+    }
+
+    struct Anim {
+        name: String,
+        channels: Vec<Channel>,
+    }
+
+    impl Anim {
+        fn duration(&self) -> f32 {
+            self.channels
+                .iter()
+                .map(|c| *c.times.last().unwrap())
+                .fold(0.0, f32::max)
+        }
+    }
+
+    impl Channel {
+        /// The channel at `t` (linear; rotations slerped), clamped to its keys.
+        fn sample(&self, t: f32) -> Vec4 {
+            let k = self.times.partition_point(|&x| x <= t);
+            if k == 0 {
+                return self.values[0];
+            }
+            if k >= self.times.len() {
+                return *self.values.last().unwrap();
+            }
+            let (t0, t1) = (self.times[k - 1], self.times[k]);
+            let u = ((t - t0) / (t1 - t0)).clamp(0.0, 1.0);
+            let (a, b) = (self.values[k - 1], self.values[k]);
+            if self.path == "rotation" {
+                Vec4::from(Quat::from_vec4(a).slerp(Quat::from_vec4(b), u))
+            } else {
+                a.lerp(b, u)
+            }
+        }
+    }
+
+    fn floats(glb: &Glb, accessor: usize, comps: usize) -> Vec<Vec4> {
+        let (count, offset, stride, kind) = glb.layout(accessor, 4 * comps);
+        assert_eq!(kind, 5126, "animation data is f32");
+        let f = |i: usize| f32::from_le_bytes(glb.bin[i..i + 4].try_into().unwrap());
+        (0..count)
+            .map(|k| {
+                let i = offset + k * stride;
+                let mut v = [0.0; 4];
+                for (c, slot) in v.iter_mut().enumerate().take(comps) {
+                    *slot = f(i + 4 * c);
+                }
+                Vec4::from_array(v)
+            })
+            .collect()
+    }
+
+    fn animations(glb: &Glb) -> Vec<Anim> {
+        let json = |v: &Value| v.as_u64().unwrap() as usize;
+        glb.doc["animations"]
+            .as_array()
+            .expect("knight.glb has animations")
+            .iter()
+            .map(|a| Anim {
+                name: a["name"].as_str().unwrap().to_string(),
+                channels: a["channels"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|c| {
+                        let sampler = &a["samplers"][json(&c["sampler"])];
+                        let path = c["target"]["path"].as_str().unwrap().to_string();
+                        let comps = if path == "rotation" { 4 } else { 3 };
+                        assert_eq!(sampler["interpolation"].as_str(), Some("LINEAR"));
+                        Channel {
+                            node: json(&c["target"]["node"]),
+                            times: floats(glb, json(&sampler["input"]), 1)
+                                .into_iter()
+                                .map(|v| v.x)
+                                .collect(),
+                            values: floats(glb, json(&sampler["output"]), comps),
+                            path,
+                        }
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+
+    fn node_name(glb: &Glb, node: usize) -> &str {
+        glb.doc["nodes"][node]["name"].as_str().unwrap()
+    }
+
+    /// Node overrides (translation, rotation) at `t` of a clip, on top of
+    /// `base` for an additive clip (its rotations multiply the base's).
+    type Pose = HashMap<usize, (Option<Vec3>, Option<Quat>)>;
+
+    fn sample(anim: &Anim, t: f32, base: Option<&Pose>) -> Pose {
+        let mut pose: Pose = base.cloned().unwrap_or_default();
+        for c in &anim.channels {
+            let v = c.sample(t);
+            let entry = pose.entry(c.node).or_default();
+            if c.path == "rotation" {
+                let q = Quat::from_vec4(v).normalize();
+                entry.1 = Some(match (base, entry.1) {
+                    (Some(_), Some(b)) => q * b,
+                    _ => q,
+                });
+            } else {
+                entry.0 = Some(v.truncate());
+            }
+        }
+        pose
+    }
+
+    /// Every node's global transform (glTF scene space) under a pose.
+    fn globals(glb: &Glb, pose: &Pose) -> Vec<Affine3A> {
+        let nodes = glb.doc["nodes"].as_array().unwrap();
+        let f = |v: &Value, n: usize| -> Vec<f32> {
+            (0..n).map(|i| v[i].as_f64().unwrap() as f32).collect()
+        };
+        let mut out = vec![Affine3A::IDENTITY; nodes.len()];
+        let mut stack: Vec<(usize, Affine3A)> = glb.doc["scenes"][0]["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| (i.as_u64().unwrap() as usize, Affine3A::IDENTITY))
+            .collect();
+        while let Some((i, parent)) = stack.pop() {
+            let n = &nodes[i];
+            let (mut t, mut r) = (
+                n.get("translation")
+                    .map_or(Vec3::ZERO, |v| Vec3::from_slice(&f(v, 3))),
+                n.get("rotation")
+                    .map_or(Quat::IDENTITY, |v| Quat::from_slice(&f(v, 4))),
+            );
+            if let Some((pt, pr)) = pose.get(&i) {
+                t = pt.unwrap_or(t);
+                r = pr.unwrap_or(r);
+            }
+            let s = n
+                .get("scale")
+                .map_or(Vec3::ONE, |v| Vec3::from_slice(&f(v, 3)));
+            out[i] = parent * Affine3A::from_scale_rotation_translation(s, r, t);
+            for c in n["children"].as_array().into_iter().flatten() {
+                stack.push((c.as_u64().unwrap() as usize, out[i]));
+            }
+        }
+        out
+    }
+
+    /// Each named mesh part's worst overshoot of its own hitbox under a pose
+    /// (model space).
+    fn overshoots(glb: &Glb, pose: &Pose) -> BTreeMap<String, f32> {
+        let g = globals(glb, pose);
+        let mut out = BTreeMap::new();
+        for (i, n) in glb.doc["nodes"].as_array().unwrap().iter().enumerate() {
+            let (Some(name), Some(mesh)) = (n["name"].as_str(), n["mesh"].as_u64()) else {
+                continue;
+            };
+            if is_cosmetic(name) {
+                continue;
+            }
+            let mut worst = f32::MIN;
+            for prim in glb.doc["meshes"][mesh as usize]["primitives"]
+                .as_array()
+                .unwrap()
+            {
+                let pos = prim["attributes"]["POSITION"].as_u64().unwrap() as usize;
+                for p in glb.vec3s(pos) {
+                    let p = gltf_to_model(g[i].transform_point3(p));
+                    let o = if is_head(name) {
+                        sphere_overshoot(p)
+                    } else {
+                        capsule_overshoot(p)
+                    };
+                    worst = worst.max(o);
+                }
+            }
+            out.insert(name.to_string(), worst);
+        }
+        out
+    }
+
+    #[test]
+    fn every_clip_is_in_the_glb_with_its_authored_length() {
+        let side = sidecar();
+        let glb = load_glb();
+        let anims = animations(&glb);
+        assert_eq!(side.clips.len(), KnightClip::ALL.len());
+        assert_eq!(anims.len(), side.clips.len());
+        for (info, anim) in side.clips.iter().zip(&anims) {
+            assert_eq!(
+                info.name, anim.name,
+                "the sidecar lists the clips in glTF order"
+            );
+            assert!((info.duration - anim.duration()).abs() < 1e-5);
+        }
+        for clip in KnightClip::ALL {
+            let anim = anims
+                .iter()
+                .find(|a| a.name == clip.name())
+                .unwrap_or_else(|| panic!("no {} clip in knight.glb", clip.name()));
+            println!("clip {:12} {:.3} s", clip.name(), anim.duration());
+            assert!(
+                (anim.duration() - clip.duration()).abs() < 1e-5,
+                "{}: {} s, authored {}",
+                clip.name(),
+                anim.duration(),
+                clip.duration()
+            );
+        }
+        // The wind-up is exactly the gameplay wind-up.
+        let windup = anims.iter().find(|a| a.name == "WindUp").unwrap();
+        assert!((windup.duration() - 0.4).abs() < 1e-6);
+        assert_eq!(WINDUP_SECONDS, 0.4);
+        assert_eq!(
+            pieced::tuning::Tuning::default().grunt.windup,
+            WINDUP_SECONDS,
+            "the clip is the gameplay wind-up"
+        );
+        // The deaths last the KO beat.
+        for clip in [
+            KnightClip::DeathBack,
+            KnightClip::DeathSpin,
+            KnightClip::DeathCrumple,
+        ] {
+            assert_eq!(clip.duration(), KO_TIME);
+        }
+    }
+
+    #[test]
+    fn clips_key_the_body_joints_and_flinches_only_turn_them() {
+        let glb = load_glb();
+        for anim in animations(&glb) {
+            let clip = KnightClip::ALL
+                .into_iter()
+                .find(|c| c.name() == anim.name)
+                .unwrap();
+            let mut keyed: Vec<(String, String)> = anim
+                .channels
+                .iter()
+                .map(|c| (node_name(&glb, c.node).to_string(), c.path.clone()))
+                .collect();
+            keyed.sort();
+            for (node, path) in &keyed {
+                assert!(
+                    CLIP_JOINTS.contains(&node.as_str()),
+                    "{}: keys {node}, not a clip joint (the hat stays procedural)",
+                    anim.name
+                );
+                assert!(
+                    path == "rotation" || (path == "translation" && node == "Torso"),
+                    "{}: keys {node}'s {path}",
+                    anim.name
+                );
+                if clip.is_additive() {
+                    assert_eq!(
+                        path, "rotation",
+                        "{} is additive: rotations only",
+                        anim.name
+                    );
+                }
+            }
+            if !clip.is_additive() {
+                // Every full-body clip poses every joint, so no joint keeps a
+                // stale pose from another clip.
+                for joint in CLIP_JOINTS {
+                    assert!(
+                        keyed.iter().any(|(n, p)| n == joint && p == "rotation"),
+                        "{} doesn't key {joint}",
+                        anim.name
+                    );
+                }
+                assert!(keyed.contains(&("Torso".to_string(), "translation".to_string())));
+            }
+        }
+    }
+
+    /// The sampled hitbox fit (docs/M4-SPEC.md → Chunk 4, S5 extended, D121):
+    /// in every clip he can be shot in, every 50 ms, the body parts stay in
+    /// the body capsule within 10 cm and the helmet and eyes in the head
+    /// sphere within D121's 9 cm. The hitboxes themselves never move (they
+    /// are the character's; see `the_clips_drive_the_figure_...`).
+    #[test]
+    fn in_play_clips_keep_him_inside_his_hitboxes() {
+        let glb = load_glb();
+        let anims = animations(&glb);
+        let idle = anims.iter().find(|a| a.name == "Idle").unwrap();
+        let idle0 = sample(idle, 0.0, None);
+        let mut checked = 0;
+        for clip in KnightClip::ALL.into_iter().filter(|c| c.in_play()) {
+            let anim = anims.iter().find(|a| a.name == clip.name()).unwrap();
+            let mut worst: BTreeMap<String, (f32, f32)> = BTreeMap::new();
+            let n = (anim.duration() / FIT_STEP + 1e-4).floor() as usize;
+            let times = (0..=n)
+                .map(|k| k as f32 * FIT_STEP)
+                .chain([anim.duration()]);
+            for t in times {
+                let base = clip.is_additive().then_some(&idle0);
+                let pose = sample(anim, t, base);
+                for (part, o) in overshoots(&glb, &pose) {
+                    let w = worst.entry(part).or_insert((f32::MIN, 0.0));
+                    if o > w.0 {
+                        *w = (o, t);
+                    }
+                }
+                checked += 1;
+            }
+            for (part, (o, t)) in worst {
+                let limit = if is_head(&part) {
+                    HEAD_TOLERANCE
+                } else {
+                    CLIP_TOLERANCE
+                };
+                let exempt = clip.fit_exempt().contains(&part.as_str());
+                println!(
+                    "clip {:12} {part:10} worst {:+.1} cm at {t:.2} s{}",
+                    clip.name(),
+                    o * 100.0,
+                    if exempt { " (exempt)" } else { "" }
+                );
+                assert!(
+                    exempt || o <= limit,
+                    "{}: {part} leaves its hitbox by {o:.3} m at {t:.2} s",
+                    clip.name()
+                );
+            }
+        }
+        assert!(checked > 100, "{checked} samples");
+    }
+
+    /// The wind-up's last pose puts the wand's tip (the wand as
+    /// `arena::visuals::wand` attaches it) on the orb's launch point, where
+    /// the gameplay orb leaves.
+    #[test]
+    fn the_windup_ends_with_the_wand_on_the_orbs_launch_point() {
+        let glb = load_glb();
+        let anims = animations(&glb);
+        let windup = anims.iter().find(|a| a.name == "WindUp").unwrap();
+        let arm = (0..glb.doc["nodes"].as_array().unwrap().len())
+            .find(|&i| node_name(&glb, i) == "PivotArmR")
+            .unwrap();
+        let rest = globals(&glb, &Pose::default())[arm];
+        let posed = globals(&glb, &sample(windup, WINDUP_SECONDS, None))[arm];
+        let tip_rest = SHOULDER_R
+            + (GRIP_R - SHOULDER_R)
+            + rest_rotation() * Vec3::NEG_Z * WAND_LENGTH * WAND_SCALE;
+        let fix = MODEL_FORWARD_FIX;
+        let tip = fix * (posed * rest.inverse()).transform_point3(fix.inverse() * tip_rest);
+        println!("wind-up wand tip {tip:.3}, the orb leaves from {WAND_TIP:.3}");
+        assert!(
+            tip.distance(WAND_TIP) < 0.03,
+            "the wand's tip {tip} is {:.3} m from the orb's launch point {WAND_TIP}",
+            tip.distance(WAND_TIP)
+        );
+        // At its start he stands at rest (the clip blends in from any pose).
+        let start = globals(&glb, &sample(windup, 0.0, None))[arm];
+        assert!(start.abs_diff_eq(rest, 1e-3));
+    }
+
+    fn clip_anim(seed: u64) -> KnightAnim {
+        let mut anim = KnightAnim::new(seed);
+        anim.set_clips(true);
+        anim
+    }
+
+    fn steps(anim: &mut KnightAnim, input: KnightInput, seconds: f32) {
+        for _ in 0..frames(seconds) {
+            anim.step(DT, &input);
+        }
+    }
+
+    #[test]
+    fn blend_weights_follow_the_velocity() {
+        let mut anim = clip_anim(3);
+        steps(&mut anim, KnightInput::default(), 0.5);
+        let m = anim.clip_mix();
+        assert_eq!(m.weight(KnightClip::Idle), 1.0);
+        assert_eq!(m.weight(KnightClip::Run), 0.0);
+
+        // Running forward: the run cycle, its clock following the stride.
+        let fwd = KnightInput {
+            velocity: Vec3::new(0.0, 0.0, -5.5),
+            ..default()
+        };
+        steps(&mut anim, fwd, 1.0);
+        let m = *anim.clip_mix();
+        assert!(m.weight(KnightClip::Run) > 0.95, "{:?}", m.weight);
+        assert!(m.weight(KnightClip::Idle) < 0.05);
+        assert!((m.body_weight() - 1.0).abs() < 1e-4);
+        let t0 = m.time(KnightClip::Run);
+        anim.step(DT, &fwd);
+        let dt_clip = (anim.clip_mix().time(KnightClip::Run) - t0).rem_euclid(RUN_CYCLE);
+        // 5.5 m/s over a 1.7 m stride: the 0.6 s cycle plays about 1.94x.
+        let rate = dt_clip / DT;
+        assert!((1.7..2.2).contains(&rate), "run clip rate {rate:.2}");
+
+        // Strafing to his right (+X): the right strafe, no run.
+        let right = KnightInput {
+            velocity: Vec3::new(4.0, 0.0, 0.0),
+            ..default()
+        };
+        steps(&mut anim, right, 1.0);
+        let m = *anim.clip_mix();
+        assert!(m.weight(KnightClip::StrafeR) > 0.9, "{:?}", m.weight);
+        assert!(m.weight(KnightClip::StrafeL) < 1e-3 && m.weight(KnightClip::Run) < 0.05);
+
+        // Diagonally forward-left: the run and the left strafe share it.
+        let diag = KnightInput {
+            velocity: Vec3::new(-3.0, 0.0, -3.0),
+            ..default()
+        };
+        steps(&mut anim, diag, 1.0);
+        let m = *anim.clip_mix();
+        let (r, l) = (m.weight(KnightClip::Run), m.weight(KnightClip::StrafeL));
+        assert!(
+            (r - l).abs() < 0.1 && r > 0.35 && l > 0.35,
+            "run {r:.2} strafe {l:.2}"
+        );
+        assert!((m.body_weight() - 1.0).abs() < 1e-4);
+
+        // Backing off: the run cycle plays backwards.
+        let back = KnightInput {
+            velocity: Vec3::new(0.0, 0.0, 5.0),
+            ..default()
+        };
+        steps(&mut anim, back, 1.0);
+        let t0 = anim.clip_mix().time(KnightClip::Run);
+        anim.step(DT, &back);
+        let t1 = anim.clip_mix().time(KnightClip::Run);
+        assert!(
+            (t1 - t0).rem_euclid(RUN_CYCLE) > RUN_CYCLE / 2.0,
+            "{t0} -> {t1}"
+        );
+
+        // Slowing to a stop blends back to idle.
+        steps(&mut anim, KnightInput::default(), 1.0);
+        assert!(anim.clip_mix().weight(KnightClip::Idle) > 0.99);
+    }
+
+    #[test]
+    fn the_windup_clip_runs_on_the_gameplay_windup_clock() {
+        let mut anim = clip_anim(4);
+        steps(&mut anim, KnightInput::default(), 0.3);
+        // The wind-up, 0.4 s of gameplay: the clip's time is its progress.
+        for k in 0..=24 {
+            let p = k as f32 / 24.0;
+            anim.step(
+                DT,
+                &KnightInput {
+                    windup: Some(p),
+                    ..default()
+                },
+            );
+            let m = anim.clip_mix();
+            assert!((m.time(KnightClip::WindUp) - p * WINDUP_SECONDS).abs() < 1e-6);
+            if p >= 0.25 {
+                assert_eq!(m.weight(KnightClip::WindUp), 1.0, "at {p}");
+            }
+        }
+        // The release: held at the thrust, then let go.
+        let released = |anim: &mut KnightAnim, s: f32| {
+            steps(anim, KnightInput::default(), s);
+            *anim.clip_mix()
+        };
+        let m = released(&mut anim, 0.1);
+        assert_eq!(m.weight(KnightClip::WindUp), 1.0);
+        assert_eq!(m.time(KnightClip::WindUp), WINDUP_SECONDS);
+        let m = released(&mut anim, 0.25);
+        let w = m.weight(KnightClip::WindUp);
+        assert!(w > 0.0 && w < 1.0, "lowering: {w}");
+        let m = released(&mut anim, 0.3);
+        assert_eq!(m.weight(KnightClip::WindUp), 0.0);
+        assert!((m.body_weight() - 1.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn flinches_landings_hops_falls_and_deaths_play_their_clips() {
+        let mut anim = clip_anim(5);
+        steps(&mut anim, KnightInput::default(), 0.2);
+        // A shot on his left: that flinch, added on top, for its length.
+        anim.event(KnightEvent::Flinch {
+            region: pieced::knight::HitRegion::Left,
+            push: Vec3::Z,
+        });
+        anim.step(DT, &KnightInput::default());
+        let m = *anim.clip_mix();
+        assert_eq!(m.weight(KnightClip::FlinchL), 1.0);
+        assert_eq!(m.weight(KnightClip::FlinchR), 0.0);
+        assert!(
+            (m.body_weight() - 1.0).abs() < 1e-4,
+            "additive: the body blend is kept"
+        );
+        steps(&mut anim, KnightInput::default(), FLINCH_SECONDS);
+        assert_eq!(anim.clip_mix().weight(KnightClip::FlinchL), 0.0);
+
+        // Down the beam: the landing clip's first pose; touchdown plays it
+        // and squashes him, then it fades out.
+        let beam = KnightInput {
+            beaming: true,
+            grounded: false,
+            ..default()
+        };
+        steps(&mut anim, beam, 0.5);
+        let m = *anim.clip_mix();
+        assert_eq!(
+            (m.weight(KnightClip::BeamLand), m.time(KnightClip::BeamLand)),
+            (1.0, 0.0)
+        );
+        let squash = anim.step(DT, &KnightInput::default()).scale.y;
+        steps(&mut anim, KnightInput::default(), 0.1);
+        let m = *anim.clip_mix();
+        assert_eq!(m.weight(KnightClip::BeamLand), 1.0);
+        assert!(m.time(KnightClip::BeamLand) > 0.09);
+        let later = anim.last_pose().scale.y;
+        assert!(later < 1.0 || squash < 1.0, "a squash on touchdown");
+        steps(&mut anim, KnightInput::default(), LAND_SECONDS);
+        assert_eq!(anim.clip_mix().weight(KnightClip::BeamLand), 0.0);
+
+        // The victory hop while the player is down.
+        let party = KnightInput {
+            celebrating: true,
+            ..default()
+        };
+        steps(&mut anim, party, 0.3);
+        assert!(anim.clip_mix().weight(KnightClip::VictoryHop) > 0.99);
+        steps(&mut anim, KnightInput::default(), 0.1);
+        assert_eq!(anim.clip_mix().weight(KnightClip::VictoryHop), 0.0);
+
+        // Flung into the void: the fall, round and round.
+        let fall = KnightInput {
+            falling: true,
+            grounded: false,
+            ..default()
+        };
+        steps(&mut anim, fall, 0.8);
+        let m = *anim.clip_mix();
+        assert_eq!(m.weight(KnightClip::VoidFall), 1.0);
+        assert!(m.time(KnightClip::VoidFall) < KnightClip::VoidFall.duration());
+
+        // Eliminated: one of the deaths over the KO beat. A headshot knocks
+        // him flat on his back; a heavy blast spins him round.
+        for (headshot, damage, want) in [
+            (true, 50.0, Some(KnightClip::DeathBack)),
+            (false, 90.0, Some(KnightClip::DeathSpin)),
+            (false, 20.0, None),
+        ] {
+            let mut anim = clip_anim(9);
+            steps(&mut anim, KnightInput::default(), 0.2);
+            anim.event(KnightEvent::Hit {
+                push: Vec3::Z,
+                headshot,
+            });
+            anim.event(KnightEvent::Damage { amount: damage });
+            let down = KnightInput {
+                downed: true,
+                ..default()
+            };
+            steps(&mut anim, down, KO_TIME * 0.5);
+            let m = *anim.clip_mix();
+            let deaths = [
+                KnightClip::DeathBack,
+                KnightClip::DeathSpin,
+                KnightClip::DeathCrumple,
+            ];
+            let playing: Vec<_> = deaths.into_iter().filter(|d| m.weight(*d) == 1.0).collect();
+            assert_eq!(playing.len(), 1, "{playing:?}");
+            if let Some(want) = want {
+                assert_eq!(playing[0], want);
+            }
+            assert!((m.time(playing[0]) - KO_TIME * 0.5).abs() < 0.02);
+            assert!((m.body_weight() - 1.0).abs() < 1e-4);
+        }
+    }
+
+    #[test]
+    fn with_clips_the_procedural_idle_and_run_step_aside() {
+        let mut procedural = KnightAnim::new(7);
+        let mut clipped = clip_anim(7);
+        let fwd = KnightInput {
+            velocity: Vec3::new(0.0, 0.0, -5.5),
+            ..default()
+        };
+        let mut swing = (0.0f32, 0.0f32);
+        for _ in 0..frames(1.0) {
+            let a = procedural.step(DT, &fwd);
+            let b = clipped.step(DT, &fwd);
+            swing.0 = swing.0.max(a.legs[0].angle_between(Quat::IDENTITY));
+            swing.1 = swing.1.max(b.legs[0].angle_between(Quat::IDENTITY));
+            assert_eq!(
+                b.torso_offset,
+                Vec3::ZERO,
+                "the clip bobs him, not the pose"
+            );
+        }
+        assert!(swing.0 > 0.4 && swing.1 < 1e-4, "{swing:?}");
+        // The springs still play on top: a hit's take flings the arms.
+        clipped.event(KnightEvent::Hit {
+            push: Vec3::Z,
+            headshot: false,
+        });
+        let mut fling = 0.0f32;
+        for _ in 0..frames(0.2) {
+            let p = clipped.step(DT, &KnightInput::default());
+            fling = fling.max(p.arms[0].angle_between(Quat::IDENTITY));
+        }
+        assert!(fling > 0.6, "the take on top of the clips: {fling:.2}");
     }
 }

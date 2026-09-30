@@ -31,7 +31,7 @@ use crate::{
         UiArt,
         style::{PANEL, RIM, TEXT, caps, ink},
     },
-    knight::{KNIGHT_MODEL, KnightAssets},
+    knight::{KNIGHT_MODEL, KnightAssets, KnightClip, KnightGraph},
     look::{Halo, ModelDressed, Outline},
     models::{MODEL_FORWARD_FIX, ModelLibrary, ModelParts, spawn_model},
     render::{CameraFollowSet, MainCamera},
@@ -61,6 +61,7 @@ pub(super) fn build(app: &mut App) {
                 refresh_best,
                 spawn_hero,
                 dress_hero,
+                play_hero_clip,
                 hero_visibility,
             ),
         )
@@ -296,6 +297,39 @@ fn dress_hero(
             // Chin up, looking out over the island.
             t.rotation = fix.inverse() * Quat::from_rotation_x(0.12) * fix * t.rotation;
         }
+    }
+}
+
+/// Plays the knights' authored `Hero` clip on the title's knight (M4-V8, M4
+/// chunk 4) once the shared graph exists: his wand raised to the sky, his
+/// other fist on his hip, breathing. It replaces the fixed pose
+/// [`dress_hero`] sets (the fallback without the clips).
+fn play_hero_clip(
+    graph: Option<Res<KnightGraph>>,
+    heroes: Query<Entity, With<HeroKnight>>,
+    parts: ModelParts,
+    mut players: Query<&mut AnimationPlayer, Without<AnimationGraphHandle>>,
+    mut commands: Commands,
+    mut playing: Local<Vec<Entity>>,
+) {
+    let Some(graph) = graph else {
+        return;
+    };
+    for hero in &heroes {
+        if playing.contains(&hero) {
+            continue;
+        }
+        let Some(node) = parts.find(hero, KNIGHT_MODEL) else {
+            continue;
+        };
+        let Ok(mut player) = players.get_mut(node) else {
+            continue;
+        };
+        player.play(graph.node(KnightClip::Hero)).repeat();
+        commands
+            .entity(node)
+            .insert(AnimationGraphHandle(graph.graph.clone()));
+        playing.push(hero);
     }
 }
 

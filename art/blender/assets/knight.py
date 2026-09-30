@@ -767,9 +767,11 @@ def build_hat():
 # outside the breastplate and mail everywhere.
 # M4 art: nearly closed over the chest, so he reads purple-bodied with a
 # gold seam down his front (three values at range: silver, purple, gold).
+# M4 round 4: tapering to a narrow waist at the belt, so the robe's bell
+# flares from it (the body capsule caps the hem's width).
 _COAT = [(1.442, 0.11, 0.1, 6.0), (1.39, 0.15, 0.13, 0.3), (1.3, 0.196, 0.164, 0.05),
-         (1.2, 0.22, 0.18, 0.05), (1.08, 0.214, 0.178, 0.05), (0.98, 0.205, 0.172, 0.05),
-         (0.87, 0.194, 0.164, 0.05)]
+         (1.2, 0.205, 0.172, 0.05), (1.08, 0.188, 0.162, 0.05), (0.98, 0.174, 0.152, 0.05),
+         (0.87, 0.166, 0.146, 0.05)]
 # Columns round the coat from the opening's left edge: a thin gold trim at each edge.
 COAT_US = [0.0] + [0.006 + 0.988 * k / 11 for k in range(12)] + [1.0]
 
@@ -809,12 +811,12 @@ def build_torso():
     # and a violet gem in it (M4-V8); the robe's top edge tucks under it and
     # the coat's hem over it.
     belt = [ring(bm, outline(a, d, c), z) for z, a, d, c in
-            [(0.775, 0.17, 0.142, 0.08), (0.779, 0.206, 0.178, 0.095),
-             (0.899, 0.206, 0.178, 0.095), (0.903, 0.17, 0.142, 0.08)]]
+            [(0.775, 0.15, 0.128, 0.075), (0.779, 0.184, 0.162, 0.09),
+             (0.899, 0.184, 0.162, 0.09), (0.903, 0.15, 0.128, 0.075)]]
     faces = [f for band in loft(bm, belt) for f in band]
     faces += [cap(bm, belt[0], up=False), cap(bm, belt[-1], up=True)]
     b.tag(faces, BELT)
-    buckle_c = Vector((0.0, -0.18, 0.839))
+    buckle_c = Vector((0.0, -0.164, 0.839))
     outer_pts = rrect(0.078, 0.064, 0.02, corner=3)
     inner_pts = rrect(0.046, 0.034, 0.01, corner=3)
     rot = Matrix.Rotation(math.pi / 2, 3, "X")  # (x, y, z) -> (x, -z, y): local +z faces -y
@@ -842,7 +844,8 @@ def build_torso():
              (1.002, 0.153, 0.127, 0.08, -0.012, 0.08),
              (1.09, 0.157, 0.134, 0.082, -0.014, 0.08),
              (1.2, 0.146, 0.122, 0.078, -0.008, 0.05), (1.33, 0.11, 0.095, 0.06, 0.0, 0.0)]
-    rings = [ring(bm, rrect(a, d, c, corner=3, front=(0.45,), side=2, back=2), z, dy=dy,
+    # (M4 round 4: 0.84x, inside the narrowed coat.)
+    rings = [ring(bm, rrect(a * 0.84, d * 0.84, c * 0.84, corner=3, front=(0.45,), side=2, back=2), z, dy=dy,
                   wave=keel(k)) for z, a, d, c, dy, k in chest]
     bands = loft(bm, rings)
     b.tag(bands[0] + [cap(bm, rings[0], up=False)], DARK)
@@ -864,7 +867,7 @@ def build_torso():
     b.tag(gold + sides, GOLD)
 
     # Medallion: a gold ring with a violet gem on a short gold chain.
-    med = Vector((0.0, -0.194, 1.175))
+    med = Vector((0.0, -0.188, 1.175))
     tilt = Matrix.Rotation(math.radians(-10.0), 3, "X")
     b.tag(torus(bm, med, 0.045, 0.012, n_major=14, n_minor=5, rot=tilt), GOLD)
     b.tag(blob(bm, med + Vector((0.0, -0.003, 0.0)), (0.034, 0.014, 0.034), segments=10,
@@ -925,8 +928,8 @@ def robe_point(t, u, inset):
     # M4 round 4 (chibi): a bell that flares from under the belt to the body
     # capsule's edge, so he reads round and stocky over short legs (M4-V1, V5).
     e = t ** 0.55
-    a = 0.19 + (0.345 - 0.19) * e
-    d = 0.162 + (0.31 - 0.162) * e
+    a = 0.168 + (0.345 - 0.168) * e
+    d = 0.146 + (0.31 - 0.146) * e
     # Pleats: rounded crests and tighter valleys, deepening toward the hem.
     f = math.sin(9.0 * th + 0.3)
     k = 1.0 + 0.045 * t ** 1.1 * math.copysign(abs(f) ** 0.7, f)
