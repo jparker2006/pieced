@@ -418,3 +418,9 @@ Paused at the usage limit. Both builders were told to commit their work in progr
      - **Decision needed:** the brick wall grew from 528 to about 1.9k triangles and the edit-tile set to about 5.4k, and the builder raised the budgets to 2,000 and 6,000. Players build many walls, so **measure a heavy-build scene's world pass before accepting**. If it costs more than about 0.3 ms, move the detail into vertex colour and texture instead.
      - Resume it with SendMessage and the go, after 6A merges.
   3. Then **chunk 6B** (brief in `docs/briefs/M4-next-dispatches.md`), **perf pass 3**, the board page for A6, Jake's clean A7 session (Start at wave 6, battery, LPM, `.fullspeed` off well before), A8 relaunches, play-test 5 (A9), A10 and A0.
+- 2026-09-29: **chunk 6A merged** (from `04d741a`). Full suite, clippy, fmt and `build-art --check` clean.
+  - What's in it: knight barks, footsteps and ambience; the spatial pan fix; the living world (sway, clouds, birds, fuller trees).
+  - The flaky rigged-knight test is fixed: it now waits for the model library as well as the rig, and passed 4 of 4.
+  - The sway shaders' first compile caught a name clash (`sway` → `wind_sway`).
+  - Offscreen world pass: 3.73 → 3.92 ms mean at load 11–15, within budget.
+  - Next: art round 4 gets the disk go (measure the brick-wall triangle raise first), then chunk 6B.
