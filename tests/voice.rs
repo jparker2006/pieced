@@ -34,18 +34,26 @@ fn pitch(x: &[f32]) -> (f32, f32) {
         return (0.0, 0.0);
     }
     let (lo, hi) = ((SR / 1200.0) as usize, (SR / 150.0) as usize);
-    let mut best = (0.0f32, lo);
+    let mut rs = Vec::new();
     for lag in lo..hi.min(x.len() / 2) {
         let c: f32 = x.iter().zip(&x[lag..]).map(|(a, b)| a * b).sum();
         let norm = (x[..x.len() - lag].iter().map(|s| s * s).sum::<f32>()
             * x[lag..].iter().map(|s| s * s).sum::<f32>())
         .sqrt()
         .max(1e-9);
-        let r = c / norm;
-        if r > best.0 {
-            best = (r, lag);
-        }
+        rs.push((c / norm, lag));
     }
+    // The shortest lag nearly as periodic as the best (not a subharmonic).
+    let top = rs.iter().map(|r| r.0).fold(0.0f32, f32::max);
+    let best = rs
+        .iter()
+        .enumerate()
+        .find(|(i, r)| {
+            r.0 >= 0.93 * top
+                && rs.get(i + 1).is_none_or(|n| n.0 <= r.0)
+                && (*i == 0 || rs[i - 1].0 <= r.0)
+        })
+        .map_or((0.0, lo), |(_, r)| *r);
     (SR / best.1 as f32, best.0)
 }
 
@@ -82,7 +90,10 @@ fn voiced(c: &[(f32, f32, f32)]) -> Vec<(f32, f32)> {
 #[test]
 fn render_the_barks() {
     let out = std::env::var_os("PIECED_BARK_WAVS").map(std::path::PathBuf::from);
-    println!("{:<16} {:>5} {:>6}  pitch contour (Hz, voiced windows)", "bark", "len", "rms");
+    println!(
+        "{:<16} {:>5} {:>6}  pitch contour (Hz, voiced windows)",
+        "bark", "len", "rms"
+    );
     for sfx in [
         Sfx::BarkHup,
         Sfx::BarkTaunt,
@@ -158,14 +169,30 @@ fn every_bark_is_a_voice_with_its_designed_melody() {
     }
     // "Hoo-HAH!": the "hah" sits well above the "hoo".
     let v = voiced(&contour(&dry(Sfx::BarkHooHah, 0)));
-    let hoo = v.iter().filter(|(t, _)| *t < 0.2).map(|(_, f)| *f).fold(0.0, f32::max);
-    let hah = v.iter().filter(|(t, _)| *t > 0.3).map(|(_, f)| *f).fold(0.0, f32::max);
+    let hoo = v
+        .iter()
+        .filter(|(t, _)| *t < 0.2)
+        .map(|(_, f)| *f)
+        .fold(0.0, f32::max);
+    let hah = v
+        .iter()
+        .filter(|(t, _)| *t > 0.3)
+        .map(|(_, f)| *f)
+        .fold(0.0, f32::max);
     assert!(hah > hoo * 1.25, "hoo {hoo} vs hah {hah}");
     // "Nyah-nyah!": the second syllable is lower (the playground third).
     let v = voiced(&contour(&dry(Sfx::BarkTaunt, 0)));
-    let one = v.iter().filter(|(t, _)| *t < 0.15).map(|(_, f)| *f).sum::<f32>()
+    let one = v
+        .iter()
+        .filter(|(t, _)| *t < 0.15)
+        .map(|(_, f)| *f)
+        .sum::<f32>()
         / v.iter().filter(|(t, _)| *t < 0.15).count().max(1) as f32;
-    let two = v.iter().filter(|(t, _)| *t > 0.26).map(|(_, f)| *f).sum::<f32>()
+    let two = v
+        .iter()
+        .filter(|(t, _)| *t > 0.26)
+        .map(|(_, f)| *f)
+        .sum::<f32>()
         / v.iter().filter(|(t, _)| *t > 0.26).count().max(1) as f32;
     assert!(two < one * 0.92, "nyah {one} then nyah {two}");
 }
@@ -179,9 +206,18 @@ fn barks_sit_under_the_guns_and_over_the_steps() {
         Sfx::BarkHooHah,
         Sfx::BarkWhaaa,
     ] {
-        assert!(sfx.mix_db() < Sfx::RifleShot.mix_db(), "{sfx:?} under the rifle");
-        assert!(sfx.mix_db() < Sfx::WandWarning.mix_db() - 5.0, "{sfx:?} well under the warning");
-        assert!(sfx.mix_db() > Sfx::KnightStepGrass.mix_db(), "{sfx:?} over the steps");
+        assert!(
+            sfx.mix_db() < Sfx::RifleShot.mix_db(),
+            "{sfx:?} under the rifle"
+        );
+        assert!(
+            sfx.mix_db() < Sfx::WandWarning.mix_db() - 5.0,
+            "{sfx:?} well under the warning"
+        );
+        assert!(
+            sfx.mix_db() > Sfx::KnightStepGrass.mix_db(),
+            "{sfx:?} over the steps"
+        );
         assert!(sfx.priority() < Sfx::WandWarning.priority());
     }
     // Steps give way first.
@@ -202,16 +238,31 @@ fn barks_are_rate_limited_per_knight_and_globally() {
     let never = f64::MIN;
     assert!(gate.try_bark(10.0, e(1), never, Bark::Yelp, 0.0).is_some());
     // Another knight, too soon after any bark.
-    assert!(gate.try_bark(10.0 + GLOBAL_GAP * 0.5, e(2), never, Bark::Yelp, 0.0).is_none());
-    assert!(gate.try_bark(10.0 + GLOBAL_GAP, e(2), never, Bark::Yelp, 0.0).is_some());
+    assert!(
+        gate.try_bark(10.0 + GLOBAL_GAP * 0.5, e(2), never, Bark::Yelp, 0.0)
+            .is_none()
+    );
+    assert!(
+        gate.try_bark(10.0 + GLOBAL_GAP, e(2), never, Bark::Yelp, 0.0)
+            .is_some()
+    );
     // The same knight, too soon after his last.
     assert!(gate.try_bark(10.5, e(1), 10.0, Bark::Yelp, 0.0).is_none());
-    assert!(gate.try_bark(10.0 + KNIGHT_GAP, e(1), 10.0, Bark::Yelp, 0.0).is_some());
+    assert!(
+        gate.try_bark(10.0 + KNIGHT_GAP, e(1), 10.0, Bark::Yelp, 0.0)
+            .is_some()
+    );
     // Taunts: one per TAUNT_GAP across all knights.
     let mut gate = BarkGate::default();
     assert!(gate.try_bark(0.0, e(1), never, Bark::Taunt, 0.0).is_some());
-    assert!(gate.try_bark(TAUNT_GAP * 0.5, e(2), never, Bark::Taunt, 0.0).is_none());
-    assert!(gate.try_bark(TAUNT_GAP, e(3), never, Bark::Taunt, 0.0).is_some());
+    assert!(
+        gate.try_bark(TAUNT_GAP * 0.5, e(2), never, Bark::Taunt, 0.0)
+            .is_none()
+    );
+    assert!(
+        gate.try_bark(TAUNT_GAP, e(3), never, Bark::Taunt, 0.0)
+            .is_some()
+    );
 }
 
 #[test]
@@ -229,7 +280,10 @@ fn at_most_three_barks_sound_at_once() {
     assert_eq!(booked, MAX_BARKS, "the cap holds while they ring");
     // Once they have rung out, more may start.
     let later = t + Bark::Whaaa.seconds();
-    assert!(gate.try_bark(later, e(20), f64::MIN, Bark::Yelp, 0.0).is_some());
+    assert!(
+        gate.try_bark(later, e(20), f64::MIN, Bark::Yelp, 0.0)
+            .is_some()
+    );
 }
 
 #[test]
@@ -247,11 +301,15 @@ fn a_warning_cuts_every_bark_and_holds_them_off() {
     assert_eq!(gate.sounding(0.3), 0);
     for dt in [0.0, 0.1, WARNING_GUARD - 0.01] {
         assert!(
-            gate.try_bark(0.3 + dt, e(3), never, Bark::Yelp, 0.0).is_none(),
+            gate.try_bark(0.3 + dt, e(3), never, Bark::Yelp, 0.0)
+                .is_none(),
             "no bark {dt} s into the warning"
         );
     }
-    assert!(gate.try_bark(0.3 + WARNING_GUARD, e(3), never, Bark::Yelp, 0.0).is_some());
+    assert!(
+        gate.try_bark(0.3 + WARNING_GUARD, e(3), never, Bark::Yelp, 0.0)
+            .is_some()
+    );
     // The guard outlasts the warning cue itself.
     let warning = Sfx::WandWarning.spec().max_seconds as f64;
     assert!(WARNING_GUARD > warning);
@@ -264,7 +322,9 @@ fn a_knight_taunts_on_at_most_one_wind_up_in_three() {
         assert!(taunts <= 300 / TAUNT_EVERY as usize, "knight {k}: {taunts}");
         assert!(!taunt_turn(e(k), 1) && !taunt_turn(e(k), 2));
     }
-    let any = (0..40).map(|k| (1..=30).filter(|&n| taunt_turn(e(k), n)).count()).sum::<usize>();
+    let any = (0..40)
+        .map(|k| (1..=30).filter(|&n| taunt_turn(e(k), n)).count())
+        .sum::<usize>();
     assert!(any > 100, "they do taunt: {any}");
 }
 
@@ -334,11 +394,10 @@ fn voiced_run(seed: u64, seconds: f32) -> (Sim, BarkLog) {
     let mut log = BarkLog::default();
     for _ in 0..ticks {
         sim.tick();
-        let now = sim
-            .world()
-            .resource::<Time<Real>>()
-            .elapsed_secs_f64();
-        let mut q = sim.world_mut().query_filtered::<(Entity, &Transform), With<Grunt>>();
+        let now = sim.world().resource::<Time<Real>>().elapsed_secs_f64();
+        let mut q = sim
+            .world_mut()
+            .query_filtered::<(Entity, &Transform), With<Grunt>>();
         let w = sim.world();
         feet.extend(q.iter(w).map(|(e, t)| (now, e, t.translation)));
         let mut l = sim.world_mut().resource_mut::<BarkLog>();

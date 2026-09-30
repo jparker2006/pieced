@@ -62,8 +62,16 @@ impl Vowel {
     fn lerp(self, o: Vowel, x: f32) -> Vowel {
         let m = |a: f32, b: f32| a + (b - a) * x;
         Vowel {
-            f: [m(self.f[0], o.f[0]), m(self.f[1], o.f[1]), m(self.f[2], o.f[2])],
-            g: [m(self.g[0], o.g[0]), m(self.g[1], o.g[1]), m(self.g[2], o.g[2])],
+            f: [
+                m(self.f[0], o.f[0]),
+                m(self.f[1], o.f[1]),
+                m(self.f[2], o.f[2]),
+            ],
+            g: [
+                m(self.g[0], o.g[0]),
+                m(self.g[1], o.g[1]),
+                m(self.g[2], o.g[2]),
+            ],
         }
     }
 }
@@ -265,7 +273,8 @@ pub fn sing(buf: &mut Buffer, s: &Syllable, seed: u64) {
                 out += 0.45 * burst.band(breath, centre, 1.8) * decay(tv - stop_at, 0.004);
             }
             Coda::Breath if tv >= stop_at - 0.02 => {
-                out += 0.3 * burst.band(breath, 3200.0, 1.2)
+                out += 0.3
+                    * burst.band(breath, 3200.0, 1.2)
                     * attack(tv - stop_at + 0.02, 0.01)
                     * release(tv, stop_at + tail, 0.04);
             }
@@ -351,10 +360,7 @@ pub fn taunt(take: u32, rms_db: f32) -> Vec<f32> {
 /// "yip!" (very high and quick).
 pub fn yelp(take: u32, rms_db: f32) -> Vec<f32> {
     let (len, s) = match take % YELP_TAKES {
-        0 => (
-            0.28,
-            Syllable::new(0.0, 0.2, AH, (560.0, 400.0)).to(OO),
-        ),
+        0 => (0.28, Syllable::new(0.0, 0.2, AH, (560.0, 400.0)).to(OO)),
         1 => (
             0.2,
             Syllable::new(0.0, 0.1, EE, (640.0, 760.0)).coda(Coda::Stop(900.0)),

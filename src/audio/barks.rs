@@ -218,13 +218,13 @@ impl BarkGate {
     pub fn warning(&mut self, now: f64, mut cut: impl FnMut(BarkVoice)) {
         self.warning_until = now + WARNING_GUARD;
         for slot in &mut self.voices {
-            if let Some(v) = slot.take() {
-                if v.end > now {
-                    cut(BarkVoice {
-                        end: v.end.min(now).max(v.start.min(now)),
-                        ..v
-                    });
-                }
+            if let Some(v) = slot.take()
+                && v.end > now
+            {
+                cut(BarkVoice {
+                    end: v.end.min(now).max(v.start.min(now)),
+                    ..v
+                });
             }
         }
     }
@@ -402,17 +402,14 @@ pub(crate) fn queue_knight_voices(
 
     let head = |t: &Transform| t.translation + Vec3::Y * HEAD;
     let bark = |voices: &mut KnightVoices,
-                    queue: &mut PlayQueue,
-                    log: &mut Option<ResMut<BarkLog>>,
-                    knight: Entity,
-                    at: Vec3,
-                    b: Bark,
-                    delay: f64| {
+                queue: &mut PlayQueue,
+                log: &mut Option<ResMut<BarkLog>>,
+                knight: Entity,
+                at: Vec3,
+                b: Bark,
+                delay: f64| {
         let state = voices.knights.entry(knight).or_default();
-        let Some(v) = voices
-            .gate
-            .try_bark(now, knight, state.last_bark, b, delay)
-        else {
+        let Some(v) = voices.gate.try_bark(now, knight, state.last_bark, b, delay) else {
             return;
         };
         state.last_bark = now;

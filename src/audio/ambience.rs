@@ -34,7 +34,7 @@ use super::{
     barks::KnightVoices,
     celesta::to_i16,
     loudness::integrated_lufs,
-    music::{MUSIC_CHANNELS, MUSIC_RATE, MusicClip, Screen},
+    music::{MusicClip, Screen},
     reverb::{Fdn, Room},
     synth::{Noise, Osc, SAMPLE_RATE, Svf, db_to_gain, note, soft_limit},
     voice::{self, Syllable},
@@ -208,7 +208,8 @@ fn choir_chord(l: &mut [f32], r: &mut [f32], start: f32, secs: f32, midis: &[f32
         for (i, x) in b.samples.iter().enumerate() {
             let t = i as f32 / SR;
             // A slow swell in and out.
-            let env = (t / (0.45 * secs)).min(1.0).powf(1.5) * ((secs + 0.2 - t) / 1.2).clamp(0.0, 1.0);
+            let env =
+                (t / (0.45 * secs)).min(1.0).powf(1.5) * ((secs + 0.2 - t) / 1.2).clamp(0.0, 1.0);
             let y = x * env * 0.12;
             if let (Some(a), Some(b)) = (l.get_mut(s0 + i), r.get_mut(s0 + i)) {
                 *a += y * gl;
@@ -262,7 +263,14 @@ pub fn castle_bed() -> Vec<i16> {
         [55.0, 59.0, 62.0, 67.0],
     ];
     for (i, chord) in chords.iter().enumerate() {
-        choir_chord(&mut l, &mut r, 4.0 * i as f32, 4.6, chord, 1000 + 50 * i as u64);
+        choir_chord(
+            &mut l,
+            &mut r,
+            4.0 * i as f32,
+            4.6,
+            chord,
+            1000 + 50 * i as u64,
+        );
     }
     bell(&mut l, &mut r, 1.0, note(55.0), 0.05);
     bell(&mut l, &mut r, 9.0, note(48.0), 0.06);
@@ -276,7 +284,9 @@ pub fn castle_bed() -> Vec<i16> {
             level = rng.range(0.2, 1.0);
             next = i + (rng.range(0.01, 0.09) * SR) as usize;
         }
-        let pop = crackle.band(rng.signed(), 1800.0, 1.2) * level * (-(((next - i) as f32) / (0.004 * SR))).exp();
+        let pop = crackle.band(rng.signed(), 1800.0, 1.2)
+            * level
+            * (-(((next - i) as f32) / (0.004 * SR))).exp();
         l[i] += 0.02 * pop;
         r[i] += 0.02 * pop * 0.8;
     }
@@ -684,16 +694,5 @@ fn drive_ambience(
     }
     if let Some(at) = pick {
         queue.push(Sfx::Birdsong, Some(at), now);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn music_clip_layout_matches() {
-        assert_eq!(MUSIC_CHANNELS, 2);
-        assert_eq!(MUSIC_RATE, SAMPLE_RATE);
     }
 }

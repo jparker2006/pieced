@@ -383,9 +383,8 @@ impl Sfx {
             OrbCast | OrbWhoosh | OrbBonk | WandWarning | ShipHum | ShipBeam | VoidYelp
             | ArmorClatter => reverb::Room::WORLD,
             PotionGulp | WaveCleared | WaveStart | NewBest | MultiKill => reverb::Room::HALL,
-            BarkHup | BarkTaunt | BarkYelp | BarkHooHah | BarkWhaaa | KnightStepGrass | Birdsong => {
-                reverb::Room::WORLD
-            }
+            BarkHup | BarkTaunt | BarkYelp | BarkHooHah | BarkWhaaa | KnightStepGrass
+            | Birdsong => reverb::Room::WORLD,
             KnightStepWood => reverb::Room::WOOD,
             KnightStepBrick => reverb::Room::STONE,
         }
@@ -1077,9 +1076,7 @@ fn file_sound_bank(
 }
 
 fn attach_listener(add: On<Add, MainCamera>, mut commands: Commands) {
-    commands
-        .entity(add.entity)
-        .insert(spatial::listener());
+    commands.entity(add.entity).insert(spatial::listener());
 }
 
 #[allow(clippy::too_many_arguments)]

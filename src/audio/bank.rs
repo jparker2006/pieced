@@ -1722,19 +1722,37 @@ pub fn knight_step(surface: StepSurface, variant: u32) -> Vec<f32> {
             partials(
                 &mut b,
                 0.0,
-                &[(300.0 * k, 1.0, 0.03), (720.0 * k, 0.45, 0.02), (1150.0 * k, 0.2, 0.012)],
+                &[
+                    (300.0 * k, 1.0, 0.03),
+                    (720.0 * k, 0.45, 0.02),
+                    (1150.0 * k, 0.2, 0.012),
+                ],
                 0.8,
             );
         }
         StepSurface::Brick => {
             thump(&mut b, 0.0, 140.0 * k, 220.0 * k, 0.008, 0.018, 0.6);
-            noise_bp(&mut b, 0.0, 0.08, 1.2, seed, 2.0, |_| 900.0 * k, |t| ad(t, 0.001, 0.012));
+            noise_bp(
+                &mut b,
+                0.0,
+                0.08,
+                1.2,
+                seed,
+                2.0,
+                |_| 900.0 * k,
+                |t| ad(t, 0.001, 0.012),
+            );
             crackle(&mut b, 0.002, 0.03, 5, 0.12, 2800.0, seed + 1);
         }
     }
     // The armor's jingle: two tiny metal partials a hair after the boot.
     let f = 2200.0 * k;
-    partials(&mut b, 0.012, &[(f, 0.18, 0.02), (f * 1.53, 0.1, 0.014)], 1.0);
+    partials(
+        &mut b,
+        0.012,
+        &[(f, 0.18, 0.02), (f * 1.53, 0.1, 0.014)],
+        1.0,
+    );
     b.master(KNIGHT_STEP.rms_db)
 }
 
