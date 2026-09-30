@@ -48,8 +48,9 @@ cargo() {
   # Jake uses this Mac while builds run: compile at utility QoS and nice 10 so his apps
   # stay smooth. Anything started through `cargo run` inherits this, so never time a game
   # launched that way (scripts/play.sh and gate-runs.sh exec the binary directly).
-  # PIECED_FULL_SPEED=1 opts out during a "go" window.
-  if [ -n "$PIECED_FULL_SPEED" ]; then
+  # PIECED_FULL_SPEED=1, or the flag file $CARGO_TARGET_DIR/.fullspeed (set by the
+  # orchestrator when Jake says he isn't using the Mac), opts out.
+  if [ -n "$PIECED_FULL_SPEED" ] || [ -f "$CARGO_TARGET_DIR/.fullspeed" ]; then
     command cargo "$@"
   else
     taskpolicy -c utility nice -n 10 cargo "$@"
@@ -60,5 +61,9 @@ cargo() {
 export CARGO_INCREMENTAL=0
 # Tests each start Bevy apps with their own thread pools: cap parallel tests too.
 export RUST_TEST_THREADS="${RUST_TEST_THREADS:-4}"
-# Leave cores free for Jake's apps.
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
+# Leave cores free for Jake's apps (all cores in full-speed mode).
+if [ -f "$CARGO_TARGET_DIR/.fullspeed" ]; then
+  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-10}"
+else
+  export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-6}"
+fi

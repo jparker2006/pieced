@@ -364,3 +364,32 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - The still background is now the top priority of chunk 6A, which also gains an **ambient soundscape** (a wind bed following the sway, birdsong, a distant castle choir and bells, lantern crackle, a combat drone).
   - The orchestrator's answer on CoD Zombies: the biggest gap is the in-run economy loop (wall buys, box, perks, doors, special rounds). That's next milestone, and already in the backlog.
 - 2026-09-29: Jake: "once we polish a little more we will move on to the run loop / economy / actual story of the game that will make it much more fun. as it is now i make it to wave 3-5 then die like every time". This is noted in the backlog as the next milestone's direction. No difficulty tuning in M4 (D117).
+- 2026-09-29: **chunk 6A committed on `m4-polish-a`** (`78eff5b`, not merged; the full checks and GPU timing wait for disk).
+  - **Voices and footsteps:** synthesized gibberish knight barks (hup, taunts, 4 yelps, hoo-HAH, whaaaa), with per-knight pitch; footsteps on the run clip's footfalls by surface, from the nearest 3 knights.
+  - **Ambience:** a wind bed that follows the sway gusts, a castle choir and bells, a combat drone, birdsong.
+  - **A living world:** grass, flowers, bushes and tree crowns sway in one travelling gust; the cloud sea circles every 15 min; clouds bob; 4 flocks of birds circle the castle; fuller trees in warm and cool tones.
+  - **Bug found and fixed:** rodio 0.22 gives the far ear the louder share, so every spatial sound (including M3's off-screen wind-up warning) has been playing from the wrong side since M3. The listener's ears are swapped in `src/audio/spatial.rs`, with a test.
+  - **Fairness:** a warning always wins. It cuts every bark, no bark starts within 0.55 s of it, and the fairness suite asserts it.
+- 2026-09-29: **chunk 5 written and committed on `m4-presentation`** (`3f92084`, main merged at `95e9755`). It is **not verified**: the builder stopped when disk fell to 3.2 GB.
+  - What's in it:
+    - the wave banner (V7) on `WaveStarted`;
+    - Start at wave 1/6/10 (not ranked; `start_wave` logged for A7);
+    - loading tips; menu motion; the pause blur, with the 3D passes off while paused;
+    - live settings, with a new saved Camera effects slider; the results count-up;
+    - building assembly, edit flips and debris (pool of 48);
+    - camera FOV kick, landing dip, slide tilt and damage nudge, with the aim ray bit-identical;
+    - the death cam that frames the killer.
+  - Tests passed: menu 20/20, waves_ui 15/15, camera 2/2, pieces 5/5, plus building, editing and waves.
+  - Still to run:
+    - the rest of the full suite (fairness, gameplay pin and the files after `far.rs` are unconfirmed);
+    - two fixes not yet re-run (a motion unit test, and the `ASSETS.md` entry for the blur shader);
+    - clippy, and the V7/V8 captures.
+  - Known: debris chunks without a known piece frame fly across the line of sight.
+- 2026-09-29: **the full-speed switch.** `scripts/env.sh` now honours `$CARGO_TARGET_DIR/.fullspeed` (no low priority, 10 jobs). It's on, with Jake's say-so: "full speed build im not playing rn".
+- 2026-09-29: **disk at 3.2 GB, so the orchestrator stopped and asked Jake** (the brief's stop-and-ask line is below 4 GB).
+  - The space is mostly `~/.codex/worktrees/ecf9/glox-brain-lab/data/cloud-migration` (51 GB): another project's Codex worktree data, not Pieced's.
+  - Waiting on Jake to say whether it can be removed. Chunks 5 and 6A resume their checks when there's room.
+- 2026-09-29: **disk freed.** Jake: "dont delete stuff from glox brain … doesnt have to belong to pieced... legit j not glox brain".
+  - Nothing in glox-brain or glox-brain-lab was touched: every Codex worktree turned out to be glox, so all were left alone.
+  - Only regenerable caches were cleared: pip, pnpm, Homebrew, node-gyp, the Claude desktop ShipIt, the opencode updater, the Codex app, CodexBar, Antigravity, Spotify, Google. Free disk went from 3.2 to 14 GB.
+  - The rule is saved in memory. Chunk 5's builder resumed its final checks at full speed; chunk 6A follows.
