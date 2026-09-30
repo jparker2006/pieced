@@ -405,3 +405,16 @@ Paused at the usage limit. Both builders were told to commit their work in progr
 - 2026-09-29 22:15–22:20: **play-test 5a** (release from `2482811`: chunk 5, without chunk 6). Jake, quoted: "its fun 4.5, 4 AAA feel". That's the first 4.5 on fun; the final verdict (A9) comes after chunk 6.
   - **Frames are invalid for performance:** AC power, mean 35.65 ms, 7.31% < 18; 74% of spikes in `idle` (the OS starved the game). The load average was **121** at launch, decaying to 12 by 336 s. The GPU pass doubled at p95 (world 10.87, total 18.07), consistent with thermal throttling after full-speed builds on the fanless Air. The 11.5 s cold launch and the 82 ms press latency come from the same cause.
   - **Lesson:** switch `.fullspeed` off a few minutes before any session meant to count for performance, not just `quiet.sh stop`. (Also in memory.)
+- 2026-09-29: **paused at the usage limit.** Resume steps:
+  1. **Chunk 6A** (`m4-polish-a`, `45e9cf6`, main merged) was in its full test run. That run includes the fix for the flaky `tests/knight.rs` rigged-knight test. Read its report or re-run the checks, then merge.
+  2. **Art round 4** (`m4-art4`: `c212de7`, `1d80a2a`) is committed but **unbuilt**. It's waiting for the orchestrator's disk go.
+     - What's in it:
+       - a gilded sky-galleon drop ship (0.65×, 1,996 triangles) whose beam turns from gold to violet;
+       - a crisp wand flare with swirl blades;
+       - chamfered bricks;
+       - a V8 hero plinth, a 3/4 turn and foreground boulders;
+       - a delayed lavender poof, and the hat and helmet pops;
+       - restaged V1, V2, V3, V6 and V7.
+     - **Decision needed:** the brick wall grew from 528 to about 1.9k triangles and the edit-tile set to about 5.4k, and the builder raised the budgets to 2,000 and 6,000. Players build many walls, so **measure a heavy-build scene's world pass before accepting**. If it costs more than about 0.3 ms, move the detail into vertex colour and texture instead.
+     - Resume it with SendMessage and the go, after 6A merges.
+  3. Then **chunk 6B** (brief in `docs/briefs/M4-next-dispatches.md`), **perf pass 3**, the board page for A6, Jake's clean A7 session (Start at wave 6, battery, LPM, `.fullspeed` off well before), A8 relaunches, play-test 5 (A9), A10 and A0.
