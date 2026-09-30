@@ -818,3 +818,53 @@ fn an_edited_cone_opens_where_its_corners_rise() {
     ));
     assert_eq!(edit_of(&sim, cone), edit);
 }
+
+// ---------------------------------------------------------------------------
+// M4 chunk 5 (D109): edit tiles flip, collision doesn't wait
+// ---------------------------------------------------------------------------
+
+#[test]
+fn an_edits_collision_is_immediate_while_its_tiles_flip() {
+    use pieced::{
+        building::juice::{FLIP_SECONDS, flip_pose, flipped_tiles},
+        shared::TICK_SECONDS,
+    };
+    let mut sim = empty_sim();
+    let slot = PieceSlot::wall(cell(4, 10, 0), Facing::North);
+    let wall = place_piece(sim.world_mut(), slot).unwrap();
+    sim.tick();
+    let window = tile_point(&slot, 4);
+    let from = window + Vec3::Z * 3.0;
+    assert_eq!(
+        cast(&mut sim, from, Vec3::NEG_Z, 6.0).map(|h| h.0),
+        Some(wall)
+    );
+    let before = PieceEdit::FULL;
+    let after = PieceEdit::of(&[4]);
+    assert!(edit_piece(sim.world_mut(), wall, after));
+    sim.tick();
+    // One tick in, the window's tile is still flipping out of the hole...
+    const { assert!(TICK_SECONDS < FLIP_SECONDS) };
+    assert_eq!(
+        flipped_tiles(PieceKind::Wall, before, after).collect::<Vec<_>>(),
+        [(4, false)]
+    );
+    assert!(flip_pose(TICK_SECONDS, false).is_some());
+    // ...and the hole is already open.
+    assert_eq!(
+        cast(&mut sim, from, Vec3::NEG_Z, 6.0),
+        None,
+        "the ray passes"
+    );
+    assert_eq!(
+        cast(
+            &mut sim,
+            tile_point(&slot, 3) + Vec3::Z * 3.0,
+            Vec3::NEG_Z,
+            6.0
+        )
+        .map(|h| h.0),
+        Some(wall),
+        "the rest of the wall stands"
+    );
+}

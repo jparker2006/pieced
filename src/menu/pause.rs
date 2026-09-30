@@ -105,7 +105,12 @@ const AIM: &[Setting] = &[
     Setting::Acceleration,
     Setting::AimFriction,
 ];
-const FEEDBACK: &[Setting] = &[Setting::Bloom, Setting::DamageNumbers, Setting::CameraShake];
+const FEEDBACK: &[Setting] = &[
+    Setting::Bloom,
+    Setting::DamageNumbers,
+    Setting::CameraShake,
+    Setting::CameraEffects,
+];
 const AUDIO: &[Setting] = &[
     Setting::Volume,
     Setting::Music,
@@ -170,7 +175,9 @@ pub(super) fn card(width: f32) -> impl Bundle {
             border_radius: BorderRadius::all(px(22)),
             ..default()
         },
-        BackgroundColor(PANEL.with_alpha(0.97)),
+        // Translucent (M4 chunk 5): the live world shows through, so
+        // changes preview behind it.
+        BackgroundColor(PANEL.with_alpha(0.84)),
         BorderColor::all(GOLD_FRAME),
         ink(3.0),
         BoxShadow::new(
@@ -643,7 +650,8 @@ fn spawn_row(col: &mut ChildSpawnerCommands, setting: Setting) {
 
 fn menu_visibility(
     menu: Res<MenuState>,
-    mut root: Query<&mut Visibility, With<MenuRoot>>,
+    state: Res<State<AppState>>,
+    mut root: Query<(&mut Visibility, &mut BackgroundColor), With<MenuRoot>>,
     mut main: Query<&mut Node, (With<MainCard>, Without<SettingsCard>, Without<ControlsCard>)>,
     mut settings: Query<&mut Node, (With<SettingsCard>, Without<ControlsCard>)>,
     mut controls: Query<&mut Node, (With<ControlsCard>, Without<MainCard>)>,
@@ -651,12 +659,20 @@ fn menu_visibility(
     if !menu.is_changed() {
         return;
     }
-    for mut v in &mut root {
+    // Over the blurred, frozen world a light veil; over the live world
+    // (Settings, M4 chunk 5) a lighter one, so changes read.
+    let veil = if super::blur::wants_blur(*state.get(), &menu) {
+        super::blur::VEIL_BLURRED
+    } else {
+        super::blur::VEIL_LIVE
+    };
+    for (mut v, mut bg) in &mut root {
         v.set_if_neq(if menu.pause_layer_visible() {
             Visibility::Inherited
         } else {
             Visibility::Hidden
         });
+        bg.set_if_neq(BackgroundColor(BACKDROP.with_alpha(veil)));
     }
     // Hidden pages take no layout space.
     let show = |node: &mut Node, page: MenuPage| {

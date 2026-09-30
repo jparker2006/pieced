@@ -117,6 +117,8 @@ impl PluginGroup for ClientPlugins {
             .add(BuildingVisualsPlugin)
             .add(ViewmodelPlugin)
             .add(FxPlugin)
+            // The camera's feel and the death cam's partner (M4 chunk 5).
+            .add(crate::camera_feel::CameraFeelPlugin)
             .add(GameAudioPlugin)
             .add(HudPlugin)
             .add(MenuPlugin)

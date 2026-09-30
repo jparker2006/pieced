@@ -31,7 +31,7 @@ pub mod sim;
 pub mod spells;
 
 use crate::{
-    building::{CONE_HEIGHT, Piece, ramp_surface_height, visuals::PieceDebris},
+    building::{Piece, visuals::PieceDebris},
     palette,
     render::{CameraFollowSet, MainCamera},
     shared::{PieceChange, PieceChanged, PieceKind, Player, ShotFired, WeaponKind},
@@ -62,6 +62,10 @@ pub struct FeedbackTuning {
     pub max_particles: u32,
     /// Vertical FOV of the gun (viewmodel) camera, independent of the world FOV.
     pub viewmodel_fov_deg: f32,
+    /// The Camera effects slider (M4 chunk 5, D108), 0..=1: scales the FOV
+    /// kicks, the landing dip, the slide tilt and the damage nudge
+    /// (`camera_feel`). A menu setting, saved.
+    pub camera_effects: f32,
 }
 
 impl Default for FeedbackTuning {
@@ -74,6 +78,7 @@ impl Default for FeedbackTuning {
             max_debris: 160,
             max_particles: 600,
             viewmodel_fov_deg: 58.0,
+            camera_effects: 1.0,
         }
     }
 }
@@ -84,7 +89,6 @@ const FADE_STEPS: usize = 6;
 const SHAKE_RADIUS: f32 = 10.0;
 /// Hard ceilings on the pools, whatever the settings file says.
 const PARTICLE_CEILING: u32 = 2000;
-const DEBRIS_CEILING: u32 = 1000;
 
 /// Translucent effect colors that fade out through [`FADE_STEPS`] materials.
 /// (Spells glow through [`spells`]; only the piece-break dust fades here.)
@@ -131,7 +135,6 @@ enum Paint {
 #[derive(Resource)]
 struct FxAssets {
     chunk: Handle<Mesh>,
-    wedge: Handle<Mesh>,
     ico: Handle<Mesh>,
     wood: [Handle<StandardMaterial>; 4],
     fades: Vec<[Handle<StandardMaterial>; FADE_STEPS]>,
@@ -284,16 +287,6 @@ fn setup_fx(
     let chunk = meshes.add(unit_mesh(|m| {
         m.chamfer_box(Vec3::splat(-0.5), Vec3::splat(0.5), 0.12, white)
     }));
-    let wedge = meshes.add(unit_mesh(|m| {
-        let zy = [
-            Vec2::new(-0.5, -0.5),
-            Vec2::new(0.5, -0.5),
-            Vec2::new(0.5, 0.05),
-            Vec2::new(-0.15, 0.5),
-            Vec2::new(-0.5, 0.3),
-        ];
-        m.prism_x(&zy, -0.5, 0.5, white);
-    }));
     let ico = meshes.add(unit_mesh(|m| m.geosphere(1.0, 2, linear(white, 1.0))));
 
     let mut lit = |color: Color| {
@@ -348,11 +341,9 @@ fn setup_fx(
         &chunk,
         &wood[0],
     );
-    let debris = spawn_pool(
-        feedback.max_debris.min(DEBRIS_CEILING) as usize,
-        &chunk,
-        &wood[0],
-    );
+    // The big piece-break chunks moved to `building::debris` (M4 chunk 5):
+    // this pool stays empty.
+    let debris = spawn_pool(0, &chunk, &wood[0]);
 
     // Draw every effect material once, too small to see, while the game boots,
     // so their pipelines are compiled before the first shot instead of during it.
@@ -384,7 +375,6 @@ fn setup_fx(
     });
     commands.insert_resource(FxAssets {
         chunk,
-        wedge,
         ico,
         wood,
         fades,
@@ -405,18 +395,11 @@ fn remember_removed_piece(
 // Emitters
 // ---------------------------------------------------------------------------
 
-/// Height of a cone's pyramid above its base at local (x, z).
-fn cone_surface_height(x: f32, z: f32) -> f32 {
-    let half = crate::shared::CELL_SIZE / 2.0;
-    (CONE_HEIGHT * (1.0 - x.abs().max(z.abs()) / half)).max(0.0)
-}
-
 struct Emitter<'a> {
     pools: &'a mut FxPools,
     assets: &'a FxAssets,
     rng: &'a mut FxRng,
     particle_limit: usize,
-    debris_limit: usize,
 }
 
 impl Emitter<'_> {
@@ -425,15 +408,10 @@ impl Emitter<'_> {
         self.pools.particles.emit(limit, p, &mesh, paint);
     }
 
-    fn chunk(&mut self, p: Particle, mesh: Handle<Mesh>, paint: Paint) {
-        let limit = self.debris_limit;
-        self.pools.debris.emit(limit, p, &mesh, paint);
-    }
-
-    /// The signature moment: a destroyed piece bursts into chunky bricks (walls)
-    /// or plank splinters (floors and ramps) that tumble, bounce and shrink
-    /// away, with crumbs and a dust poof. Uses the Blender debris models when
-    /// the building visuals have them, plain wood chunks otherwise.
+    /// A destroyed piece's crumbs and dust poof. (Its big bricks and plank
+    /// splinters are `building::debris`'s, M4 chunk 5.) Uses the Blender
+    /// debris models when the building visuals have them, plain wood chunks
+    /// otherwise.
     fn piece_debris(
         &mut self,
         piece: Option<Piece>,
@@ -445,31 +423,7 @@ impl Emitter<'_> {
         let frame = piece
             .map(|p| p.slot().transform())
             .unwrap_or_else(|| Transform::from_translation(center));
-        // Local sample grid across the panel, and how planks lie on it.
-        let (cols, rows) = match kind {
-            PieceKind::Wall => (4, 3),
-            PieceKind::Floor | PieceKind::Ramp | PieceKind::Cone => (4, 3),
-        };
-        let slope = (crate::shared::LEVEL_HEIGHT / crate::shared::CELL_SIZE).atan();
-        let lie = match kind {
-            PieceKind::Wall => Quat::IDENTITY,
-            PieceKind::Floor => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2),
-            PieceKind::Ramp => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + slope),
-            // The cone's faces share the ramp's slope.
-            PieceKind::Cone => Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2 + slope),
-        };
         let away = (center - eye).with_y(0.0).normalize_or(Vec3::Z);
-        let mut samples = Vec::with_capacity(cols * rows + 2);
-        for c in 0..cols {
-            for r in 0..rows {
-                let u = (c as f32 + 0.5) / cols as f32 * 2.0 - 1.0;
-                let v = (r as f32 + 0.5) / rows as f32 * 2.0 - 1.0;
-                samples.push((u, v));
-            }
-        }
-        samples.push((self.rng.range(-0.5, 0.5), self.rng.range(-0.5, 0.5)));
-        samples.push((self.rng.range(-0.5, 0.5), self.rng.range(-0.5, 0.5)));
-        let jitter = 0.25;
         // The debris model for this piece: bricks from walls, splinters from planks.
         let model = models.map(|m| {
             let mesh = if kind == PieceKind::Wall {
@@ -481,72 +435,8 @@ impl Emitter<'_> {
         });
         // Resting half-height of a model chunk at scale 1.
         let model_radius = if kind == PieceKind::Wall { 0.13 } else { 0.05 };
-        for (u, v) in samples {
-            let u = u + self.rng.range(-jitter, jitter);
-            let v = v + self.rng.range(-jitter, jitter);
-            let local = match kind {
-                PieceKind::Wall => Vec3::new(u * 1.7, v * 1.25, self.rng.range(-0.05, 0.05)),
-                PieceKind::Floor => Vec3::new(u * 1.7, 0.0, v * 1.7),
-                PieceKind::Ramp => {
-                    let z = v * 1.7;
-                    Vec3::new(u * 1.7, ramp_surface_height(z) - 0.1, z)
-                }
-                PieceKind::Cone => {
-                    let (x, z) = (u * 1.7, v * 1.7);
-                    Vec3::new(x, cone_surface_height(x, z) - 0.1, z)
-                }
-            };
-            let pos = frame.transform_point(local);
-            let tilt = Quat::from_scaled_axis(self.rng.dir() * self.rng.range(0.0, 0.35));
-            let vel = away * self.rng.range(1.5, 4.0)
-                + (pos - center).normalize_or_zero() * self.rng.range(1.0, 2.5)
-                + Vec3::Y * self.rng.range(2.0, 5.0);
-            let (size, radius, mesh, paint) = match &model {
-                Some((mesh, paint)) => {
-                    let k = self.rng.range(0.85, 1.35);
-                    (
-                        Vec3::splat(k),
-                        model_radius * k,
-                        mesh.clone(),
-                        paint.clone(),
-                    )
-                }
-                None => {
-                    let size = Vec3::new(
-                        self.rng.range(0.5, 0.95),
-                        self.rng.range(0.2, 0.32),
-                        self.rng.range(0.09, 0.14),
-                    );
-                    let mesh = if self.rng.f() < 0.3 {
-                        self.assets.wedge.clone()
-                    } else {
-                        self.assets.chunk.clone()
-                    };
-                    let k = [0, 0, 1, 2, 3][self.rng.pick(5)];
-                    (
-                        size,
-                        size.z * 0.5,
-                        mesh,
-                        Paint::Solid(self.assets.wood[k].clone()),
-                    )
-                }
-            };
-            let p = Particle {
-                pos,
-                vel,
-                rot: frame.rotation * lie * tilt,
-                spin: self.rng.dir() * self.rng.range(3.0, 11.0),
-                gravity: 20.0,
-                drag: 0.2,
-                bounce: Some(0.35),
-                radius,
-                size,
-                life: self.rng.range(1.05, 1.35),
-                shrink_start: 0.72,
-                ..default()
-            };
-            self.chunk(p, mesh, paint);
-        }
+        // The big chunks are the building's own (`building::debris`, M4
+        // chunk 5, on the physics-lite chunks); these are the crumbs and dust.
         // Crumbs: small bits of brick or splinters flung further.
         for _ in 0..16 {
             let local = match kind {
@@ -687,7 +577,6 @@ fn emit_fx(
         assets: &assets,
         rng,
         particle_limit: feedback.max_particles as usize,
-        debris_limit: feedback.max_debris as usize,
     };
 
     for change in changes.read() {

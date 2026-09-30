@@ -12,10 +12,10 @@
 //!   fit. Every edit's meshes are built once when the models load and warmed
 //!   up, so editing never creates an asset.
 //! - [`super::edit_grid`] draws the edit grid over the piece being edited.
-//! - A newly placed piece lands with a [`POP_SECONDS`] squash pop; a hit piece
-//!   shudders.
-//! - The build ghost is translucent and glowing: blue when the placement is
-//!   valid, red when it isn't.
+//! - A newly placed piece assembles (M4, [`super::juice`]: bricks stack,
+//!   planks slap down) in 0.15 s; an edit's tiles flip; a hit piece shudders.
+//! - The build ghost is translucent and glowing (a 1 Hz pulse): blue when the
+//!   placement is valid, red when it isn't.
 //! - [`PieceDebris`] hands the effects the brick chunk and plank splinter a
 //!   broken piece bursts into.
 //!
@@ -25,6 +25,7 @@
 use super::{
     BuildTarget, InitialCover, Piece, PieceEdit,
     edit::{self},
+    juice::{ASSEMBLE_SECONDS, assemble_pose},
     mesh::{
         BRICK_DEBRIS, CONE_ROOF_MODELS, KINDS, PIECE_MODELS, PLANK_DEBRIS, TILE_MODELS,
         compose_floor, compose_wall, cone_roof, ghost_cone_mesh, ghost_floor_mesh, ghost_ramp_mesh,
@@ -63,10 +64,12 @@ impl Plugin for BuildingVisualsPlugin {
                     update_piece_meshes,
                     start_hit_shudder,
                     animate_piece_visuals,
+                    super::juice::animate_flips,
                     update_ghost,
                 )
                     .chain(),
             );
+        super::debris::build(app);
         super::edit_grid::build(app);
     }
 
@@ -137,6 +140,9 @@ struct GhostAssets {
     meshes: [Handle<Mesh>; 4],
     valid: Handle<ToonMaterial>,
     invalid: Handle<ToonMaterial>,
+    /// The pulse's clock (s) and the glow last written.
+    pulse: f32,
+    glow: f32,
 }
 
 /// On a piece: its visual child.
@@ -144,12 +150,15 @@ struct GhostAssets {
 struct PieceVisualLink(Entity);
 
 /// On a piece's visual child.
-#[derive(Component, Default)]
+#[derive(Component)]
 struct PieceVisual {
+    kind: PieceKind,
     stage: u8,
     edit: PieceEdit,
     base: Vec3,
-    /// Seconds since placement, while popping in.
+    /// The edit's turn about +Y (half ramps, cone roofs).
+    turn: Quat,
+    /// Seconds since placement, while assembling.
     pop: Option<f32>,
     /// Seconds since the latest hit, while shuddering.
     shudder: Option<f32>,
@@ -195,6 +204,8 @@ fn create_ghost_assets(
         meshes,
         valid,
         invalid,
+        pulse: 0.0,
+        glow: GHOST_GLOW,
     });
 }
 
@@ -370,6 +381,8 @@ fn load_piece_models(
         warmup.add_with(mesh, assets.material.clone(), Outline::default());
     }
     warmup.add(debris.brick.clone(), debris.material.clone());
+    warmup.add(debris.splinter.clone(), debris.material.clone());
+    super::juice::spawn_flip_pool(&mut commands, &mut meshes, &assets.material, &mut warmup);
     warmup.gate().release(PIECES_GATE);
     commands.insert_resource(assets);
     commands.insert_resource(debris);
@@ -397,26 +410,31 @@ fn attach_piece_visuals(
         };
         let base = model_offset(piece.kind) + Vec3::Y * lift;
         let pop = (!initial).then_some(0.0);
+        let (offset, tilt, scale) = if pop.is_some() {
+            assemble_pose(piece.kind, 0.0)
+        } else {
+            (Vec3::ZERO, Quat::IDENTITY, Vec3::ONE)
+        };
         let child = commands
             .spawn((
                 Name::new("Piece visual"),
                 PieceVisual {
+                    kind: piece.kind,
                     stage,
                     edit,
                     base,
+                    turn,
                     pop,
                     shudder: None,
                 },
                 Mesh3d(mesh.clone()),
                 MeshMaterial3d(assets.material.clone()),
                 Outline::default(),
-                Transform::from_translation(base)
-                    .with_rotation(turn)
-                    .with_scale(if pop.is_some() {
-                        pop_scale(0.0)
-                    } else {
-                        Vec3::ONE
-                    }),
+                Transform {
+                    translation: base + offset,
+                    rotation: tilt * turn,
+                    scale,
+                },
                 ChildOf(entity),
             ))
             .id();
@@ -430,6 +448,8 @@ fn attach_piece_visuals(
 /// with a little shudder).
 fn update_piece_meshes(
     assets: Option<Res<PieceAssets>>,
+    tuning: Res<Tuning>,
+    mut flips: Option<ResMut<super::juice::EditFlips>>,
     pieces: Query<
         (&Piece, Option<&PieceEdit>, &PieceVisualLink),
         Or<(Changed<Piece>, Changed<PieceEdit>)>,
@@ -450,6 +470,15 @@ fn update_piece_meshes(
         }
         if visual.edit != edit {
             visual.shudder = Some(0.0);
+            // The cut (or restored) tiles flip; the mesh swaps now.
+            if let Some(flips) = flips.as_mut() {
+                let depth = match piece.kind {
+                    PieceKind::Wall => 0.3,
+                    _ => tuning.building.floor_thickness.max(0.1),
+                };
+                let frame = piece.slot().transform();
+                super::juice::queue_flips(flips, piece.kind, &frame, visual.edit, edit, depth);
+            }
         }
         visual.stage = stage;
         visual.edit = edit;
@@ -457,7 +486,10 @@ fn update_piece_meshes(
         if mesh.0 != *wanted {
             mesh.0 = wanted.clone();
         }
-        transform.rotation = turn;
+        visual.turn = turn;
+        if visual.pop.is_none() {
+            transform.rotation = turn;
+        }
     }
 }
 
@@ -499,10 +531,12 @@ fn animate_piece_visuals(time: Res<Time>, mut visuals: Query<(&mut PieceVisual, 
         }
         let mut scale = Vec3::ONE;
         let mut offset = Vec3::ZERO;
+        let mut tilt = Quat::IDENTITY;
+        let kind = visual.kind;
         if let Some(t) = visual.pop.as_mut() {
             *t += dt;
-            scale = pop_scale(*t);
-            if *t >= POP_SECONDS {
+            (offset, tilt, scale) = assemble_pose(kind, *t);
+            if *t >= ASSEMBLE_SECONDS {
                 visual.pop = None;
             }
         }
@@ -510,7 +544,7 @@ fn animate_piece_visuals(time: Res<Time>, mut visuals: Query<(&mut PieceVisual, 
             *t += dt;
             let x = (*t / SHUDDER_SECONDS).min(1.0);
             let amp = 0.035 * (1.0 - x) * (1.0 - x);
-            offset = Vec3::new((*t * 95.0).sin() * amp, 0.0, (*t * 71.0).cos() * amp * 0.6);
+            offset += Vec3::new((*t * 95.0).sin() * amp, 0.0, (*t * 71.0).cos() * amp * 0.6);
             scale *= 1.0 - 0.02 * (1.0 - x);
             if x >= 1.0 {
                 visual.shudder = None;
@@ -518,12 +552,15 @@ fn animate_piece_visuals(time: Res<Time>, mut visuals: Query<(&mut PieceVisual, 
             }
         }
         transform.translation = visual.base + offset;
+        transform.rotation = tilt * visual.turn;
         transform.scale = scale;
     }
 }
 
 fn update_ghost(
-    assets: Option<Res<GhostAssets>>,
+    time: Res<Time<Real>>,
+    assets: Option<ResMut<GhostAssets>>,
+    mut materials: ResMut<Assets<ToonMaterial>>,
     player: Option<Single<(&ActiveTool, &BuildTarget), With<Player>>>,
     ghost: Option<
         Single<
@@ -537,7 +574,7 @@ fn update_ghost(
         >,
     >,
 ) {
-    let (Some(assets), Some(ghost)) = (assets, ghost) else {
+    let (Some(mut assets), Some(ghost)) = (assets, ghost) else {
         return;
     };
     let (mut transform, mut visibility, mut mesh, mut material) = ghost.into_inner();
@@ -547,9 +584,22 @@ fn update_ghost(
     });
     let Some(candidate) = candidate else {
         visibility.set_if_neq(Visibility::Hidden);
+        assets.pulse = 0.0;
         return;
     };
     visibility.set_if_neq(Visibility::Inherited);
+    // The 1 Hz pulse (M4, D109), in 0.02 steps so the materials only
+    // change when it shows.
+    assets.pulse += time.delta_secs();
+    let glow = (GHOST_GLOW * super::juice::ghost_glow(assets.pulse) * 50.0).round() / 50.0;
+    if glow != assets.glow {
+        assets.glow = glow;
+        for handle in [assets.valid.clone(), assets.invalid.clone()] {
+            if let Some(mut m) = materials.get_mut(&handle) {
+                m.emissive_strength = glow;
+            }
+        }
+    }
     transform.set_if_neq(candidate.slot.transform());
     let wanted_mesh = &assets.meshes[kind_index(candidate.slot.kind)];
     if mesh.0 != *wanted_mesh {

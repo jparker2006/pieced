@@ -5,8 +5,11 @@
 //!   frames along the top of the screen (the M1/M2 anchors don't move); the
 //!   score pops when it ticks up.
 //! - **The break** ([`hud`]): "WAVE n CLEARED!", a big countdown and "Press
-//!   ⟨Enter⟩ to start" with the bound key's name; "WAVE n" as the next one
-//!   starts. A cyan "+25" pops under the crosshair when a potion is drunk.
+//!   ⟨Enter⟩ to start" with the bound key's name. A cyan "+25" pops under
+//!   the crosshair when a potion is drunk.
+//! - **The wave banner** ([`banner`], M4-V7): "WAVE n" in brass and crystal
+//!   with "N KNIGHTS INCOMING" sweeps in with the round sting and shrinks
+//!   into the HUD's wave counter.
 //! - **The death beat** ([`death`], client): slow motion, the view dropping
 //!   to the grass, a soft vignette.
 //! - **The results** ([`results`]): a cartoon card in the pause menu's style
@@ -18,6 +21,7 @@
 //! allocates per event. The UI clocks read real time: the death beat's slow
 //! motion never slows a menu.
 
+pub mod banner;
 pub mod death;
 pub mod hud;
 pub mod results;
@@ -34,6 +38,7 @@ impl Plugin for WavesUiPlugin {
     fn build(&self, app: &mut App) {
         crate::hud::art::install(app);
         hud::build(app);
+        banner::build(app);
         results::build(app);
     }
 }
@@ -44,13 +49,25 @@ pub enum RunUi {
     /// The top strip: wave, knights left, score.
     Hud,
     Wave,
+    /// The frame round the wave number (it pops as the banner lands).
+    WaveFrame,
     Knights,
     Score,
     /// The frame round the score (it pops).
     ScoreFrame,
     /// The wave-clear bonus ("+750") popping under the score (M4).
     ScoreBonus,
-    /// The big centre banner: the break, or a new wave's title.
+    /// The wave-start banner (M4-V7, [`banner`]): its root, the moving
+    /// block, the sunburst, the lettering's layers and face, the ribbon and
+    /// its "17 KNIGHTS INCOMING".
+    WaveBanner,
+    WaveBannerPivot,
+    WaveBannerBurst,
+    WaveBannerTitle,
+    WaveBannerFace,
+    WaveBannerLine,
+    WaveBannerKnights,
+    /// The big centre banner: the break's title.
     Banner,
     BannerTitle,
     /// "NEXT WAVE IN" and the countdown badge.
@@ -65,6 +82,9 @@ pub enum RunUi {
     Vignette,
     /// The results screen: the veil and the card.
     Results,
+    ResultsCard,
+    /// "STARTED AT WAVE 6 · NOT RANKED" under the wave (D115).
+    StartedAt,
     ResultsWave,
     ResultsScore,
     ResultsEliminations,

@@ -149,6 +149,7 @@ Hand-written WGSL, embedded into the binary by the Rust module that uses it.
 | File | Made by | Notes |
 |---|---|---|
 | `shaders/toon.wgsl` | hand-written, used by `src/look/toon.rs` | Three-tone toon shading, sky fill, baked AO, palette-tagged cartoon highlights (`art/surfaces.json`), rim, emissive, vertex colors, colour grade |
+| `shaders/pause_blur.wgsl` | hand-written, used by `src/menu/blur.rs` | The pause menu's one-off 7x7 Gaussian of the frozen 3D image into a quarter-size image (M4 chunk 5) |
 | `shaders/grade.wgsl` | hand-written, used by `src/look/grade.rs` | Import-only colour grade (`pieced::grade`): vibrance, contrast, split tone |
 | `shaders/ink.wgsl` | hand-written, used by `src/look/outline.rs` | Inverted-hull ink outlines, screen-space width, mid-distance taper, distance fade |
 | `shaders/far.wgsl` | hand-written, used by `src/look/far.rs` | Unlit far layer with baked AO, colour grade and distance haze |

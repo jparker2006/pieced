@@ -13,7 +13,7 @@ Every number here names its source (session folder or test), the commit, and the
 | A2 Weapons | **PASS** (`3a84e94`) | Merged `3a84e94` from `4d6ccf9`. `tests/viewmodel.rs` has 24 tests: every animation inside its gameplay time, and shots and look bit-identical with and without the kick. The full suite, clippy and fmt are clean (two hud audio tests flaked once and passed on rerun); the gameplay pin passes. Play-test 2 recorded: fun 4, AAA feel 4, "the guns looks super AAA" |
 | A3 Audio and music | **PASS** (`6ca867d`) | Merged `6ca867d` from `bbf0470`: 680 passed, 0 failed. `tests/music.rs` 16, 4 new in `tests/audio.rs`, and a new license audit in `tests/assets.rs`. Clippy, fmt and `build-music.sh --check` (byte-identical) are clean. Five CC BY 4.0 files are credited in `ASSETS.md`, and Jake picked them (D116, D119). Play-test 3 recorded: fun 4, AAA feel 4, "super fun with music" |
 | A4 Knight animation | **PASS** (`5e13cc7`) | Merged `5e13cc7` from `4a44dac`: 709 passed, 0 failed, 22 ignored; clippy, fmt and `build-art --check` clean (the clips export byte-reproducibly). Sampled hitbox fit every 50 ms: body ≤ 9.7 cm (limit 10), helmet ≤ 8.8 cm (D121 limit 9). The wind-up is exactly 0.4 s. Play-test 4 recorded: fun 4, AAA feel 4, "it is really starting to feel like a real game!" |
-| A5 Presentation, building juice and camera | PENDING | |
+| A5 Presentation, building juice and camera | **PASS** (`412b187`) | Merged from `896babc`. Full suite: gameplay_pin 1/1, fairness 1/1, unit 243; waves_ui 15, waves 22, menu 20, building 35, editing 17, camera 2 (the aim ray is bit-identical with every camera effect at 100% and at 0), pieces 5, render_passes 4, assets 5. Clippy and fmt clean. The one exception is a pre-existing flaky chunk 4 test (`knight.rs` rigged-knight test: 2 of 3 fail in-suite, 3 of 3 pass alone), being fixed in chunk 6A |
 | A6 Target board (V1–V8 each ≥ 4) | PENDING | |
 | A7 Performance (wave ≥ 6, battery, Low Power Mode, presented frames) | PENDING (close) | `20260929-215209` (`da732d7`, battery and LPM on every sample, 11 min 18 s): presented mean **16.73** ✓, **99.59% < 18** ✓, but 147 frames > 25 ms ✗, and it reached wave 5, not 6 ✗ |
 | A8 Launch (warm < 5 s ×3; Play → controllable < 1 s) | PENDING | |
@@ -364,3 +364,40 @@ Paused at the usage limit. Both builders were told to commit their work in progr
   - The still background is now the top priority of chunk 6A, which also gains an **ambient soundscape** (a wind bed following the sway, birdsong, a distant castle choir and bells, lantern crackle, a combat drone).
   - The orchestrator's answer on CoD Zombies: the biggest gap is the in-run economy loop (wall buys, box, perks, doors, special rounds). That's next milestone, and already in the backlog.
 - 2026-09-29: Jake: "once we polish a little more we will move on to the run loop / economy / actual story of the game that will make it much more fun. as it is now i make it to wave 3-5 then die like every time". This is noted in the backlog as the next milestone's direction. No difficulty tuning in M4 (D117).
+- 2026-09-29: **chunk 6A committed on `m4-polish-a`** (`78eff5b`, not merged; the full checks and GPU timing wait for disk).
+  - **Voices and footsteps:** synthesized gibberish knight barks (hup, taunts, 4 yelps, hoo-HAH, whaaaa), with per-knight pitch; footsteps on the run clip's footfalls by surface, from the nearest 3 knights.
+  - **Ambience:** a wind bed that follows the sway gusts, a castle choir and bells, a combat drone, birdsong.
+  - **A living world:** grass, flowers, bushes and tree crowns sway in one travelling gust; the cloud sea circles every 15 min; clouds bob; 4 flocks of birds circle the castle; fuller trees in warm and cool tones.
+  - **Bug found and fixed:** rodio 0.22 gives the far ear the louder share, so every spatial sound (including M3's off-screen wind-up warning) has been playing from the wrong side since M3. The listener's ears are swapped in `src/audio/spatial.rs`, with a test.
+  - **Fairness:** a warning always wins. It cuts every bark, no bark starts within 0.55 s of it, and the fairness suite asserts it.
+- 2026-09-29: **chunk 5 written and committed on `m4-presentation`** (`3f92084`, main merged at `95e9755`). It is **not verified**: the builder stopped when disk fell to 3.2 GB.
+  - What's in it:
+    - the wave banner (V7) on `WaveStarted`;
+    - Start at wave 1/6/10 (not ranked; `start_wave` logged for A7);
+    - loading tips; menu motion; the pause blur, with the 3D passes off while paused;
+    - live settings, with a new saved Camera effects slider; the results count-up;
+    - building assembly, edit flips and debris (pool of 48);
+    - camera FOV kick, landing dip, slide tilt and damage nudge, with the aim ray bit-identical;
+    - the death cam that frames the killer.
+  - Tests passed: menu 20/20, waves_ui 15/15, camera 2/2, pieces 5/5, plus building, editing and waves.
+  - Still to run:
+    - the rest of the full suite (fairness, gameplay pin and the files after `far.rs` are unconfirmed);
+    - two fixes not yet re-run (a motion unit test, and the `ASSETS.md` entry for the blur shader);
+    - clippy, and the V7/V8 captures.
+  - Known: debris chunks without a known piece frame fly across the line of sight.
+- 2026-09-29: **the full-speed switch.** `scripts/env.sh` now honours `$CARGO_TARGET_DIR/.fullspeed` (no low priority, 10 jobs). It's on, with Jake's say-so: "full speed build im not playing rn".
+- 2026-09-29: **disk at 3.2 GB, so the orchestrator stopped and asked Jake** (the brief's stop-and-ask line is below 4 GB).
+  - The space is mostly `~/.codex/worktrees/ecf9/glox-brain-lab/data/cloud-migration` (51 GB): another project's Codex worktree data, not Pieced's.
+  - Waiting on Jake to say whether it can be removed. Chunks 5 and 6A resume their checks when there's room.
+- 2026-09-29: **disk freed.** Jake: "dont delete stuff from glox brain … doesnt have to belong to pieced... legit j not glox brain".
+  - Nothing in glox-brain or glox-brain-lab was touched: every Codex worktree turned out to be glox, so all were left alone.
+  - Only regenerable caches were cleared: pip, pnpm, Homebrew, node-gyp, the Claude desktop ShipIt, the opencode updater, the Codex app, CodexBar, Antigravity, Spotify, Google. Free disk went from 3.2 to 14 GB.
+  - The rule is saved in memory. Chunk 5's builder resumed its final checks at full speed; chunk 6A follows.
+- 2026-09-29: **chunk 5 merged** (`412b187`, from `896babc`). **A5 PASS.**
+  - What's in it:
+    - the V7 banner: gold "WAVE 7" and "15 KNIGHTS INCOMING", clear of the crosshair;
+    - V8 shows the Start at wave chooser;
+    - the rest as described in chunk 5's entry.
+  - Captures are in `docs/evidence/m4/board/round5-presentation/`.
+  - The flaky `tests/knight.rs` rigged-knight test went to chunk 6A to make deterministic (A10 needs 0 failures).
+  - A play build from `main` is building now for Jake (chunk 5).

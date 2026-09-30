@@ -12,7 +12,11 @@ use bevy::{
     window::{CursorGrabMode, CursorOptions, PrimaryWindow},
 };
 use pieced::{
-    audio::{Sfx, run_beat},
+    audio::{
+        Sfx,
+        music::{MusicDirector, MusicInput, RunView, Screen, WaveStarted},
+        run_beat,
+    },
     combat::Downed,
     grunt::Parked,
     hud::{HudPlugin, anchors},
@@ -27,8 +31,12 @@ use pieced::{
     waves::{
         EndRun, PoolGrunt, RestartRun, Run, RunEnd, RunPhase, RunSummary, WavesClientPlugin,
         ui::{
-            PauseQuit, ResultsButton, RunUi, WavesUiPlugin, death::DeathBeat, hud::STRIP_TOP,
+            PauseQuit, ResultsButton, RunUi, WavesUiPlugin,
+            banner::{BANNER_SECONDS, BANNER_TOTAL, WaveBanner, covers_crosshair},
+            death::{DeathBeat, DeathCam, PULL_SECONDS},
+            hud::STRIP_TOP,
             pause_quit,
+            results::{BURST_DELAY, COUNT_SECONDS},
         },
     },
 };
@@ -36,6 +44,40 @@ use pieced::{
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// The adaptive score's director, as the game runs it (`audio::music`): it
+/// sends [`WaveStarted`] with the round sting, which the wave banner follows.
+/// (The audio plugin itself isn't in these apps.)
+fn music_director(
+    time: Res<Time<Real>>,
+    tuning: Res<pieced::tuning::Tuning>,
+    state: Res<State<AppState>>,
+    summary: Option<Res<RunSummary>>,
+    run: Option<Res<Run>>,
+    mut director: Local<Option<MusicDirector>>,
+    mut started: MessageWriter<WaveStarted>,
+) {
+    let input = MusicInput {
+        screen: Screen::from_state(*state.get()),
+        run: summary.map(|s| RunView {
+            seed: s.seed,
+            phase: s.phase,
+            wave: s.wave,
+            alive: run.map_or(0, |r| r.alive),
+            new_best: s.new_best,
+        }),
+    };
+    let frame = director.get_or_insert_with(MusicDirector::default).step(
+        time.delta_secs(),
+        &input,
+        &tuning.music,
+        [0.0; 3],
+        false,
+    );
+    if let Some(wave) = frame.wave_started {
+        started.write(WaveStarted { wave });
+    }
+}
 
 /// A Waves game with the input adapter, the run HUD, the results card and
 /// the death beat, over a headless simulation (one fixed tick per update
@@ -59,12 +101,18 @@ fn game(seed: u64) -> Sim {
     .insert_resource(GameMode::Waves)
     .insert_resource(ButtonInput::<KeyCode>::default())
     .insert_resource(ButtonInput::<MouseButton>::default())
-    .insert_resource(AccumulatedMouseMotion::default());
+    .insert_resource(AccumulatedMouseMotion::default())
+    .add_systems(Update, music_director);
     app.finish();
     app.cleanup();
-    // A window whose cursor the adapter locks and frees.
+    // A window whose cursor the adapter locks and frees, and the camera the
+    // death cam moves.
     app.world_mut()
         .spawn((Window::default(), PrimaryWindow, CursorOptions::default()));
+    app.world_mut().spawn((
+        pieced::render::MainCamera,
+        Transform::from_xyz(0.0, 1.6, 0.0),
+    ));
     app.world_mut()
         .resource_mut::<NextState<AppState>>()
         .set(AppState::Playing);
@@ -203,6 +251,30 @@ fn until_over(sim: &mut Sim) -> u32 {
     panic!("the results never came");
 }
 
+/// Updates until the results card is up (after the death cam's hold);
+/// returns how many updates that took.
+fn until_results(sim: &mut Sim) -> u32 {
+    for n in 1..3_000 {
+        sim.app.update();
+        if shown(sim, RunUi::Results) {
+            return n;
+        }
+    }
+    panic!("the results card never came");
+}
+
+fn banner(sim: &Sim) -> WaveBanner {
+    *sim.world().resource::<WaveBanner>()
+}
+
+/// The banner's face text ("WAVE 7") and its ribbon ("17 KNIGHTS INCOMING").
+fn banner_text(sim: &mut Sim) -> (String, String) {
+    (
+        text(sim, RunUi::WaveBannerFace),
+        text(sim, RunUi::WaveBannerKnights),
+    )
+}
+
 fn speed(sim: &Sim) -> f32 {
     sim.world().resource::<Time<Virtual>>().relative_speed()
 }
@@ -225,9 +297,14 @@ fn the_hud_follows_the_run_through_a_wave_clear() {
     assert_eq!(text(&mut sim, RunUi::Wave), "1");
     assert_eq!(text(&mut sim, RunUi::Knights), "3", "3 + 0 knights to come");
     assert_eq!(text(&mut sim, RunUi::Score), "0");
-    // The new wave's title shows as the run starts.
-    assert!(shown(&mut sim, RunUi::Banner));
-    assert_eq!(text(&mut sim, RunUi::BannerTitle), "WAVE 1");
+    // The new wave's banner shows as the run starts (the break's banner
+    // doesn't).
+    assert!(shown(&mut sim, RunUi::WaveBanner));
+    assert_eq!(
+        banner_text(&mut sim),
+        ("WAVE 1".into(), "3 KNIGHTS INCOMING".into())
+    );
+    assert!(!shown(&mut sim, RunUi::Banner));
     assert!(!shown(&mut sim, RunUi::Countdown));
 
     // One knight down: the knights left and the score follow, and it pops.
@@ -295,12 +372,16 @@ fn enter_skips_the_break_and_the_next_wave_is_announced() {
     sim.tick();
     assert_eq!(text(&mut sim, RunUi::Wave), "2");
     assert_eq!(text(&mut sim, RunUi::Knights), "5");
-    assert!(shown(&mut sim, RunUi::Banner));
-    assert_eq!(text(&mut sim, RunUi::BannerTitle), "WAVE 2");
-    assert!(!shown(&mut sim, RunUi::Countdown));
-    // The title goes after a moment.
-    sim.run_seconds(2.0);
+    assert!(shown(&mut sim, RunUi::WaveBanner));
+    assert_eq!(
+        banner_text(&mut sim),
+        ("WAVE 2".into(), "5 KNIGHTS INCOMING".into())
+    );
     assert!(!shown(&mut sim, RunUi::Banner));
+    assert!(!shown(&mut sim, RunUi::Countdown));
+    // The banner goes into the counter after a moment.
+    sim.run_seconds(2.0);
+    assert!(!shown(&mut sim, RunUi::WaveBanner));
     // The numpad's Enter skips too.
     clear_wave(&mut sim);
     press(&mut sim, KeyCode::NumpadEnter);
@@ -355,7 +436,7 @@ fn the_death_beat_runs_at_0_3_for_a_real_second_then_exactly_1() {
     sim.app.update();
     assert_eq!(speed(&sim), 0.3, "back in the beat");
 
-    // About a second of real time (60 updates at 1/60 s) to the results.
+    // About a second of real time (60 updates at 1/60 s) to the run's end.
     let updates = until_over(&mut sim);
     assert!(
         (50..=66).contains(&updates),
@@ -363,9 +444,21 @@ fn the_death_beat_runs_at_0_3_for_a_real_second_then_exactly_1() {
     );
     sim.app.update();
     assert_eq!(speed(&sim), 1.0, "exactly 1.0 after the beat");
-    assert!(shown(&mut sim, RunUi::Results));
+    // The death cam holds while the knights hop, then the results.
+    assert!(
+        !shown(&mut sim, RunUi::Results),
+        "the death cam holds first"
+    );
+    let hold = until_results(&mut sim);
+    assert!(
+        (30..=70).contains(&hold),
+        "the results came {hold} frames after the beat"
+    );
     let beat = *sim.world().resource::<DeathBeat>();
-    assert!((beat.progress() - 1.0).abs() < 1e-4, "on the grass");
+    assert!(
+        (beat.progress() - 1.0).abs() < 1e-4,
+        "the vignette closed in"
+    );
 
     // Go again: time and the view are back to normal.
     press(&mut sim, KeyCode::Enter);
@@ -418,12 +511,23 @@ fn the_results_card_shows_every_field_and_new_best_only_when_earned() {
     *sim.world_mut().get_mut::<Health>(p).unwrap() = Health::full(100.0, 0.0);
     eliminate(&mut sim);
     assert!(!shown(&mut sim, RunUi::Results), "not during the beat");
-    until_over(&mut sim);
-    sim.app.update();
+    until_results(&mut sim);
+    // The numbers count up from 0, then "NEW BEST!" bursts.
+    assert_eq!(text(&mut sim, RunUi::ResultsScore), "0");
+    assert!(!shown(&mut sim, RunUi::NewBest), "not before the count");
+    sim.run_seconds(COUNT_SECONDS * 0.4);
+    let mid: u32 = text(&mut sim, RunUi::ResultsScore)
+        .replace(',', "")
+        .parse()
+        .unwrap();
+    assert!((1..650).contains(&mid), "counting: {mid}");
+    assert!(!shown(&mut sim, RunUi::NewBest));
+    sim.run_seconds(BURST_DELAY);
 
     let s = summary(&sim);
     assert!(s.new_best, "the first run is a best");
     assert!(shown(&mut sim, RunUi::Results));
+    assert!(!shown(&mut sim, RunUi::StartedAt), "a ranked run");
     assert!(
         !shown(&mut sim, RunUi::Hud),
         "the strip gives way to the card"
@@ -468,8 +572,8 @@ fn the_results_card_shows_every_field_and_new_best_only_when_earned() {
     let p = sim.player();
     *sim.world_mut().get_mut::<Health>(p).unwrap() = Health::full(100.0, 0.0);
     eliminate(&mut sim);
-    until_over(&mut sim);
-    sim.app.update();
+    until_results(&mut sim);
+    sim.run_seconds(BURST_DELAY + 0.2);
     assert!(!summary(&sim).new_best);
     assert!(shown(&mut sim, RunUi::Results));
     assert!(!shown(&mut sim, RunUi::NewBest));
@@ -500,8 +604,7 @@ fn enter_on_the_results_goes_again() {
     let mut sim = game(10);
     sim.ticks(5);
     eliminate(&mut sim);
-    until_over(&mut sim);
-    sim.app.update();
+    until_results(&mut sim);
     let seed = run(&sim).seed;
     press(&mut sim, KeyCode::Enter);
     sim.tick();
@@ -523,7 +626,8 @@ fn pause_quit_mid_run_shows_the_results_then_quits() {
     let r = run(&sim);
     assert!(r.is_over(), "straight to the results");
     assert_eq!(r.ended, Some(RunEnd::Quit));
-    assert!(shown(&mut sim, RunUi::Results));
+    assert!(shown(&mut sim, RunUi::Results), "no death cam after a quit");
+    sim.run_seconds(COUNT_SECONDS + 0.1);
     assert_eq!(text(&mut sim, RunUi::ResultsWave), "WAVE 1");
     assert_eq!(text(&mut sim, RunUi::ResultsScore), "550");
     // A quit isn't a death: no slow motion, no drop, no vignette.
@@ -637,4 +741,177 @@ fn the_run_beats_sound_on_clear_next_wave_and_new_best() {
     ] {
         assert!(Sfx::ALL.contains(&sfx));
     }
+}
+
+// ---------------------------------------------------------------------------
+// M4 chunk 5: the wave banner, the death cam, start at wave on the results
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_wave_banner_starts_with_the_round_sting_and_lands_in_the_counter() {
+    let mut sim = frozen(21);
+    sim.record::<WaveStarted>();
+    // The run's first wave: the sting and the banner on the same frame.
+    let b = banner(&sim);
+    assert_eq!(b.showing.map(|(w, _)| w), Some(1));
+    assert!(b.showing.unwrap().1 < 1e-6, "started this very frame");
+    assert_eq!(b.knights, 3);
+    // Up over the island for its 1.5 s...
+    sim.run_seconds(BANNER_SECONDS - 0.05);
+    assert!(banner(&sim).visible());
+    assert!(shown(&mut sim, RunUi::WaveBanner));
+    // ...then it shrinks into the counter, which pops as it lands.
+    sim.run_seconds(BANNER_TOTAL - BANNER_SECONDS + 0.1);
+    assert!(!shown(&mut sim, RunUi::WaveBanner));
+    assert!(banner(&sim).landed.is_some());
+    let pop = {
+        let world = sim.world_mut();
+        let mut q = world.query::<(&RunUi, &UiTransform)>();
+        q.iter(world)
+            .find(|(p, _)| **p == RunUi::WaveFrame)
+            .map(|(_, t)| t.scale)
+            .unwrap()
+    };
+    assert_ne!(pop, Vec2::ONE, "the counter pops");
+
+    // The next wave: every WaveStarted starts a banner that same frame, with
+    // the wave's real size.
+    clear_wave(&mut sim);
+    sim.clear_recorded::<WaveStarted>();
+    let shown_before = banner(&sim).shown;
+    press(&mut sim, KeyCode::Enter);
+    for _ in 0..3 {
+        let starts = sim.recorded::<WaveStarted>().len();
+        let b = banner(&sim);
+        if starts > 0 {
+            assert_eq!(b.shown, shown_before + 1);
+            assert_eq!(b.showing.map(|(w, _)| w), Some(2));
+            break;
+        }
+        assert_eq!(b.shown, shown_before, "no banner without the sting");
+        sim.app.update();
+    }
+    assert_eq!(sim.recorded::<WaveStarted>(), [WaveStarted { wave: 2 }]);
+    assert_eq!(banner(&sim).knights, 5);
+}
+
+#[test]
+fn the_wave_banner_never_covers_the_crosshair() {
+    // Every window the Air might show, logical px.
+    for screen in [
+        Vec2::new(1280.0, 800.0),
+        Vec2::new(1470.0, 956.0),
+        Vec2::new(1710.0, 1107.0),
+        Vec2::new(1440.0, 900.0),
+    ] {
+        let covered = (0..=(BANNER_TOTAL * 1000.0) as u32)
+            .filter(|ms| covers_crosshair(*ms as f32 / 1000.0, screen))
+            .count() as f32
+            / 1000.0;
+        assert!(covered <= 0.3, "{screen}: covered for {covered} s");
+        assert_eq!(covered, 0.0, "{screen}: it stays in the top third");
+    }
+}
+
+#[test]
+fn the_death_cam_pulls_out_and_frames_the_knight_that_got_you() {
+    let mut sim = frozen(22);
+    for _ in 0..900 {
+        if !in_play(&mut sim).is_empty() {
+            break;
+        }
+        sim.tick();
+    }
+    let knight = in_play(&mut sim)[0];
+    let player = sim.player();
+    let look_before = *sim.get::<pieced::shared::LookAngles>(player);
+    // His orb kills the player.
+    *sim.world_mut().get_mut::<Health>(player).unwrap() = Health::full(10.0, 0.0);
+    sim.world_mut()
+        .get_mut::<Health>(player)
+        .unwrap()
+        .apply(1.0e6);
+    let tick = sim.sim_tick();
+    let point = sim.feet(player) + Vec3::Y;
+    sim.world_mut().write_message(DamageDealt {
+        source: Some(knight),
+        target: player,
+        target_kind: DamageTarget::Character,
+        amount: 10.0,
+        to_shield: 0.0,
+        headshot: false,
+        shield_broke: false,
+        killed: true,
+        point,
+        normal: Vec3::Z,
+        tick,
+    });
+    sim.tick();
+    assert!(run(&sim).is_ended());
+    let eye = sim.feet(player) + Vec3::Y * 1.6;
+    sim.app.update();
+    let cam = *sim.world().resource::<DeathCam>();
+    assert_eq!(cam.killer, Some(knight), "the orb's source");
+    // Pulled out to third person over 0.6 s of real time...
+    for _ in 0..((PULL_SECONDS * 60.0) as u32 + 2) {
+        sim.app.update();
+    }
+    let camera = {
+        let world = sim.world_mut();
+        let mut q = world.query_filtered::<&Transform, With<pieced::render::MainCamera>>();
+        *q.single(world).unwrap()
+    };
+    assert!(
+        camera.translation.distance(eye) > 3.0,
+        "pulled out: {}",
+        camera.translation
+    );
+    // ...facing the knight who did it.
+    let at = sim.feet(knight) + Vec3::Y * 1.1;
+    let to_knight = (at - camera.translation).normalize();
+    assert!(
+        camera.forward().dot(to_knight) > 0.995,
+        "frames the killer ({})",
+        camera.forward().dot(to_knight)
+    );
+    // The player's aim never moved.
+    assert_eq!(*sim.get::<pieced::shared::LookAngles>(player), look_before);
+    // Go again puts the camera back in the eye.
+    until_results(&mut sim);
+    press(&mut sim, KeyCode::Enter);
+    sim.app.update();
+    assert_eq!(sim.world().resource::<DeathCam>().pose, None);
+}
+
+#[test]
+fn a_start_at_wave_run_is_marked_on_the_results() {
+    let mut sim = frozen(23);
+    // To the main menu, pick wave 10, start Waves.
+    sim.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Menu);
+    sim.app.update();
+    sim.app.update();
+    sim.world_mut()
+        .insert_resource(pieced::waves::modes::StartWave::new(10));
+    sim.world_mut()
+        .write_message(pieced::waves::modes::StartMode(GameMode::Waves));
+    sim.app.update();
+    sim.app.update();
+    assert_eq!(run(&sim).start_wave, 10);
+    assert_eq!(
+        banner_text(&mut sim),
+        ("WAVE 10".into(), "21 KNIGHTS INCOMING".into())
+    );
+    sim.world_mut().write_message(EndRun);
+    sim.tick();
+    until_results(&mut sim);
+    sim.run_seconds(BURST_DELAY + 0.1);
+    assert!(shown(&mut sim, RunUi::StartedAt));
+    assert_eq!(
+        text(&mut sim, RunUi::StartedAt),
+        "STARTED AT WAVE 10 \u{b7} NOT RANKED"
+    );
+    assert!(!shown(&mut sim, RunUi::NewBest), "never a best");
+    assert!(!summary(&sim).new_best);
 }
