@@ -1763,3 +1763,131 @@ fn nineties_stack_a_ramp_tower_in_your_own_column() {
     assert!(feet.y >= 4.0 * LEVEL_HEIGHT - 0.2);
     assert_eq!(piece_count(&sim), 8, "4 ramps and 4 walls, nothing stray");
 }
+
+// ---------------------------------------------------------------------------
+// M4 chunk 5 (D109): building juice is presentation only
+// ---------------------------------------------------------------------------
+
+#[test]
+fn an_assembling_piece_blocks_a_shot_and_a_player_on_its_first_tick() {
+    use pieced::{
+        building::juice::{ASSEMBLE_SECONDS, assemble_pose},
+        shared::{ShotFired, TICK_SECONDS},
+    };
+    let mut sim = empty_sim();
+    sim.record::<ShotFired>();
+    let feet = center(4, 10);
+    put_player(&mut sim, feet, Facing::North.yaw(), 0.0);
+    sim.ticks(30);
+    // A wall goes up in front of the player: one tick later its model is
+    // still assembling...
+    let slot = PieceSlot::wall(cell(4, 10, 0), Facing::North);
+    let wall = place_piece(sim.world_mut(), slot).unwrap();
+    sim.tick();
+    assert!(TICK_SECONDS < ASSEMBLE_SECONDS);
+    let still = (Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
+    assert_ne!(assemble_pose(PieceKind::Wall, TICK_SECONDS), still);
+    // ...but it has full HP and stops a shot now.
+    let piece = *sim.get::<Piece>(wall);
+    assert_eq!(piece.hp, piece.max_hp, "full HP from the first tick");
+    sim.clear_recorded::<ShotFired>();
+    sim.player_intent().fire_pressed = true;
+    sim.tick();
+    let shots = sim.recorded::<ShotFired>();
+    assert_eq!(shots.len(), 1);
+    assert_eq!(shots[0].traces[0].hit, Some(wall), "the shot hits the wall");
+    assert!(sim.get::<Piece>(wall).hp < piece.max_hp);
+
+    // A floor's planks slap down; a player walking into a fresh wall stops.
+    let mut sim = empty_sim();
+    put_player(&mut sim, feet, Facing::North.yaw(), 0.0);
+    sim.tick();
+    let wall = place_piece(sim.world_mut(), slot).unwrap();
+    sim.tick();
+    let p = sim.player();
+    let start = sim.feet(p);
+    let wall_z = slot.center().z;
+    for _ in 0..90 {
+        sim.player_intent().move_axis = Vec2::new(0.0, 1.0);
+        sim.tick();
+        let z = sim.feet(p).z;
+        assert!(z > wall_z + 0.3, "the wall holds the player back: {z}");
+    }
+    assert!(start.z - sim.feet(p).z > 1.0, "the player walked up to it");
+    assert!(sim.world().get::<Piece>(wall).is_some());
+}
+
+/// `app::headless_app` with `extra` plugins added before it is finished.
+fn headless_with(seed: u64, extra: impl FnOnce(&mut App)) -> App {
+    use bevy::time::TimeUpdateStrategy;
+    let mut app = App::new();
+    app.add_plugins((
+        MinimalPlugins,
+        TransformPlugin,
+        bevy::state::app::StatesPlugin,
+        AssetPlugin::default(),
+        bevy::mesh::MeshPlugin,
+        bevy::scene::ScenePlugin,
+        avian3d::prelude::PhysicsPlugins::default(),
+    ))
+    .add_plugins(pieced::app::SimPlugins)
+    .insert_resource(TimeUpdateStrategy::ManualDuration(
+        pieced::shared::tick_duration(),
+    ))
+    .insert_resource(pieced::rng::SimRng(pieced::rng::Rng::new(seed)));
+    extra(&mut app);
+    app.finish();
+    app.cleanup();
+    app
+}
+/// A headless sim with the building debris (the client's, meshless).
+fn debris_sim() -> Sim {
+    let mut app = headless_with(3, |app| {
+        app.add_plugins(pieced::building::debris::BuildingDebrisPlugin);
+    });
+    app.world_mut()
+        .resource_mut::<NextState<pieced::shared::AppState>>()
+        .set(pieced::shared::AppState::Playing);
+    app.update();
+    let mut sim = Sim { app };
+    clear_pieces(sim.world_mut());
+    sim.tick();
+    sim
+}
+
+#[test]
+fn broken_pieces_burst_into_at_most_48_chunks_that_settle_and_go_within_2_s() {
+    use pieced::building::debris::{BuildingDebris, DEBRIS_CAP, DEBRIS_SECONDS};
+    let mut sim = debris_sim();
+    // Ten walls break at once.
+    let walls: Vec<Entity> = (0..10)
+        .map(|i| {
+            let slot = PieceSlot::wall(cell(1 + i % 5, 3 + 2 * (i / 5), 0), Facing::North);
+            place_piece(sim.world_mut(), slot).unwrap()
+        })
+        .collect();
+    sim.tick();
+    for &w in &walls {
+        damage_piece(sim.world_mut(), w, 1.0e6);
+    }
+    let mut most = 0;
+    let mut rested = false;
+    let mut last_alive = 0.0;
+    for frame in 0..(3.0 * 60.0) as u32 {
+        sim.tick();
+        let debris = sim.world().resource::<BuildingDebris>();
+        most = most.max(debris.live());
+        assert!(debris.live() <= DEBRIS_CAP, "{} chunks", debris.live());
+        rested |= debris.chunks().any(|(_, resting)| resting);
+        if debris.live() > 0 {
+            last_alive = frame as f32 / 60.0;
+        }
+    }
+    let debris = sim.world().resource::<BuildingDebris>();
+    assert_eq!(debris.bursts, 10);
+    assert_eq!(most, DEBRIS_CAP, "the cap fills, the oldest give way");
+    assert!(rested, "chunks settle on the ground before they go");
+    assert!(last_alive < DEBRIS_SECONDS, "all gone by {last_alive} s");
+    assert_eq!(debris.live(), 0);
+    assert_eq!(debris.capacity(), DEBRIS_CAP, "a fixed pool");
+}

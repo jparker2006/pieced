@@ -103,7 +103,6 @@ fn animate_buttons(
     mut buttons: Query<(
         Entity,
         &Interaction,
-        &InheritedVisibility,
         &mut MenuMotion,
         &mut UiTransform,
     )>,
@@ -117,21 +116,27 @@ fn animate_buttons(
         clock.age += dt;
     }
     let entering = clock.age <= ENTER_SECONDS + dt;
-    for (entity, interaction, visible, mut motion, mut tf) in &mut buttons {
+    for (entity, interaction, mut motion, mut tf) in &mut buttons {
         let hovered = matches!(interaction, Interaction::Hovered | Interaction::Pressed);
         motion.hover = match (hovered, motion.hover) {
             (true, None) => Some(0.0),
             (true, Some(t)) => Some(t + dt),
             (false, _) => None,
         };
-        if !visible.get() && !entering {
+        // At rest with nothing to do: leave it be.
+        if !entering && motion.hover.is_none() && *tf == UiTransform::IDENTITY {
             continue;
         }
         // Its place among the buttons of its column: the wrapper's index.
         let index = parents
             .get(entity)
             .ok()
-            .and_then(|p| parents.get(p.parent()).ok().map(|g| (p.parent(), g.parent())))
+            .and_then(|p| {
+                parents
+                    .get(p.parent())
+                    .ok()
+                    .map(|g| (p.parent(), g.parent()))
+            })
             .and_then(|(wrapper, column)| {
                 children
                     .get(column)
@@ -161,11 +166,17 @@ mod tests {
     fn buttons_slide_in_within_0_2_s_and_settle_exactly() {
         for index in 0..4 {
             let (x0, s0) = enter_pose(0.0, index);
-            assert!(x0 <= SLIDE_FROM * 0.99 && s0 < 0.85, "starts out: {x0} {s0}");
+            assert!(
+                x0 <= SLIDE_FROM * 0.99 && s0 < 0.85,
+                "starts out: {x0} {s0}"
+            );
             assert_eq!(enter_pose(ENTER_SECONDS, index), (0.0, 1.0));
         }
+        // Early on it is still well to the left; it overshoots a touch.
+        let (early, _) = enter_pose(0.015, 0);
+        assert!(early > SLIDE_FROM && early < -20.0, "{early}");
         let (mid, _) = enter_pose(0.07, 0);
-        assert!(mid > SLIDE_FROM && mid < 0.0);
+        assert!(mid > SLIDE_FROM && mid < 12.0, "{mid}");
     }
 
     #[test]

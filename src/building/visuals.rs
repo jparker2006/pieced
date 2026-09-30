@@ -24,8 +24,8 @@
 
 use super::{
     BuildTarget, InitialCover, Piece, PieceEdit,
-    juice::{ASSEMBLE_SECONDS, assemble_pose},
     edit::{self},
+    juice::{ASSEMBLE_SECONDS, assemble_pose},
     mesh::{
         BRICK_DEBRIS, CONE_ROOF_MODELS, KINDS, PIECE_MODELS, PLANK_DEBRIS, TILE_MODELS,
         compose_floor, compose_wall, cone_roof, ghost_cone_mesh, ghost_floor_mesh, ghost_ramp_mesh,

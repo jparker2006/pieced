@@ -1181,7 +1181,10 @@ fn a_start_at_wave_run_never_touches_the_best_and_is_logged() {
     assert_eq!(s.results.wave, 7, "wave 7 beats the best's wave 1...");
     assert!(!s.new_best, "...but a start-at-wave run never counts");
     assert_eq!(s.best.as_ref(), Some(&best));
-    assert_eq!(sim.world().resource::<PersonalBest>().0.as_ref(), Some(&best));
+    assert_eq!(
+        sim.world().resource::<PersonalBest>().0.as_ref(),
+        Some(&best)
+    );
     assert_eq!(
         std::fs::read_to_string(store.best_path().unwrap()).unwrap(),
         saved,
@@ -1204,7 +1207,11 @@ fn a_start_at_wave_run_never_touches_the_best_and_is_logged() {
 fn the_session_log_counts_a_start_at_6_run_as_wave_6() {
     let mut log = pieced::session::WaveLog::default();
     log.observe_run(7, Some(6), 6);
-    assert_eq!(log.max_wave(), 6, "A7's wave check passes on the first frame");
+    assert_eq!(
+        log.max_wave(),
+        6,
+        "A7's wave check passes on the first frame"
+    );
     log.observe_run(7, Some(6), 7);
     log.observe(8, 1);
     assert_eq!(log.runs[0].start_wave, 6);

@@ -264,7 +264,10 @@ mod tests {
         assert!(wants_blur(AppState::Paused, &menu));
         assert!(!wants_blur(AppState::Playing, &menu));
         menu.page = MenuPage::Settings;
-        assert!(!wants_blur(AppState::Paused, &menu), "settings preview live");
+        assert!(
+            !wants_blur(AppState::Paused, &menu),
+            "settings preview live"
+        );
         menu.page = MenuPage::Main;
         menu.panel_open = true;
         assert!(!wants_blur(AppState::Paused, &menu), "the tuning panel");

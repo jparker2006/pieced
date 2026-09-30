@@ -18,8 +18,7 @@ use pieced::{
     building::{
         InitialCover, Piece, PieceSlot,
         visuals::{
-            BuildingVisualsPlugin, POP_SECONDS, PieceAssets, PieceDebris, model_mesh, model_offset,
-            piece_model, pop_scale,
+            BuildingVisualsPlugin, PieceAssets, PieceDebris, model_mesh, model_offset, piece_model,
         },
     },
     look::{ATTRIBUTE_OUTLINE_NORMAL, Outline, ToonMaterial, warmup::WarmupState},
@@ -256,11 +255,11 @@ fn pieces_get_their_shared_model_crack_and_pop() {
     assert_eq!(material, assets.material, "every piece shares one material");
     assert!(outlined);
     assert_eq!(transform.translation, model_offset(PieceKind::Wall));
-    // One 60 Hz frame after landing the piece is still visibly squashed (the
-    // squash is deepest at t = 0 and springs back within POP_SECONDS).
+    // One 60 Hz frame after it was placed, a new wall is still assembling
+    // (M4 chunk 5: its brick courses stack up from the ground in 0.15 s).
     assert!(
-        transform.scale.y < 0.95 && transform.scale.x > 1.02,
-        "a new piece lands squashed: {}",
+        transform.scale.y < 0.95,
+        "a new wall is still stacking: {}",
         transform.scale
     );
     // The initial cover is simply there, no pop.
@@ -280,13 +279,17 @@ fn pieces_get_their_shared_model_crack_and_pop() {
         assert_eq!(mesh, *assets.mesh(PieceKind::Wall, stage));
         assert_eq!(material, assets.material);
     }
-    // The pop settles to full size after 0.12 s (eight 60 Hz frames; step ten).
+    // It stands complete after 0.15 s (nine 60 Hz frames; step ten).
     for _ in 0..10 {
         app.update();
     }
     let (_, _, transform, _) = visual(&mut app, placed);
     assert_eq!(transform.scale, Vec3::ONE);
-    assert_eq!(pop_scale(POP_SECONDS), Vec3::ONE);
+    let done = pieced::building::juice::assemble_pose(
+        PieceKind::Wall,
+        pieced::building::juice::ASSEMBLE_SECONDS,
+    );
+    assert_eq!(done, (Vec3::ZERO, Quat::IDENTITY, Vec3::ONE));
 }
 
 /// The whole headless game plus the look, models, building visuals and

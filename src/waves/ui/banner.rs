@@ -41,10 +41,10 @@ pub const SWEEP_SECONDS: f32 = 0.35;
 /// The whole banner, sweep to landing (s).
 pub const BANNER_TOTAL: f32 = BANNER_SECONDS + SHRINK_SECONDS;
 /// The banner's top, as a percentage of the screen height.
-pub const BANNER_TOP_PCT: f32 = 11.0;
+pub const BANNER_TOP_PCT: f32 = 7.0;
 /// The block's size at rest (px): the sunburst's ellipse, which is its
 /// biggest part. The letters and the ribbon sit inside it.
-pub const BANNER_SIZE: Vec2 = Vec2::new(900.0, 330.0);
+pub const BANNER_SIZE: Vec2 = Vec2::new(900.0, 290.0);
 /// The HUD's wave counter's centre, px below the top of the screen (the
 /// strip's top plus half its frame).
 pub const COUNTER_Y: f32 = super::hud::STRIP_TOP + 32.0;
@@ -79,10 +79,7 @@ pub(super) fn build(app: &mut App) {
     app.init_resource::<WaveBanner>()
         .add_message::<WaveStarted>()
         .add_systems(Startup, spawn_banner)
-        .add_systems(
-            PostUpdate,
-            drive_banner.before(bevy::ui::UiSystems::Layout),
-        );
+        .add_systems(PostUpdate, drive_banner.before(bevy::ui::UiSystems::Layout));
 }
 
 /// The banner's state: which wave, its real-time age, and the knights it
@@ -465,9 +462,11 @@ fn drive_banner(
     if fresh && let Some((wave, _)) = banner.showing {
         for (part, mut text) in &mut texts {
             match part {
-                RunUi::WaveBannerTitle | RunUi::WaveBannerFace => set_text(&mut text, &mut scratch, |s| {
-                    write_title(s, wave);
-                }),
+                RunUi::WaveBannerTitle | RunUi::WaveBannerFace => {
+                    set_text(&mut text, &mut scratch, |s| {
+                        write_title(s, wave);
+                    })
+                }
                 RunUi::WaveBannerKnights => set_text(&mut text, &mut scratch, |s| {
                     write_line(s, banner.knights);
                 }),

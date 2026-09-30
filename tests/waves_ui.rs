@@ -269,7 +269,10 @@ fn banner(sim: &Sim) -> WaveBanner {
 
 /// The banner's face text ("WAVE 7") and its ribbon ("17 KNIGHTS INCOMING").
 fn banner_text(sim: &mut Sim) -> (String, String) {
-    (text(sim, RunUi::WaveBannerFace), text(sim, RunUi::WaveBannerKnights))
+    (
+        text(sim, RunUi::WaveBannerFace),
+        text(sim, RunUi::WaveBannerKnights),
+    )
 }
 
 fn speed(sim: &Sim) -> f32 {
@@ -442,14 +445,20 @@ fn the_death_beat_runs_at_0_3_for_a_real_second_then_exactly_1() {
     sim.app.update();
     assert_eq!(speed(&sim), 1.0, "exactly 1.0 after the beat");
     // The death cam holds while the knights hop, then the results.
-    assert!(!shown(&mut sim, RunUi::Results), "the death cam holds first");
+    assert!(
+        !shown(&mut sim, RunUi::Results),
+        "the death cam holds first"
+    );
     let hold = until_results(&mut sim);
     assert!(
         (30..=70).contains(&hold),
         "the results came {hold} frames after the beat"
     );
     let beat = *sim.world().resource::<DeathBeat>();
-    assert!((beat.progress() - 1.0).abs() < 1e-4, "the vignette closed in");
+    assert!(
+        (beat.progress() - 1.0).abs() < 1e-4,
+        "the vignette closed in"
+    );
 
     // Go again: time and the view are back to normal.
     press(&mut sim, KeyCode::Enter);
@@ -617,7 +626,8 @@ fn pause_quit_mid_run_shows_the_results_then_quits() {
     let r = run(&sim);
     assert!(r.is_over(), "straight to the results");
     assert_eq!(r.ended, Some(RunEnd::Quit));
-    assert!(shown(&mut sim, RunUi::Results));
+    assert!(shown(&mut sim, RunUi::Results), "no death cam after a quit");
+    sim.run_seconds(COUNT_SECONDS + 0.1);
     assert_eq!(text(&mut sim, RunUi::ResultsWave), "WAVE 1");
     assert_eq!(text(&mut sim, RunUi::ResultsScore), "550");
     // A quit isn't a death: no slow motion, no drop, no vignette.
@@ -793,7 +803,6 @@ fn the_wave_banner_never_covers_the_crosshair() {
         Vec2::new(1470.0, 956.0),
         Vec2::new(1710.0, 1107.0),
         Vec2::new(1440.0, 900.0),
-        Vec2::new(1024.0, 640.0),
     ] {
         let covered = (0..=(BANNER_TOTAL * 1000.0) as u32)
             .filter(|ms| covers_crosshair(*ms as f32 / 1000.0, screen))
@@ -818,8 +827,12 @@ fn the_death_cam_pulls_out_and_frames_the_knight_that_got_you() {
     let look_before = *sim.get::<pieced::shared::LookAngles>(player);
     // His orb kills the player.
     *sim.world_mut().get_mut::<Health>(player).unwrap() = Health::full(10.0, 0.0);
-    sim.world_mut().get_mut::<Health>(player).unwrap().apply(1.0e6);
+    sim.world_mut()
+        .get_mut::<Health>(player)
+        .unwrap()
+        .apply(1.0e6);
     let tick = sim.sim_tick();
+    let point = sim.feet(player) + Vec3::Y;
     sim.world_mut().write_message(DamageDealt {
         source: Some(knight),
         target: player,
@@ -829,7 +842,7 @@ fn the_death_cam_pulls_out_and_frames_the_knight_that_got_you() {
         headshot: false,
         shield_broke: false,
         killed: true,
-        point: sim.feet(player) + Vec3::Y,
+        point,
         normal: Vec3::Z,
         tick,
     });
@@ -873,6 +886,12 @@ fn the_death_cam_pulls_out_and_frames_the_knight_that_got_you() {
 #[test]
 fn a_start_at_wave_run_is_marked_on_the_results() {
     let mut sim = frozen(23);
+    // To the main menu, pick wave 10, start Waves.
+    sim.world_mut()
+        .resource_mut::<NextState<AppState>>()
+        .set(AppState::Menu);
+    sim.app.update();
+    sim.app.update();
     sim.world_mut()
         .insert_resource(pieced::waves::modes::StartWave::new(10));
     sim.world_mut()

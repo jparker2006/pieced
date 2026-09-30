@@ -223,7 +223,9 @@ fn death_cam(
     time: Res<Time<Real>>,
     run: Option<Res<Run>>,
     mut cam: ResMut<DeathCam>,
-    player: Option<Single<(&Transform, &EyeHeight, &LookAngles), (With<Player>, Without<MainCamera>)>>,
+    player: Option<
+        Single<(&Transform, &EyeHeight, &LookAngles), (With<Player>, Without<MainCamera>)>,
+    >,
     bodies: Query<&Transform, (With<Character>, Without<MainCamera>, Without<Player>)>,
     mut camera: Option<Single<&mut Transform, With<MainCamera>>>,
 ) {
@@ -354,7 +356,10 @@ mod tests {
         let killer = Vec3::new(2.0, 0.0, 4.0);
         let pose = death_cam_pose(feet, eye, Vec3::X, Some(killer));
         let to_killer = (killer + Vec3::Y * KILLER_CHEST - pose.translation).normalize();
-        assert!(pose.forward().dot(to_killer) > 0.9999, "framed on his chest");
+        assert!(
+            pose.forward().dot(to_killer) > 0.9999,
+            "framed on his chest"
+        );
         assert!(pose.translation.z > feet.z + 3.0, "behind the player");
         assert!(pose.translation.y > 2.0, "above");
         // No killer: behind and above, looking where the player looked.

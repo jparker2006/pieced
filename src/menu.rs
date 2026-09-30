@@ -213,13 +213,11 @@ impl Setting {
             | Setting::CameraEffects
             | Setting::Volume
             | Setting::Music
-            | Setting::Effects => {
-                SettingKind::Slider {
-                    min: 0.0,
-                    max: 1.0,
-                    step: 0.05,
-                }
-            }
+            | Setting::Effects => SettingKind::Slider {
+                min: 0.0,
+                max: 1.0,
+                step: 0.05,
+            },
             Setting::Acceleration
             | Setting::AimFriction
             | Setting::Bloom

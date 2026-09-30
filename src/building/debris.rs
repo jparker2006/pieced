@@ -265,7 +265,8 @@ fn simulate_debris(
     pool: Option<ResMut<BuildingDebris>>,
     models: Option<Res<PieceDebris>>,
     rim: Option<Res<IslandRim>>,
-    spatial: SpatialQuery,
+    // Apps without physics (some visual tests) have no spatial queries.
+    spatial: If<SpatialQuery>,
     mut commands: Commands,
     mut chunks: Query<
         (

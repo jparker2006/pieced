@@ -30,7 +30,7 @@ pub(super) fn build(app: &mut App) {
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq)]
 pub struct SettingsPreview {
     seen: Option<[f32; 3]>,
-    last_sample: f64,
+    last_sample: Option<f64>,
     pub samples: u32,
     pub nudges: u32,
 }
@@ -56,8 +56,11 @@ fn preview_settings(
         return;
     }
     let t = time.elapsed_secs_f64();
-    if (seen[0] != now[0] || seen[1] != now[1]) && t - preview.last_sample >= SAMPLE_EVERY {
-        preview.last_sample = t;
+    let due = preview
+        .last_sample
+        .is_none_or(|last| t - last >= SAMPLE_EVERY);
+    if (seen[0] != now[0] || seen[1] != now[1]) && due {
+        preview.last_sample = Some(t);
         preview.samples += 1;
         if let Some(queue) = queue.as_mut() {
             queue.push(SAMPLE, None, t);

@@ -47,6 +47,11 @@ use pieced::{
 /// The game's client-side flow, headless: built in `mode` (the native game
 /// uses Waves, so its pools are warm), booting to `target` if given.
 fn client(mode: GameMode, target: Option<AppState>) -> Sim {
+    client_with(mode, target, |_| {})
+}
+
+/// [`client`], with `extra` applied to the app before it is finished.
+fn client_with(mode: GameMode, target: Option<AppState>, extra: impl FnOnce(&mut App)) -> Sim {
     let mut app = App::new();
     app.add_plugins((
         MinimalPlugins,
@@ -78,6 +83,7 @@ fn client(mode: GameMode, target: Option<AppState>) -> Sim {
     if let Some(target) = target {
         app.insert_resource(BootTarget(target));
     }
+    extra(&mut app);
     app.finish();
     app.cleanup();
     app.world_mut()
@@ -671,4 +677,256 @@ fn the_best_run_shows_under_waves() {
     updates(&mut sim, 1);
     assert_eq!(texts_with(&mut sim, "NO RUNS YET").len(), 0);
     assert_eq!(texts_with(&mut sim, "BEST  WAVE 4 \u{b7} 2,350").len(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// M4 chunk 5: start at wave, menu motion, the pause blur, loading, previews
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_waves_button_starts_at_the_chosen_wave() {
+    use pieced::{menu::StartWaveChoice, waves::modes::StartWave};
+    let mut sim = menu_game();
+    assert_eq!(sim.world().resource::<StartWave>().get(), 1);
+    click(&mut sim, StartWaveChoice(6));
+    assert_eq!(state(&sim), AppState::Menu, "choosing doesn't start");
+    assert_eq!(sim.world().resource::<StartWave>().get(), 6);
+    click(&mut sim, MainMenuButton::Waves);
+    updates(&mut sim, 3);
+    let run = sim.world().resource::<Run>().clone();
+    assert_eq!((run.wave, run.start_wave), (6, 6));
+    assert_eq!(
+        sim.world().resource::<RunSummary>().knights_left,
+        13,
+        "wave 6's 13 knights"
+    );
+    // Back on the menu, 10.
+    sim.world_mut().write_message(EndRun);
+    updates(&mut sim, 3);
+    click(&mut sim, ResultsButton::Quit);
+    updates(&mut sim, 2);
+    click(&mut sim, StartWaveChoice(10));
+    click(&mut sim, MainMenuButton::Waves);
+    updates(&mut sim, 3);
+    assert_eq!(sim.world().resource::<Run>().wave, 10);
+}
+
+fn button_transform<B: Component + PartialEq + Copy>(sim: &mut Sim, button: B) -> UiTransform {
+    let world = sim.world_mut();
+    let mut q = world.query::<(&B, &UiTransform)>();
+    q.iter(world)
+        .find(|(b, _)| **b == button)
+        .map(|(_, t)| *t)
+        .expect("the button has a transform")
+}
+
+#[test]
+fn menu_buttons_slide_in_within_0_2_s_and_pop_on_hover() {
+    use pieced::menu::motion::{ENTER_SECONDS, HOVER_REST};
+    let mut sim = menu_game();
+    click(&mut sim, MainMenuButton::Practice);
+    updates(&mut sim, 3);
+    tap(&mut sim, KeyCode::Escape);
+    updates(&mut sim, 1);
+    assert_eq!(state(&sim), AppState::Paused);
+    // Mid-slide: off to the left and small.
+    let quit = button_transform(&mut sim, PauseButton::Quit);
+    let x = match quit.translation.x {
+        Val::Px(x) => x,
+        other => panic!("{other:?}"),
+    };
+    assert!(x < -10.0, "sliding in: {x}");
+    assert!(quit.scale.x < 1.0);
+    // All in place within 0.2 s.
+    updates(&mut sim, (ENTER_SECONDS * 60.0).ceil() as usize);
+    for b in [
+        PauseButton::Resume,
+        PauseButton::Settings,
+        PauseButton::Quit,
+    ] {
+        assert_eq!(
+            button_transform(&mut sim, b),
+            UiTransform::IDENTITY,
+            "{b:?}"
+        );
+    }
+    // A hover pops it, then it rests a little big; leaving puts it back.
+    let resume = {
+        let world = sim.world_mut();
+        let mut q = world.query::<(Entity, &PauseButton)>();
+        q.iter(world)
+            .find(|(_, b)| **b == PauseButton::Resume)
+            .map(|(e, _)| e)
+            .unwrap()
+    };
+    sim.world_mut()
+        .entity_mut(resume)
+        .insert(Interaction::Hovered);
+    updates(&mut sim, 4);
+    assert!(button_transform(&mut sim, PauseButton::Resume).scale.x > HOVER_REST);
+    updates(&mut sim, 20);
+    assert_eq!(
+        button_transform(&mut sim, PauseButton::Resume).scale,
+        Vec2::splat(HOVER_REST)
+    );
+    sim.world_mut().entity_mut(resume).insert(Interaction::None);
+    updates(&mut sim, 1);
+    assert_eq!(
+        button_transform(&mut sim, PauseButton::Resume),
+        UiTransform::IDENTITY
+    );
+}
+
+#[test]
+fn pausing_blurs_the_last_frame_once_and_stops_the_3d_passes() {
+    use pieced::{
+        menu::blur::{BLUR_FRAMES, BlurCamera, PauseBlur},
+        render::{MainCamera, PassSize, WorldTarget, full_screen_passes},
+        viewmodel::ViewmodelCamera,
+    };
+    let mut sim = client_with(GameMode::Waves, Some(AppState::Menu), |app| {
+        app.init_asset::<Image>();
+    });
+    // The world's cameras and image, as the renderer makes them.
+    let image = sim
+        .world_mut()
+        .resource_mut::<Assets<Image>>()
+        .add(Image::default());
+    sim.world_mut().insert_resource(WorldTarget {
+        image,
+        size: UVec2::new(1470, 956),
+    });
+    sim.world_mut()
+        .spawn((MainCamera, Camera3d::default(), Transform::default()));
+    sim.world_mut()
+        .spawn((ViewmodelCamera, Camera3d::default(), Transform::default()));
+    updates(&mut sim, 2);
+    fn active_3d(sim: &mut Sim) -> usize {
+        let world = sim.world_mut();
+        let mut q = world.query_filtered::<&Camera, With<Camera3d>>();
+        q.iter(world).filter(|c| c.is_active).count()
+    }
+    fn blur_active(sim: &mut Sim) -> bool {
+        let world = sim.world_mut();
+        let mut q = world.query_filtered::<&Camera, With<BlurCamera>>();
+        q.iter(world).any(|c| c.is_active)
+    }
+    fn render_passes(sim: &mut Sim) -> usize {
+        // The 3D cameras' passes (the blur camera is asleep when this runs).
+        full_screen_passes(sim.world_mut())
+            .into_iter()
+            .filter(|p| {
+                matches!(
+                    p.name,
+                    "copy_to_output" | "tonemapping" | "fxaa" | "sharpening"
+                )
+            })
+            .count()
+    }
+    assert_eq!(state(&sim), AppState::Menu);
+    assert!(!blur_active(&mut sim), "the blur camera sleeps after Boot");
+    click(&mut sim, MainMenuButton::Waves);
+    updates(&mut sim, 3);
+    assert_eq!(active_3d(&mut sim), 2);
+    assert!(render_passes(&mut sim) > 0, "playing draws the world");
+
+    // Pause: the last frame is blurred once, then the 3D cameras stop.
+    tap(&mut sim, KeyCode::Escape);
+    updates(&mut sim, 1);
+    assert_eq!(state(&sim), AppState::Paused);
+    assert_eq!(sim.world().resource::<PauseBlur>().blurs, 1);
+    let mut blur_frames = u32::from(blur_active(&mut sim));
+    for _ in 0..5 {
+        updates(&mut sim, 1);
+        blur_frames += u32::from(blur_active(&mut sim));
+    }
+    assert!((1..=BLUR_FRAMES).contains(&blur_frames), "{blur_frames}");
+    assert_eq!(active_3d(&mut sim), 0, "the world stops rendering");
+    assert_eq!(render_passes(&mut sim), 0, "no 3D passes while paused");
+    assert_eq!(sim.world().resource::<PauseBlur>().blurs, 1, "blurred once");
+
+    // Settings preview live: the world draws again behind the card.
+    click(&mut sim, PauseButton::Settings);
+    updates(&mut sim, 1);
+    assert_eq!(active_3d(&mut sim), 2);
+    click(&mut sim, PauseButton::Back);
+    updates(&mut sim, 3);
+    assert_eq!(active_3d(&mut sim), 0);
+    assert_eq!(sim.world().resource::<PauseBlur>().blurs, 2);
+
+    // Resume: everything back.
+    tap(&mut sim, KeyCode::Escape);
+    updates(&mut sim, 2);
+    assert_eq!(state(&sim), AppState::Playing);
+    assert_eq!(active_3d(&mut sim), 2);
+    assert!(!blur_active(&mut sim));
+}
+
+#[test]
+fn the_loading_screen_fills_and_its_tips_name_the_bound_keys() {
+    use pieced::{
+        app::BootGate,
+        menu::loading::{LoadingProgress, LoadingUi},
+    };
+    let mut sim = client_with(GameMode::Waves, Some(AppState::Menu), |app| {
+        let mut gate = app.world_mut().resource_mut::<BootGate>();
+        gate.hold("test-a");
+        gate.hold("test-b");
+        app.world_mut()
+            .resource_mut::<Tuning>()
+            .bindings
+            .bind(Action::Aim, Binding::Key(KeyCode::KeyZ))
+            .unwrap();
+    });
+    assert_eq!(state(&sim), AppState::Boot);
+    fn tip(sim: &mut Sim) -> Option<String> {
+        let world = sim.world_mut();
+        let mut q = world.query::<(&LoadingUi, &Text)>();
+        q.iter(world)
+            .find(|(p, _)| **p == LoadingUi::Tip)
+            .map(|(_, t)| t.0.clone())
+    }
+    assert_eq!(tip(&mut sim).as_deref(), Some("Hold Z to aim down sights"));
+    let before = sim.world().resource::<LoadingProgress>().fraction;
+    sim.world_mut().resource_mut::<BootGate>().release("test-a");
+    updates(&mut sim, 2);
+    let after = sim.world().resource::<LoadingProgress>().fraction;
+    assert!(after > before + 0.2, "{before} -> {after}");
+    // The tips rotate.
+    updates(&mut sim, (2.7 * 60.0) as usize);
+    assert_eq!(
+        tip(&mut sim).as_deref(),
+        Some("Pump knights off the edge for +150")
+    );
+    sim.world_mut().resource_mut::<BootGate>().release("test-b");
+    updates(&mut sim, 3);
+    assert_eq!(state(&sim), AppState::Menu);
+    assert_eq!(tip(&mut sim), None, "gone with the loading screen");
+}
+
+#[test]
+fn settings_preview_audio_and_the_camera_nudge_live() {
+    use pieced::menu::{Setting, preview::SettingsPreview};
+    let mut sim = menu_game();
+    click(&mut sim, MainMenuButton::Settings);
+    updates(&mut sim, 1);
+    fn set(sim: &mut Sim, s: Setting, v: f32) {
+        s.set(&mut sim.world_mut().resource_mut::<Tuning>(), v);
+        sim.app.update();
+    }
+    set(&mut sim, Setting::CameraEffects, 0.5);
+    assert_eq!(sim.world().resource::<SettingsPreview>().nudges, 1);
+    set(&mut sim, Setting::Effects, 0.4);
+    assert_eq!(sim.world().resource::<SettingsPreview>().samples, 1);
+    // Dragging on: at most one sample per quarter second.
+    set(&mut sim, Setting::Effects, 0.45);
+    assert_eq!(sim.world().resource::<SettingsPreview>().samples, 1);
+    updates(&mut sim, 16);
+    set(&mut sim, Setting::Volume, 0.7);
+    assert_eq!(sim.world().resource::<SettingsPreview>().samples, 2);
+    // The slider reads 0–100%.
+    assert_eq!(
+        Setting::CameraEffects.display(sim.world().resource::<Tuning>()),
+        "50%"
+    );
 }

@@ -247,7 +247,10 @@ fn begin_run(world: &mut World) {
         }
     };
     let now = world.resource::<SimTick>().0;
-    let start = world.get_resource::<StartWave>().copied().unwrap_or_default();
+    let start = world
+        .get_resource::<StartWave>()
+        .copied()
+        .unwrap_or_default();
     let run = Run::starting_at(seed, now, start.get(), &world.resource::<Tuning>().waves);
     let summary = summarize(
         &run,

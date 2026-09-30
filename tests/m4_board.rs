@@ -6,8 +6,9 @@
 //! `<id>.png` plus a greyscale copy `<id>-grey.png`, to compare with
 //! `docs/design/concepts/M4-V1` … `M4-V8`:
 //!
-//! - `V7-wave-banner`: a wave starting (wave 7), the drop ships swooping down
-//!   from the castle, from the spawn looking north;
+//! - `V7-wave-banner`: a wave starting (wave 7): the brass-and-crystal
+//!   "WAVE 7" banner (M4 chunk 5) over the island, the drop ships swooping
+//!   down from the castle, from the spawn looking north;
 //! - `V1-spawn-midwave`: the same wave a few seconds on, the ships hovering
 //!   and knights running in at the player from 7–12 m;
 //! - `V5-knight-windup`: a knight about 7 m out, facing the player, deep in
@@ -422,7 +423,16 @@ fn review(app: &mut App, board: &mut Board) {
     }
     put_player(app, SPAWN);
     look(app, 10.0, 9.0);
-    frames(app, 2);
+    // The round sting (the audio isn't in this app) starts the banner; it
+    // is at rest over the island 0.6 s in.
+    app.world_mut()
+        .write_message(pieced::audio::music::WaveStarted { wave: 7 });
+    for _ in 0..36 {
+        put_player(app, SPAWN);
+        look(app, 10.0, 9.0);
+        heal(app);
+        app.update();
+    }
     capture(app, board, "V7-wave-banner");
 
     // V1: mid-wave, ships hovering, knights running in at 6–10 m.

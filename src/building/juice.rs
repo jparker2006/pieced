@@ -337,7 +337,10 @@ mod tests {
     #[test]
     fn edit_tiles_flip_in_0_1_s() {
         let (turn, size) = flip_pose(0.0, false).unwrap();
-        assert!(turn.abs() < 1e-6 && (size - 1.0).abs() < 1e-6, "cut: starts flat");
+        assert!(
+            turn.abs() < 1e-6 && (size - 1.0).abs() < 1e-6,
+            "cut: starts flat"
+        );
         let (turn, _) = flip_pose(0.0, true).unwrap();
         assert!((turn - FRAC_PI_2).abs() < 1e-5, "restored: starts edge-on");
         assert!(flip_pose(FLIP_SECONDS, false).is_none());
