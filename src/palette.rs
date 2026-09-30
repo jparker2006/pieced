@@ -149,6 +149,9 @@ pub mod cartoon {
     pub const KNIGHT_PURPLE: Color = rgb(0x72, 0x2F, 0x9F);
     pub const KNIGHT_PURPLE_SHADOW: Color = rgb(0x43, 0x17, 0x6F);
     pub const KNIGHT_STEEL: Color = rgb(0x8E, 0x93, 0xAB);
+    /// The steel's dark core and its narrow white highlight (M4 round 4).
+    pub const KNIGHT_STEEL_DARK: Color = rgb(0x4A, 0x4E, 0x66);
+    pub const KNIGHT_STEEL_HI: Color = rgb(0xEE, 0xF0, 0xF8);
     pub const KNIGHT_STEEL_SHADOW: Color = rgb(0x64, 0x6B, 0x8C);
     pub const MORTAR: Color = rgb(0xBA, 0xA7, 0x9D);
     pub const MORTAR_SHADOW: Color = rgb(0x78, 0x71, 0x82);
@@ -255,6 +258,8 @@ pub mod cartoon {
         ("knight_purple", KNIGHT_PURPLE),
         ("knight_purple_shadow", KNIGHT_PURPLE_SHADOW),
         ("knight_steel", KNIGHT_STEEL),
+        ("knight_steel_dark", KNIGHT_STEEL_DARK),
+        ("knight_steel_hi", KNIGHT_STEEL_HI),
         ("knight_steel_shadow", KNIGHT_STEEL_SHADOW),
         ("mortar", MORTAR),
         ("mortar_shadow", MORTAR_SHADOW),

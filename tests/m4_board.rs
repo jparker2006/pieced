@@ -475,12 +475,31 @@ fn review(app: &mut App, board: &mut Board) {
             .world()
             .get::<Wand>(k[0])
             .and_then(|w| w.windup_progress(total));
-        if progress.is_some_and(|p| p >= 0.6) {
+        // Deep in it (M4 chunk 4): the wind-up clip's planted thrust.
+        if progress.is_some_and(|p| p >= 0.85) {
             wound = true;
             break;
         }
     }
     println!("V5: wound up {wound}");
+    {
+        use pieced::knight::{KnightAnim, KnightClip};
+        let world = app.world_mut();
+        for (figure, anim) in world
+            .query::<(&pieced::arena::visuals::TargetFigure, &KnightAnim)>()
+            .iter(world)
+        {
+            if figure.owner == k[0] {
+                let mix = anim.clip_mix();
+                println!(
+                    "V5: clips {}, wind-up clip weight {:.2} at {:.3} s",
+                    anim.clips_enabled(),
+                    mix.weight(KnightClip::WindUp),
+                    mix.time(KnightClip::WindUp)
+                );
+            }
+        }
+    }
     capture_with(app, board, "V5-knight-windup", false);
 
     // V2: ADS on the rifle, a body hit at about 9 m, the castle to the left.

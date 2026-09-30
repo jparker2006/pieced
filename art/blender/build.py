@@ -88,7 +88,10 @@ def build_one(asset, source, opts):
     if side["triangles"] > asset.budget:
         raise ValueError(f"{asset.name}: {side['triangles']} triangles is over the "
                          f"{asset.kind} budget of {asset.budget}")
-    export.export_glb(root, os.path.join(opts["out"], f"{asset.name}.glb"))
+    clips = export.export_glb(root, os.path.join(opts["out"], f"{asset.name}.glb"),
+                              asset.channels)
+    if clips is not None:
+        side["clips"] = clips
     export.write_json(side, os.path.join(opts["out"], f"{asset.name}.json"))
     height = side["bounds"]["max"][1] - side["bounds"]["min"][1]
     if not opts["no_previews"]:

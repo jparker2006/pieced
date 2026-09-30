@@ -10,10 +10,13 @@
 //! swells. At the release it flares, then fades back to a gentle idle glow.
 //! All of it is visual only: the character and its hitboxes never move, and
 //! the orb leaves from `orb::WAND_TIP`, which [`raised_tip`] ties to this pose.
+//! With the knight's authored clips (M4 chunk 4) the `WindUp` clip does the
+//! arm and the stance (its last pose puts the tip on `orb::WAND_TIP` too),
+//! and only the glow and the swirl stay here.
 
-use super::target::{TargetFigure, animate_knights};
+use super::target::{TargetFigure, write_knight_poses};
 use crate::{
-    knight::{KnightAssets, KnightRig},
+    knight::{KnightAnim, KnightAssets, KnightRig},
     look::{Halo, ModelDressed, Outline, ToonMaterial},
     models::{MODEL_FORWARD_FIX, ModelLibrary, ModelParts, spawn_model},
     orb::Wand,
@@ -182,7 +185,7 @@ impl Plugin for WandVisualsPlugin {
             .add_systems(
                 PostUpdate,
                 pose_wands
-                    .after(animate_knights)
+                    .after(write_knight_poses)
                     .before(TransformSystems::Propagate),
             );
     }
@@ -323,7 +326,12 @@ fn pose_wands(
     assets: Option<Res<WandAssets>>,
     mut cues: MessageReader<GameCue>,
     owners: Query<&Wand>,
-    mut figures: Query<(&TargetFigure, &KnightRig, &mut FigureWand)>,
+    mut figures: Query<(
+        &TargetFigure,
+        &KnightRig,
+        &mut FigureWand,
+        Option<&KnightAnim>,
+    )>,
     mut transforms: Query<&mut Transform, Without<TargetFigure>>,
     mut halos: Query<&mut Halo>,
     mut commands: Commands,
@@ -336,7 +344,7 @@ fn pose_wands(
             _ => None,
         })
         .collect();
-    for (target, rig, mut wand) in &mut figures {
+    for (target, rig, mut wand, anim) in &mut figures {
         let Ok(owner) = owners.get(target.owner) else {
             continue;
         };
@@ -349,7 +357,10 @@ fn pose_wands(
         };
         let progress = owner.windup_progress(tuning.grunt.windup);
         let raise = raise_amount(progress, wand.since_release);
-        if raise > 1e-4 {
+        // With the knight's clips the wind-up clip poses him (M4 chunk 4);
+        // this procedural stance is the fallback without them.
+        let clips = anim.is_some_and(KnightAnim::clips_enabled);
+        if raise > 1e-4 && !clips {
             let fix = MODEL_FORWARD_FIX;
             // The wind-up stance (M4-V5): the wand arm up, the other flung
             // forward for balance, boots planted wide, leaning back into the
@@ -380,8 +391,9 @@ fn pose_wands(
             }
         }
         if let Some(mut halo) = wand.tip.and_then(|t| halos.get_mut(t).ok()) {
-            // A wide flare (M4-V5): the crystal blazes as he winds up.
-            let want = Halo::new(CRYSTAL_GLOW, 0.35 + 1.35 * glow, 0.4 + 3.6 * glow);
+            // A crisp flare (M4 round 4: it was up to 1.7 m and washed the
+            // whole knight pink in M4-V5; now the knight reads inside it).
+            let want = Halo::new(CRYSTAL_GLOW, 0.3 + 0.55 * glow, 0.4 + 2.4 * glow);
             if *halo != want {
                 *halo = want;
             }

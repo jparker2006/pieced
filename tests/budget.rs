@@ -11,6 +11,11 @@
 //! - **The levers allocate nothing per frame**: the overdraw cap over many
 //!   glows, the dynamic-resolution controller and the knight animation LOD,
 //!   under a counting allocator.
+//! - **8 knights animate within the budget** (M4 chunk 4): with Bevy's
+//!   `AnimationPlugin` (as in the game) the full wave's knights all play the
+//!   authored clips through the one shared graph, the clips add no draws
+//!   (the same pinned meshes, batches and triangles), and the knights' clip
+//!   mixing allocates nothing per step.
 
 use bevy::{mesh::Indices, prelude::*};
 use pieced::{
@@ -45,6 +50,7 @@ fn full_wave_app(seed: u64) -> App {
         WorldSerializationPlugin,
         PhysicsPlugins::default(),
         InputPlugin,
+        bevy::animation::AnimationPlugin,
     ))
     .init_asset::<Image>()
     .init_asset::<StandardMaterial>()
@@ -210,6 +216,7 @@ fn a_full_wave_stays_within_the_draw_triangle_and_particle_budgets() {
     let mut most = DrawCount::default();
     let mut orbs_seen = 0;
     let mut ship_seen = false;
+    let mut clip_driven = 0;
     while frames < 60 * 90 {
         app.update();
         frames += 1;
@@ -231,6 +238,9 @@ fn a_full_wave_stays_within_the_draw_triangle_and_particle_budgets() {
         if alive >= 8 && draws.triangles > most.triangles {
             most = draws;
         }
+        if alive >= 8 {
+            clip_driven = clip_driven.max(knights_on_clips(&mut app));
+        }
         // Every effect pool within its cap, all along.
         let tuning = app.world().resource::<pieced::tuning::Tuning>().clone();
         let (particles, debris) = app.world().resource::<pieced::fx::FxPools>().live();
@@ -238,10 +248,17 @@ fn a_full_wave_stays_within_the_draw_triangle_and_particle_budgets() {
         assert!(debris <= tuning.feedback.max_debris as usize);
         assert!(orbs as usize <= pieced::orb::ORB_POOL);
     }
-    println!("full wave: {most:?}, orbs seen {orbs_seen}, ship {ship_seen}");
+    println!(
+        "full wave: {most:?}, orbs seen {orbs_seen}, ship {ship_seen}, \
+         {clip_driven} knights on the clips"
+    );
     assert!(most.meshes > 0, "8 knights never landed together");
+    assert!(
+        clip_driven >= 8,
+        "8 knights animate on the authored clips ({clip_driven})"
+    );
     assert!(ship_seen, "no drop ship");
-    // The knight budget (M4 art: ≤ 11k triangles each, wand included, and
+    // The knight budget (M4 chunk 4: ≤ 12k triangles each, wand included, and
     // outline hulls, which draw every knight mesh twice).
     assert!(
         most.knights_triangles <= 8 * 2 * KNIGHT_TRIANGLES,
@@ -274,7 +291,35 @@ fn a_full_wave_stays_within_the_draw_triangle_and_particle_budgets() {
 /// share the one halo batch and collapse to nothing while dark (1,509 meshes
 /// in 153 batches, 624k triangles; world pass 4.06/5.19 ms offscreen).
 const SCENE_TRIANGLES: usize = 665_000;
-const KNIGHT_TRIANGLES: usize = 11_000;
+/// M4 chunk 4 raised the knight to ≤ 12k (the chibi knight is ~9.4k with
+/// every eye state).
+const KNIGHT_TRIANGLES: usize = 12_000;
+
+/// Knights playing the authored clips, every one through the one shared
+/// graph with all of its clips on its player.
+fn knights_on_clips(app: &mut App) -> usize {
+    use pieced::knight::{CLIP_COUNT, KnightAnim, KnightGraph};
+    let Some(graph) = app
+        .world()
+        .get_resource::<KnightGraph>()
+        .map(|g| g.graph.clone())
+    else {
+        return 0;
+    };
+    let world = app.world_mut();
+    for (player, handle) in world
+        .query::<(&AnimationPlayer, &AnimationGraphHandle)>()
+        .iter(world)
+    {
+        assert_eq!(handle.0, graph, "one shared graph");
+        assert_eq!(player.playing_animations().count(), CLIP_COUNT);
+    }
+    world
+        .query::<&KnightAnim>()
+        .iter(world)
+        .filter(|a| a.clips_enabled() && !a.is_downed())
+        .count()
+}
 const SCENE_MESHES: usize = 1_560;
 const SCENE_BATCHES: usize = 160;
 const SCENE_GLOWS: usize = 120;
@@ -432,4 +477,36 @@ fn the_levers_allocate_nothing_per_frame() {
     });
     assert_eq!(direct, 0);
     assert!(dynres.scale >= perf.dynres_min && dynres.scale <= perf.dynres_max);
+
+    // 8 knights' animation with the clips (M4 chunk 4): stepping, mixing the
+    // clips, flinching and dying allocate nothing.
+    use pieced::knight::{HitRegion, KnightAnim, KnightEvent, KnightInput};
+    let mut knights: Vec<KnightAnim> = (0..8)
+        .map(|k| {
+            let mut a = KnightAnim::new(k);
+            a.set_clips(true);
+            a
+        })
+        .collect();
+    let stepped = allocations_in(|| {
+        for i in 0..3_000u32 {
+            for (k, anim) in knights.iter_mut().enumerate() {
+                if (i + k as u32).is_multiple_of(97) {
+                    anim.event(KnightEvent::Flinch {
+                        region: HitRegion::Chest,
+                        push: Vec3::Z,
+                    });
+                }
+                let input = KnightInput {
+                    velocity: Vec3::new((i as f32 * 0.01).sin() * 4.0, 0.0, -3.0),
+                    windup: ((i / 60) % 3 == 0).then_some((i % 60) as f32 / 60.0),
+                    downed: (i / 400) % 5 == 4,
+                    ..Default::default()
+                };
+                std::hint::black_box(anim.step(1.0 / 60.0, &input));
+                std::hint::black_box(anim.clip_mix());
+            }
+        }
+    });
+    assert_eq!(stepped, 0, "the knights' clip mixing allocated");
 }

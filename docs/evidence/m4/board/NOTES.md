@@ -145,3 +145,35 @@ the world pass read 4.61/6.04 ms (mean/p95) and the total 8.93/11.00 ms. Nothing
 round 3 adds draws or overdraw to the world pass (values, colours and a
 bank), so the rise is taken as load noise. It needs a rerun on a quiet
 machine before it counts.
+
+## Round 4 (knight): the chibi knight and his clips (chunk 4)
+
+Only V1, V4, V5 and V8 were recaptured (`round4-knight/`), from the
+`m4-knight` branch.
+
+What changed:
+- **The chibi knight** (D121; `knight.py`): a flat-topped bucket helm with a
+  rolled rim (a white highlight over a dark groove), drawn 8 cm over the head
+  sphere (D121 allows 9; 1 cm is kept for the clips' motion); one wide dark
+  visor band with bigger warm eyes; a wide brown belt with a big gold buckle
+  and violet gem at a narrowed waist, from which a closed purple bell robe
+  flares to the capsule's edge; one big round pauldron a side; bigger
+  gauntlets; short legs into steel cuffs and chunky boots; the cosmetic hat
+  1.18x. The steel in three values (`knight_steel_dark` #4A4E66, mid
+  `knight_steel` #8E93AB, a narrow `knight_steel_hi`), baked AO as before.
+  9,406 tris (budget 12k).
+- **Authored clips** (`knight_anim.py`, D104): V5's wind-up is the clip's
+  planted thrust (captured at 85% of the wind-up); V8's knight plays the
+  `Hero` clip. The wand's flare is crisper (at most 0.85 m, was 1.7 m), so
+  the winding-up knight reads inside it.
+
+| View | Predicted | Gaps left |
+|---|---|---|
+| V1 | 3.5 | Knights read as bucket-helmed chibis at 7–9 m; motion is subtle (the hitbox fit caps the swings) |
+| V4 | 3 | The bucket helm pops over the poof with the hat and a gauntlet |
+| V5 | 3 | Wide planted stance, wand thrust at the player: head-on it foreshortens (the target is side-on) |
+| V8 | 3.5 | New knight, wand raised, on the wall; the target's cape and wide stance are softer here |
+
+Structural limit: the body capsule (r 0.33 m) and the head sphere cap the
+silhouette: the bell can't be wider than the shoulders and the helmet is
+about 0.5 m across, a quarter of his height rather than the targets' third.

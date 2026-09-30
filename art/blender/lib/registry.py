@@ -12,7 +12,8 @@ BUDGETS = {
     # S1 round 3: rounder, smooth-shaded guns (up from the spec's 6k).
     "gun": 8000,
     "gloves": 2000,
-    "knight": 11000,
+    # M4 (docs/M4-SPEC.md → Chunk 4): raised to 12k for the chibi knight.
+    "knight": 12000,
     "wall": 600,
     "floor": 400,
     "ramp": 400,
@@ -49,6 +50,9 @@ class Asset:
     build: Callable
     about: str = ""
     ao: Optional[object] = None
+    channels: Optional[Callable] = None
+    """For a model with keyed clips: which exported animation channels stay
+    (`lib/export.py` `export_glb`)."""
 
     @property
     def budget(self):

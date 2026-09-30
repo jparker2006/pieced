@@ -3,18 +3,18 @@
   "kind": "knight",
   "source": "art/blender/assets/knight.py",
   "space": "Bevy model space after models::spawn_model's forward fix: metres, +Y up, -Z forward (the model's front), +X right, origin at the model root on the ground. Blender (x, y, z) -> (-x, z, y).",
-  "triangles": 1014,
-  "triangle_budget": 11000,
+  "triangles": 1540,
+  "triangle_budget": 12000,
   "bounds": {
     "min": [
-      -0.2381,
-      1.415,
-      -0.1781
+      -0.2325,
+      1.405,
+      -0.2011
     ],
     "max": [
-      0.2381,
-      1.825,
-      0.1781
+      0.2325,
+      1.813,
+      0.2027
     ]
   },
   "parts": {
@@ -22,21 +22,25 @@
       "parent": "knight_helmet_dent",
       "bounds": {
         "min": [
-          -0.2381,
-          1.415,
-          -0.1781
+          -0.2325,
+          1.405,
+          -0.2011
         ],
         "max": [
-          0.2381,
-          1.825,
-          0.1781
+          0.2325,
+          1.813,
+          0.2027
         ]
       },
-      "triangles": 1014,
+      "triangles": 1540,
       "colors": [
         "knight_steel",
+        "knight_steel_dark",
+        "knight_steel_hi",
         "knight_steel_shadow",
-        "pupil_black"
+        "nail_highlight",
+        "pupil_black",
+        "star_gold"
       ]
     }
   },
