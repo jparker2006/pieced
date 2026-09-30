@@ -123,7 +123,7 @@ fn spawn_debris_pool(mut commands: Commands) {
         slots: SlotPool::new(DEBRIS_CAP),
         entities,
         live: vec![None; DEBRIS_CAP],
-        rng: FxRng::new(0xB41C_D5),
+        rng: FxRng::new(0x00B4_1CD5),
         frames: [(None, Transform::IDENTITY); 16],
         next_frame: 0,
         bursts: 0,

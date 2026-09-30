@@ -781,7 +781,7 @@ fn menu_buttons_slide_in_within_0_2_s_and_pop_on_hover() {
 fn pausing_blurs_the_last_frame_once_and_stops_the_3d_passes() {
     use pieced::{
         menu::blur::{BLUR_FRAMES, BlurCamera, PauseBlur},
-        render::{MainCamera, PassSize, WorldTarget, full_screen_passes},
+        render::{MainCamera, WorldTarget, full_screen_passes},
         viewmodel::ViewmodelCamera,
     };
     let mut sim = client_with(GameMode::Waves, Some(AppState::Menu), |app| {

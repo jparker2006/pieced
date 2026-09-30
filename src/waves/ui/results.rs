@@ -705,7 +705,7 @@ mod tests {
             assert!(v >= last, "never counts down");
             last = v;
         }
-        assert!(BURST_DELAY > COUNT_SECONDS, "NEW BEST! after the count");
+        const { assert!(BURST_DELAY > COUNT_SECONDS, "NEW BEST! after the count") };
     }
 
     #[test]

@@ -844,7 +844,7 @@ fn an_edits_collision_is_immediate_while_its_tiles_flip() {
     assert!(edit_piece(sim.world_mut(), wall, after));
     sim.tick();
     // One tick in, the window's tile is still flipping out of the hole...
-    assert!(TICK_SECONDS < FLIP_SECONDS);
+    const { assert!(TICK_SECONDS < FLIP_SECONDS) };
     assert_eq!(
         flipped_tiles(PieceKind::Wall, before, after).collect::<Vec<_>>(),
         [(4, false)]

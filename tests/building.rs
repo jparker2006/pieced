@@ -1784,7 +1784,7 @@ fn an_assembling_piece_blocks_a_shot_and_a_player_on_its_first_tick() {
     let slot = PieceSlot::wall(cell(4, 10, 0), Facing::North);
     let wall = place_piece(sim.world_mut(), slot).unwrap();
     sim.tick();
-    assert!(TICK_SECONDS < ASSEMBLE_SECONDS);
+    const { assert!(TICK_SECONDS < ASSEMBLE_SECONDS) };
     let still = (Vec3::ZERO, Quat::IDENTITY, Vec3::ONE);
     assert_ne!(assemble_pose(PieceKind::Wall, TICK_SECONDS), still);
     // ...but it has full HP and stops a shot now.
